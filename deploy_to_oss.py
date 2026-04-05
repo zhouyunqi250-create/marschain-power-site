@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync the generated static site to Alibaba Cloud OSS and refresh CDN."""
+"""Sync the generated static site to Alibaba Cloud OSS and optionally refresh CDN."""
 
 from __future__ import annotations
 
@@ -185,14 +185,15 @@ def main() -> int:
     bucket_name = resolve_setting(args.bucket, "ALIYUN_OSS_BUCKET")
     endpoint = normalize_endpoint(resolve_setting(args.endpoint, "ALIYUN_OSS_ENDPOINT"))
     prefix = normalize_prefix(resolve_setting(args.prefix, "ALIYUN_OSS_PREFIX", required=False, default=""))
-    base_url = resolve_setting(args.base_url, "ALIYUN_SITE_BASE_URL", required=not args.skip_cdn_refresh)
+    base_url = resolve_setting(args.base_url, "ALIYUN_SITE_BASE_URL", required=False, default="")
 
     if not prefix and not args.allow_bucket_root:
         raise SystemExit("Refusing to sync to OSS bucket root without --allow-bucket-root.")
 
     sync_summary = sync_site(site_dir, bucket_name, endpoint, prefix, args.dry_run)
     refreshed = []
-    if not args.skip_cdn_refresh:
+    cdn_refresh_skipped = args.skip_cdn_refresh or not base_url
+    if not cdn_refresh_skipped:
         refreshed = refresh_cdn(base_url, args.dry_run)
 
     print(
@@ -203,6 +204,7 @@ def main() -> int:
                 "prefix": prefix,
                 "uploaded_count": len(sync_summary["upload"]),
                 "deleted_count": len(sync_summary["delete"]),
+                "cdn_refresh_skipped": cdn_refresh_skipped,
                 "refreshed_urls": refreshed,
                 "dry_run": args.dry_run,
             },

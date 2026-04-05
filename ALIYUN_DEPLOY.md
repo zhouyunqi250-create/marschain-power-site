@@ -2,6 +2,13 @@
 
 这套站点默认按“阿里云 OSS + CDN + 自定义域名 + GitHub Actions 定时刷新”上线。
 
+如果 CDN 和域名还没接好，也可以先走“只发 OSS”的过渡形态：
+
+- GitHub Actions 继续每 5 小时构建和上传
+- `ALIYUN_SITE_BASE_URL` 先留空
+- 工作流会跳过 CDN 刷新
+- 等 CDN 和域名准备好后，再补上 `ALIYUN_SITE_BASE_URL`
+
 ## 1. 阿里云侧准备
 
 1. 购买并实名新域名。
@@ -41,6 +48,7 @@
 - `ALIYUN_OSS_ENDPOINT`：例如 `oss-cn-hangzhou.aliyuncs.com`
 - `ALIYUN_OSS_PREFIX`：如果你要把站点放在 Bucket 根目录，留空即可
 - `ALIYUN_SITE_BASE_URL`：例如 `https://mars.example.com`
+  - 如果 CDN 和独立域名还没准备好，可以暂时留空
 
 ## 4. GitHub Actions 行为
 
@@ -55,7 +63,7 @@
 3. 生成 `site/`
 4. 归档 `output/latest`
 5. 同步 `site/` 到 OSS
-6. 刷新首页、最新 JSON、下载文件和构建摘要的 CDN 缓存
+6. 如果配置了 `ALIYUN_SITE_BASE_URL`，再刷新首页、最新 JSON、下载文件和构建摘要的 CDN 缓存
 
 ## 5. 本地验证
 
@@ -72,9 +80,20 @@ python3 deploy_to_oss.py \
   --site-dir site \
   --bucket your-bucket \
   --endpoint oss-cn-hangzhou.aliyuncs.com \
+  --allow-bucket-root \
+  --dry-run
+
+如果要同时演练 CDN 刷新：
+
+```bash
+python3 deploy_to_oss.py \
+  --site-dir site \
+  --bucket your-bucket \
+  --endpoint oss-cn-hangzhou.aliyuncs.com \
   --base-url https://mars.example.com \
   --allow-bucket-root \
   --dry-run
+```
 ```
 
 ## 6. 风险提醒
