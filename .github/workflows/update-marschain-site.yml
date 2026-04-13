@@ -24,7 +24,7 @@ concurrency:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 240
     env:
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
@@ -79,7 +79,7 @@ jobs:
 
       - name: Deploy site to Alibaba Cloud OSS
         run: |
-          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-http://www.marschainrank.com}"
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python deploy_to_oss.py \
             --site-dir site \
             --bucket "$ALIYUN_OSS_BUCKET" \

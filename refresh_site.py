@@ -15,10 +15,12 @@ from marschain_power_rank import build_ranking, write_csv, write_html, write_jso
 
 
 SCAN_TIERS = [
-    {"tx_pages": 1200, "block_pages": 200, "max_candidates": 30000, "upline_limit": 20000},
-    {"tx_pages": 3000, "block_pages": 500, "max_candidates": 0, "upline_limit": 80000},
-    {"tx_pages": 4000, "block_pages": 700, "max_candidates": 0, "upline_limit": 120000},
-    {"tx_pages": 5000, "block_pages": 900, "max_candidates": 0, "upline_limit": 160000},
+    {"tx_pages": 1200, "block_pages": 200, "max_candidates": 30000, "upline_limit": 20000, "upline_depth": 6, "workers": 32},
+    {"tx_pages": 3000, "block_pages": 500, "max_candidates": 0, "upline_limit": 80000, "upline_depth": 6, "workers": 32},
+    {"tx_pages": 4000, "block_pages": 700, "max_candidates": 0, "upline_limit": 120000, "upline_depth": 6, "workers": 32},
+    {"tx_pages": 5000, "block_pages": 900, "max_candidates": 0, "upline_limit": 160000, "upline_depth": 6, "workers": 32},
+    {"tx_pages": 8000, "block_pages": 1500, "max_candidates": 0, "upline_limit": 300000, "upline_depth": 8, "workers": 40},
+    {"tx_pages": 12000, "block_pages": 2500, "max_candidates": 0, "upline_limit": 500000, "upline_depth": 10, "workers": 48},
 ]
 
 
@@ -27,6 +29,8 @@ def make_args(
     block_pages: int,
     max_candidates: int,
     upline_limit: int,
+    upline_depth: int,
+    workers: int,
     cache_file: Path,
 ) -> Namespace:
     return Namespace(
@@ -36,10 +40,10 @@ def make_args(
         block_limit=100,
         max_candidates=max_candidates,
         top=100,
-        workers=32,
+        workers=workers,
         include_to=True,
         include_nodes=False,
-        upline_depth=6,
+        upline_depth=upline_depth,
         upline_limit=upline_limit,
         output_dir="output",
         prefix="marschain_power_rank",
@@ -94,6 +98,8 @@ def main() -> int:
             block_pages=tier["block_pages"],
             max_candidates=tier["max_candidates"],
             upline_limit=tier["upline_limit"],
+            upline_depth=tier["upline_depth"],
+            workers=tier["workers"],
             cache_file=cache_file,
         )
         rows, meta = build_ranking(run_args)
@@ -113,9 +119,10 @@ def main() -> int:
         raise RuntimeError("No ranking results were generated.")
 
     if not target_met:
-        print(
-            f"[warn] final coverage {chosen_meta['discovered_power_coverage']:.4%} "
-            f"is still below target {args.coverage_target:.2%}; publishing the deepest tier anyway."
+        raise RuntimeError(
+            f"Coverage target not met after deepest scan tier {chosen_label}: "
+            f"{chosen_meta['discovered_power_coverage']:.4%} < {args.coverage_target:.2%}. "
+            "Refusing to publish a below-target site."
         )
 
     chosen_meta = dict(chosen_meta)
