@@ -2,6 +2,15 @@ name: Update MarsChain Site
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/update-marschain-site.yml"
+      - "build_frontend_dashboard.py"
+      - "deploy_to_oss.py"
+      - "refresh_site.py"
+      - "requirements.txt"
   schedule:
     - cron: "0 */5 * * *"
 
@@ -70,20 +79,11 @@ jobs:
 
       - name: Deploy site to Alibaba Cloud OSS
         run: |
-          if [ -n "${ALIYUN_SITE_BASE_URL:-}" ]; then
-            python deploy_to_oss.py \
-              --site-dir site \
-              --bucket "$ALIYUN_OSS_BUCKET" \
-              --endpoint "$ALIYUN_OSS_ENDPOINT" \
-              --base-url "$ALIYUN_SITE_BASE_URL" \
-              --prefix "${ALIYUN_OSS_PREFIX:-}" \
-              --allow-bucket-root
-          else
-            python deploy_to_oss.py \
-              --site-dir site \
-              --bucket "$ALIYUN_OSS_BUCKET" \
-              --endpoint "$ALIYUN_OSS_ENDPOINT" \
-              --prefix "${ALIYUN_OSS_PREFIX:-}" \
-              --allow-bucket-root \
-              --skip-cdn-refresh
-          fi
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-http://www.marschainrank.com}"
+          python deploy_to_oss.py \
+            --site-dir site \
+            --bucket "$ALIYUN_OSS_BUCKET" \
+            --endpoint "$ALIYUN_OSS_ENDPOINT" \
+            --base-url "$SITE_BASE_URL" \
+            --prefix "${ALIYUN_OSS_PREFIX:-}" \
+            --allow-bucket-root
