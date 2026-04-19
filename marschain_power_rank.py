@@ -257,6 +257,50 @@ def enrich_nodes(address: str) -> int | None:
     return 0 if nodes is None else None
 
 
+def fetch_address_transactions_page(address: str, page: int, limit: int) -> tuple[str, int, dict[str, Any]]:
+    payload = request_json(f"/addresses/{address}/transactions", {"page": page, "limit": limit})
+    return address, page, payload
+
+
+def collect_history_counter(
+    seed_addresses: list[str],
+    pages: int,
+    limit: int,
+    workers: int,
+    progress: bool,
+) -> Counter[str]:
+    counter: Counter[str] = Counter()
+    if not seed_addresses or pages <= 0 or limit <= 0:
+        return counter
+
+    tasks: list[tuple[str, int]] = [(address, page) for address in seed_addresses for page in range(1, pages + 1)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(workers, 32))) as pool:
+        future_map = {
+            pool.submit(fetch_address_transactions_page, address, page, limit): (address, page)
+            for address, page in tasks
+        }
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            address, page = future_map[future]
+            try:
+                _, _, payload = future.result()
+            except Exception as exc:
+                print(f"[warn] address tx lookup failed for {address} page {page}: {exc}", file=sys.stderr)
+                continue
+            for tx in payload.get("transactions", []):
+                sender = normalize_address(tx.get("from"))
+                receiver = normalize_address(tx.get("to"))
+                if sender == address and is_probably_user_address(receiver):
+                    counter[receiver] += 1
+                elif receiver == address and is_probably_user_address(sender):
+                    counter[sender] += 1
+            if progress and idx % 100 == 0:
+                print(
+                    f"[info] history tx scan: {idx}/{len(tasks)} seed-pages checked",
+                    file=sys.stderr,
+                )
+    return counter
+
+
 def write_html(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> None:
     summary_items = [
         ("生成时间", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(meta["generated_at"]))),
@@ -690,6 +734,51 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         for row in depth_rows:
             rows_map[row.address] = row
 
+    expanded_history_addresses: set[str] = set()
+    for depth in range(1, args.history_depth + 1):
+        seed_rows = [
+            row
+            for row in sorted(rows_map.values(), key=lambda row: (row.power, row.total_burned_amount), reverse=True)
+            if row.address not in expanded_history_addresses
+        ][: args.history_seed_limit]
+        if not seed_rows:
+            break
+        seed_addresses = [row.address for row in seed_rows]
+        expanded_history_addresses.update(seed_addresses)
+
+        history_counter = collect_history_counter(
+            seed_addresses=seed_addresses,
+            pages=args.history_pages,
+            limit=args.history_tx_limit,
+            workers=args.workers,
+            progress=args.progress,
+        )
+        if not history_counter:
+            break
+
+        next_addresses = [
+            address
+            for address, _ in history_counter.most_common(args.history_candidate_limit)
+            if address not in seen_addresses
+        ]
+        if not next_addresses:
+            continue
+
+        seen_addresses.update(next_addresses)
+        tx_counter.update(history_counter)
+        depth_rows, cache_updates = lookup_power_rows(
+            next_addresses,
+            tx_counter,
+            miner_counter,
+            upline_counter,
+            args,
+            cache,
+            f"history-depth-{depth}",
+        )
+        cache.update(cache_updates)
+        for row in depth_rows:
+            rows_map[row.address] = row
+
     save_cache(Path(args.cache_file) if args.cache_file else None, cache)
 
     all_rows = list(rows_map.values())
@@ -730,7 +819,13 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
         "upline_limit": args.upline_limit,
-        "candidate_count": len(ordered_candidates),
+        "history_depth": args.history_depth,
+        "history_pages": args.history_pages,
+        "history_tx_limit": args.history_tx_limit,
+        "history_seed_limit": args.history_seed_limit,
+        "history_candidate_limit": args.history_candidate_limit,
+        "seed_candidate_count": len(ordered_candidates),
+        "candidate_count": len(seen_addresses),
         "positive_power_count": len(all_rows),
         "discovered_total_power": discovered_total_power,
         "network_total_power": network_total_power,
@@ -753,6 +848,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--include-nodes", action="store_true", help="Fetch /nodes/{address} for final ranked rows.")
     parser.add_argument("--upline-depth", type=int, default=2, help="How many rounds of discovered uplines to follow.")
     parser.add_argument("--upline-limit", type=int, default=2500, help="Maximum upline candidates per depth.")
+    parser.add_argument("--history-depth", type=int, default=0, help="How many rounds of address-history expansion to run.")
+    parser.add_argument("--history-pages", type=int, default=2, help="Transaction pages to scan per history seed address.")
+    parser.add_argument("--history-tx-limit", type=int, default=100, help="Transactions per page for address-history expansion.")
+    parser.add_argument("--history-seed-limit", type=int, default=200, help="How many top power addresses to expand per history round.")
+    parser.add_argument("--history-candidate-limit", type=int, default=50000, help="Maximum counterparties to power-check per history round.")
     parser.add_argument("--output-dir", default="output", help="Directory for JSON and CSV outputs.")
     parser.add_argument("--prefix", default="marschain_power_rank", help="Output filename prefix.")
     parser.add_argument("--cache-file", default="output/marschain_power_cache.json", help="Power lookup cache JSON path.")
