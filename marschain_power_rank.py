@@ -142,7 +142,7 @@ def normalize_address(value: str | None) -> str | None:
     value = value.strip()
     if not value.startswith("0x") or len(value) != 42:
         return None
-    return value
+    return value.lower()
 
 
 def is_probably_user_address(value: str | None) -> bool:
@@ -199,7 +199,12 @@ def load_cache(path: Path | None) -> dict[str, dict[str, Any]]:
         return {}
     if not isinstance(data, dict):
         return {}
-    return {str(key): value for key, value in data.items() if isinstance(value, dict)}
+    normalized: dict[str, dict[str, Any]] = {}
+    for key, value in data.items():
+        address = normalize_address(str(key))
+        if address and isinstance(value, dict):
+            normalized[address] = value
+    return normalized
 
 
 def save_cache(path: Path | None, cache: dict[str, dict[str, Any]]) -> None:
