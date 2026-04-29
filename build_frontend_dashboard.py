@@ -78,13 +78,25 @@ def build_html(payload: dict) -> str:
     rpc_log_blocks_scanned = int(meta.get("rpc_log_blocks_scanned", 0) or 0)
     rpc_logs_seen = int(meta.get("rpc_logs_seen", 0) or 0)
     subtitle = (
-        f"基于公开 explorer API 与官方 RPC 的深度扫描结果，当前覆盖率已达到 {threshold_label} 发布阈值。"
+        f"基于公开 explorer API、官方 RPC 与 POWER 合约日志生成，当前扫描覆盖率已达到 {threshold_label} 目标线。"
         if target_met
-        else f"基于公开 explorer API 与官方 RPC 的深度扫描结果，本轮覆盖率暂未达到 {threshold_label} 发布阈值。"
+        else f"基于公开 explorer API、官方 RPC 与 POWER 合约日志生成，本轮扫描覆盖率暂未达到 {threshold_label} 目标线。"
     )
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
     generated_at = format_generated_at(int(meta["generated_at"]))
     analytics_head = build_analytics_head()
+    hero_meta_items = [f"生成时间：{generated_at}"]
+    if int(meta.get("tx_pages", 0) or 0) > 0:
+        hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
+    if int(meta.get("block_pages", 0) or 0) > 0:
+        hero_meta_items.append(f'区块扫描：{int(meta.get("block_pages", 0))} 页')
+    if rpc_blocks_scanned > 0:
+        hero_meta_items.append(f"RPC 深扫：{rpc_blocks_scanned:,} 块")
+    if rpc_log_blocks_scanned > 0:
+        hero_meta_items.append(f"合约日志：{rpc_log_blocks_scanned:,} 块 / {rpc_logs_seen:,} 条")
+    if int(meta.get("upline_depth", 0) or 0) > 0:
+        hero_meta_items.append(f'上级递归深度：{int(meta.get("upline_depth", 0))}')
+    hero_meta_html = "\n".join(f"            <span>{item}</span>" for item in hero_meta_items)
     warning_html = (
         ""
         if target_met
@@ -95,6 +107,14 @@ def build_html(payload: dict) -> str:
             "这版结果仍已发布，方便你继续查看，但需要按页面提示理解覆盖范围。</span>"
             "</div>"
         )
+    )
+    risk_html = (
+        '<div class="alert info">'
+        '<strong>口径与风险</strong>'
+        '<span>本页不是 MarsChain 官方后台导出的排行榜，而是基于公开 explorer API、官方 RPC 与 POWER 合约日志生成的 best effort 看板。'
+        '全网总算力来自浏览器公开统计，候选钱包来自 POWER 合约日志，单地址算力来自公开地址接口。'
+        '如果公开 API 延迟、RPC 节点漏返回、合约日志解析口径变化或缓存 fallback，榜单可能与官方最终口径存在偏差。</span>'
+        "</div>"
     )
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -262,6 +282,14 @@ def build_html(payload: dict) -> str:
       line-height: 1.6;
       box-shadow: var(--shadow);
     }}
+    .alert.info {{
+      border-color: rgba(77, 163, 255, 0.22);
+      background: rgba(77, 163, 255, 0.1);
+      color: #dbeafe;
+    }}
+    .alert.info strong {{
+      color: #9ed0ff;
+    }}
     .alert strong {{
       flex: 0 0 auto;
       color: #ffd484;
@@ -282,16 +310,37 @@ def build_html(payload: dict) -> str:
     .stat-card {{
       padding: 18px;
     }}
-    .stat-card .label {{
+    .stat-card .label-row {{
+      display: flex;
+      align-items: center;
+      gap: 7px;
       color: var(--muted);
       font-size: 12px;
       margin-bottom: 8px;
+    }}
+    .info-dot {{
+      display: inline-grid;
+      place-items: center;
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.2);
+      color: #9ed0ff;
+      font-size: 11px;
+      line-height: 1;
+      cursor: help;
     }}
     .stat-card .value {{
       font-size: clamp(20px, 2vw, 30px);
       line-height: 1.1;
       letter-spacing: -0.03em;
       font-weight: 700;
+    }}
+    .stat-card .help {{
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
     }}
     .section {{
       margin-top: 18px;
@@ -534,12 +583,7 @@ def build_html(payload: dict) -> str:
           <h1>{title}</h1>
           <p class="subtitle">{subtitle}</p>
           <div class="hero-meta">
-            <span>生成时间：{generated_at}</span>
-            <span>交易扫描：{meta["tx_pages"]} 页</span>
-            <span>区块扫描：{meta["block_pages"]} 页</span>
-            <span>RPC 深扫：{rpc_blocks_scanned:,} 块</span>
-            <span>合约日志：{rpc_log_blocks_scanned:,} 块 / {rpc_logs_seen:,} 条</span>
-            <span>上级递归深度：{meta["upline_depth"]}</span>
+{hero_meta_html}
           </div>
           <div class="action-row">
             <a class="action-btn" href="./downloads/latest.csv" download data-track="download_csv" data-label="latest.csv">下载 CSV</a>
@@ -561,6 +605,7 @@ def build_html(payload: dict) -> str:
       </div>
     </section>
     {warning_html}
+    {risk_html}
 
     <section class="stat-grid" id="statGrid"></section>
 
@@ -587,8 +632,8 @@ def build_html(payload: dict) -> str:
     <section class="section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">完整榜单</h2>
-          <div class="section-note">支持搜索地址、快速筛选和列排序。默认按算力从高到低排序。</div>
+          <h2 class="section-title">榜单明细（前 100）</h2>
+          <div class="section-note">支持搜索地址、快速筛选和列排序。页面展示前 100 名，统计卡片中的候选钱包和正算力钱包为本轮全量扫描口径。</div>
         </div>
       </div>
       <div class="toolbar">
@@ -599,17 +644,7 @@ def build_html(payload: dict) -> str:
         <div class="table-wrap">
           <table>
             <thead>
-              <tr>
-                <th data-key="rank">排名</th>
-                <th data-key="address">地址</th>
-                <th data-key="power">算力</th>
-                <th data-key="total_burned_amount">累计燃烧</th>
-                <th data-key="tx_seen">交易命中</th>
-                <th data-key="log_seen">日志命中</th>
-                <th data-key="upline_seen">上级命中</th>
-                <th data-key="upline1">一级上级</th>
-                <th data-key="upline2">二级上级</th>
-              </tr>
+              <tr id="tableHead"></tr>
             </thead>
             <tbody id="tableBody"></tbody>
           </table>
@@ -675,6 +710,7 @@ def build_html(payload: dict) -> str:
     let lastTrackedQuery = '';
 
     const formatUnits = (raw) => {{
+      raw = Number(raw || 0);
       if (raw >= 1e12) return (raw / 1e12).toFixed(2) + 'T';
       if (raw >= 1e9) return (raw / 1e9).toFixed(2) + 'B';
       if (raw >= 1e6) return (raw / 1e6).toFixed(2) + 'M';
@@ -683,6 +719,9 @@ def build_html(payload: dict) -> str:
     }};
     const formatCoverage = (value) => (value * 100).toFixed(2) + '%';
     const formatGeneratedAt = (ts) => new Date(ts * 1000).toLocaleString('zh-CN', {{ hour12: false }});
+    const formatCount = (value) => Number(value || 0).toLocaleString();
+    const formatMaybeUnits = (value) => (value === null || value === undefined) ? '—' : formatUnits(value);
+    const escapeAttr = (value) => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 
     function renderHero() {{
       const coverage = meta.discovered_power_coverage;
@@ -691,37 +730,87 @@ def build_html(payload: dict) -> str:
     }}
 
     function renderStats() {{
+      const top100Power = rows.slice(0, 100).reduce((sum, row) => sum + row.power_num, 0);
       const cards = [
-        ['覆盖率', formatCoverage(meta.discovered_power_coverage)],
-        ['已发现总算力', formatUnits(meta.discovered_total_power)],
-        ['全网总算力', formatUnits(meta.network_total_power)],
-        ['正算力地址', meta.positive_power_count.toLocaleString()],
-        ['候选地址', meta.candidate_count.toLocaleString()],
-        ['前 100 名总算力', formatUnits(rows.slice(0, 100).reduce((sum, row) => sum + row.power_num, 0))],
-        ['交易扫描页', meta.tx_pages.toLocaleString()],
-        ['区块扫描页', meta.block_pages.toLocaleString()],
-        ['RPC 深扫区块', Number(meta.rpc_blocks_scanned || 0).toLocaleString()],
-        ['合约日志区块', Number(meta.rpc_log_blocks_scanned || 0).toLocaleString()],
-        ['合约日志条数', Number(meta.rpc_logs_seen || 0).toLocaleString()]
-      ];
-      document.getElementById('statGrid').innerHTML = cards.map(([label, value]) => `
+        {{
+          label: '全网总算力',
+          value: formatUnits(meta.network_total_power),
+          help: '来自 explorer /power/stats 的公开总算力，是覆盖率计算的分母。'
+        }},
+        {{
+          label: '已发现总算力',
+          value: formatUnits(meta.discovered_total_power),
+          help: '本轮扫描到的正算力钱包算力合计，是覆盖率计算的分子。'
+        }},
+        {{
+          label: '覆盖率',
+          value: formatCoverage(meta.discovered_power_coverage),
+          help: '已发现总算力 ÷ 全网总算力。它不是官方完整率，只代表公开数据下的扫描覆盖程度。'
+        }},
+        {{
+          label: '全链地址总数',
+          value: formatCount(meta.explorer_total_addresses),
+          help: '浏览器统计的链上地址总数，包含不一定参与算力系统的地址。',
+          hidden: !Number(meta.explorer_total_addresses || 0)
+        }},
+        {{
+          label: '算力候选钱包',
+          value: formatCount(meta.candidate_count),
+          help: '从 POWER 合约日志中识别出的候选钱包地址总数，包含当前算力为 0 的地址。'
+        }},
+        {{
+          label: '正算力钱包',
+          value: formatCount(meta.positive_power_count),
+          help: '候选钱包里当前 power > 0 的地址数量，也就是实际进入榜单计算的地址。'
+        }},
+        {{
+          label: `链上今日新增钱包${{meta.today_utc_date ? ' · ' + meta.today_utc_date + ' UTC' : ''}}`,
+          value: meta.today_new_wallet_count === null || meta.today_new_wallet_count === undefined ? '—' : formatCount(meta.today_new_wallet_count),
+          help: '按链上 UTC 日统计：今天第一次出现在 POWER 合约日志里的候选钱包地址数。'
+        }},
+        {{
+          label: `链上今日新增总算力${{meta.today_utc_date ? ' · ' + meta.today_utc_date + ' UTC' : ''}}`,
+          value: formatMaybeUnits(meta.today_new_power),
+          help: '按链上 UTC 日统计：当前全网总算力减去上一 UTC 日合约日历史总算力。'
+        }},
+        {{
+          label: '前 100 名总算力',
+          value: formatUnits(top100Power),
+          help: '当前榜单前 100 个地址的算力合计，用来观察头部集中度。'
+        }},
+        {{
+          label: '合约日志扫描',
+          value: `${{formatCount(meta.rpc_log_blocks_scanned)}} 块`,
+          help: `本轮从 POWER 合约日志扫描候选地址，共读取 ${{formatCount(meta.rpc_logs_seen)}} 条日志。`
+        }}
+      ].filter((card) => !card.hidden);
+      document.getElementById('statGrid').innerHTML = cards.map((card) => `
         <div class="stat-card">
-          <div class="label">${{label}}</div>
-          <div class="value">${{value}}</div>
+          <div class="label-row">
+            <span>${{card.label}}</span>
+            <span class="info-dot" title="${{escapeAttr(card.help)}}">!</span>
+          </div>
+          <div class="value">${{card.value}}</div>
+          <div class="help">${{card.help}}</div>
         </div>
       `).join('');
     }}
 
     function renderTopCards() {{
       const topFive = rows.slice(0, 5);
-      document.getElementById('topGrid').innerHTML = topFive.map((row) => `
+      document.getElementById('topGrid').innerHTML = topFive.map((row) => {{
+        const parts = [`总燃烧 ${{row.total_burned_amount_display}}`];
+        if (row.tx_seen_num > 0) parts.push(`交易命中 ${{row.tx_seen}}`);
+        if (row.log_seen_num > 0) parts.push(`日志命中 ${{row.log_seen}}`);
+        return `
         <article class="top-card">
           <div class="top-rank">第 ${{row.rank}} 名</div>
           <div class="top-power">${{row.power_display}}</div>
           <div class="top-address">${{row.address}}</div>
-          <div class="top-sub">总燃烧 ${{row.total_burned_amount_display}} | 交易命中 ${{row.tx_seen}}</div>
+          <div class="top-sub">${{parts.join(' | ')}}</div>
         </article>
-      `).join('');
+      `;
+      }}).join('');
     }}
 
     function renderBars() {{
@@ -749,10 +838,10 @@ def build_html(payload: dict) -> str:
       const chips = [
         ['all', '全部'],
         ['top20', '前 20 名'],
-        ['over10b', '≥ 10B'],
-        ['withUpline', '有上级'],
-        ['activeTx', '高频交易']
+        ['over10b', '≥ 10B']
       ];
+      if (rows.some((row) => row.upline1 || row.upline2)) chips.push(['withUpline', '有上级']);
+      if (rows.some((row) => row.tx_seen_num >= 10)) chips.push(['activeTx', '高频交易']);
       const row = document.getElementById('chipRow');
       row.innerHTML = chips.map(([key, label]) => `
         <button class="chip ${{state.filter === key ? 'active' : ''}}" data-filter="${{key}}">${{label}}</button>
@@ -765,6 +854,63 @@ def build_html(payload: dict) -> str:
           renderChips();
         }});
       }});
+    }}
+
+    function getTableColumns() {{
+      const hasTxSeen = rows.some((row) => row.tx_seen_num > 0);
+      const hasLogSeen = rows.some((row) => row.log_seen_num > 0);
+      const hasUplineSeen = rows.some((row) => row.upline_seen_num > 0);
+      const hasUpline1 = rows.some((row) => Boolean(row.upline1));
+      const hasUpline2 = rows.some((row) => Boolean(row.upline2));
+      return [
+        {{ key: 'rank', label: '排名', help: '当前按算力排序后的名次。' }},
+        {{ key: 'address', label: '地址', help: '候选钱包地址。' }},
+        {{ key: 'power', label: '算力', help: '地址当前公开算力。' }},
+        {{ key: 'total_burned_amount', label: '累计燃烧', help: '地址历史累计燃烧数量，来自公开地址接口。' }},
+        {{ key: 'log_seen', label: '日志命中', help: '该地址在 POWER 合约日志中出现的次数。', visible: hasLogSeen }},
+        {{ key: 'tx_seen', label: '交易命中', help: '仅在启用交易页扫描时显示；当前全链日志模式通常不需要。', visible: hasTxSeen }},
+        {{ key: 'upline_seen', label: '上级命中', help: '仅在启用上级递归扫描时显示。', visible: hasUplineSeen }},
+        {{ key: 'upline1', label: '一级上级', help: '公开接口返回的一级上级地址。', visible: hasUpline1 }},
+        {{ key: 'upline2', label: '二级上级', help: '公开接口返回的二级上级地址。', visible: hasUpline2 }}
+      ].filter((column) => column.visible !== false);
+    }}
+
+    function renderTableHead(columns) {{
+      const head = document.getElementById('tableHead');
+      head.innerHTML = columns.map((column) => `
+        <th data-key="${{column.key}}">
+          ${{column.label}}
+          <span class="info-dot" title="${{escapeAttr(column.help)}}">!</span>
+        </th>
+      `).join('');
+      head.querySelectorAll('th[data-key]').forEach((cell) => {{
+        cell.addEventListener('click', () => {{
+          const key = cell.dataset.key;
+          if (state.sortKey === key) {{
+            state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
+          }} else {{
+            state.sortKey = key;
+            state.sortDir = key === 'address' || key.startsWith('upline') ? 'asc' : 'desc';
+          }}
+          analytics.track('table_sort', {{ label: `${{state.sortKey}}:${{state.sortDir}}` }});
+          renderTable();
+        }});
+      }});
+    }}
+
+    function renderCell(row, key) {{
+      const cells = {{
+        rank: row.rank,
+        address: `<span class="mono">${{row.address}}</span>`,
+        power: `<span class="pill">${{row.power_display}}</span>`,
+        total_burned_amount: row.total_burned_amount_display,
+        tx_seen: row.tx_seen,
+        log_seen: row.log_seen || 0,
+        upline_seen: row.upline_seen,
+        upline1: `<span class="mono">${{row.upline1 || '—'}}</span>`,
+        upline2: `<span class="mono">${{row.upline2 || '—'}}</span>`
+      }};
+      return cells[key] ?? '';
     }}
 
     function getFilteredRows() {{
@@ -793,25 +939,20 @@ def build_html(payload: dict) -> str:
     }}
 
     function renderTable() {{
+      const columns = getTableColumns();
+      renderTableHead(columns);
       const list = getFilteredRows();
       document.getElementById('tableBody').innerHTML = list.map((row) => `
         <tr>
-          <td>${{row.rank}}</td>
-          <td class="mono">${{row.address}}</td>
-          <td><span class="pill">${{row.power_display}}</span></td>
-          <td>${{row.total_burned_amount_display}}</td>
-          <td>${{row.tx_seen}}</td>
-          <td>${{row.log_seen || 0}}</td>
-          <td>${{row.upline_seen}}</td>
-          <td class="mono">${{row.upline1 || '—'}}</td>
-          <td class="mono">${{row.upline2 || '—'}}</td>
+          ${{columns.map((column) => `<td>${{renderCell(row, column.key)}}</td>`).join('')}}
         </tr>
       `).join('');
 
       document.getElementById('footerText').textContent =
         `当前显示 ${{list.length}} / ${{rows.length}} 行。最近更新时间：${{formatGeneratedAt(meta.generated_at)}}。` +
         `本轮覆盖率 ${{formatCoverage(meta.discovered_power_coverage)}}，目标阈值 ${{formatCoverage(coverageTarget)}}，` +
-        `${{targetMet ? '已达标' : '未达标'}}。说明：这是一份基于公开 explorer API 深度扫描得到的 best effort 榜单，不是官方后端直接导出的全量榜。`;
+        `${{targetMet ? '已达标' : '未达标'}}。说明：候选钱包 ${{formatCount(meta.candidate_count)}} 个，正算力钱包 ${{formatCount(meta.positive_power_count)}} 个；` +
+        `这是一份基于公开 explorer API、官方 RPC 和合约日志生成的 best effort 榜单，不是官方后端直接导出的全量榜。`;
     }}
 
     function bindEvents() {{
@@ -833,19 +974,6 @@ def build_html(payload: dict) -> str:
           }}
         }}, 600);
         renderTable();
-      }});
-      document.querySelectorAll('th[data-key]').forEach((cell) => {{
-        cell.addEventListener('click', () => {{
-          const key = cell.dataset.key;
-          if (state.sortKey === key) {{
-            state.sortDir = state.sortDir === 'desc' ? 'asc' : 'desc';
-          }} else {{
-            state.sortKey = key;
-            state.sortDir = key === 'address' || key.startsWith('upline') ? 'asc' : 'desc';
-          }}
-          analytics.track('table_sort', {{ label: `${{state.sortKey}}:${{state.sortDir}}` }});
-          renderTable();
-        }});
       }});
     }}
 

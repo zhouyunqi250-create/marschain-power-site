@@ -28,6 +28,7 @@ from typing import Any
 BASE_URL = "https://explorer.marschain.net/api"
 DEFAULT_RPC_URL = "https://rpcs.marschain.net"
 POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
+GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR = "0x1c1b5cdf"
 DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
 DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0",
@@ -138,6 +139,79 @@ def rpc_call(rpc_url: str, method: str, params: list[Any] | None = None) -> Any:
     if parsed.get("error"):
         raise RuntimeError(f"RPC error for {method}: {parsed['error']}")
     return parsed.get("result")
+
+
+def eth_call(rpc_url: str, to_address: str, data: str) -> str:
+    result = rpc_call(
+        rpc_url,
+        "eth_call",
+        [{"to": to_address, "data": data}, "latest"],
+    )
+    if not isinstance(result, str) or not result.startswith("0x"):
+        raise RuntimeError(f"Unexpected eth_call response: {type(result).__name__}")
+    return result
+
+
+def get_block_timestamp(rpc_url: str, block_number: int) -> int | None:
+    block = rpc_call(rpc_url, "eth_getBlockByNumber", [hex(block_number), False])
+    if not isinstance(block, dict):
+        return None
+    return hex_to_int(block.get("timestamp"))
+
+
+def find_first_block_at_or_after_timestamp(
+    rpc_url: str,
+    low_block: int,
+    high_block: int,
+    timestamp: int,
+) -> int | None:
+    left = max(0, low_block)
+    right = max(left, high_block)
+    found: int | None = None
+    while left <= right:
+        mid = (left + right) // 2
+        block_ts = get_block_timestamp(rpc_url, mid)
+        if block_ts is None:
+            return None
+        if block_ts >= timestamp:
+            found = mid
+            right = mid - 1
+        else:
+            left = mid + 1
+    return found
+
+
+def decode_uint256_words(data: str) -> list[int]:
+    raw = data[2:] if data.startswith("0x") else data
+    if len(raw) % 64 != 0:
+        raise ValueError("ABI data length is not a multiple of 32 bytes")
+    return [int(raw[idx : idx + 64], 16) for idx in range(0, len(raw), 64)]
+
+
+def decode_uint256_array_pair(data: str) -> tuple[list[int], list[int]]:
+    words = decode_uint256_words(data)
+    if len(words) < 4:
+        raise ValueError("ABI data is too short for two dynamic arrays")
+
+    def read_array(offset_bytes: int) -> list[int]:
+        start = offset_bytes // 32
+        if start >= len(words):
+            raise ValueError("ABI array offset is out of range")
+        length = words[start]
+        end = start + 1 + length
+        if end > len(words):
+            raise ValueError("ABI array length is out of range")
+        return words[start + 1 : end]
+
+    return read_array(words[0]), read_array(words[1])
+
+
+def fetch_daily_total_power_history(rpc_url: str) -> tuple[list[int], list[int]]:
+    data = eth_call(rpc_url, POWER_CONTRACT_ADDRESS, GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR)
+    days, powers = decode_uint256_array_pair(data)
+    if len(days) != len(powers):
+        raise ValueError("Daily total power history arrays have different lengths")
+    return days, powers
 
 
 def normalize_address(value: str | None) -> str | None:
@@ -442,6 +516,22 @@ def collect_rpc_log_candidates(
         meta["rpc_log_error"] = "eth_blockNumber returned an invalid value"
         return log_counter, meta
 
+    latest_timestamp = get_block_timestamp(rpc_url, latest_block)
+    today_start_timestamp: int | None = None
+    today_start_block: int | None = None
+    if latest_timestamp is not None:
+        today_start_timestamp = (latest_timestamp // 86_400) * 86_400
+        try:
+            today_start_block = find_first_block_at_or_after_timestamp(
+                rpc_url,
+                0,
+                latest_block,
+                today_start_timestamp,
+            )
+        except Exception as exc:
+            meta["rpc_log_today_error"] = str(exc)
+            today_start_block = None
+
     high_block = latest_block if rpc_log_start_block is None else min(rpc_log_start_block, latest_block)
     low_block = max(0, high_block - rpc_log_blocks + 1)
     effective_blocks = high_block - low_block + 1
@@ -452,6 +542,9 @@ def collect_rpc_log_candidates(
             "rpc_log_start_block": high_block,
             "rpc_log_end_block": low_block,
             "rpc_log_blocks_effective": effective_blocks,
+            "rpc_log_latest_timestamp": latest_timestamp,
+            "rpc_log_today_start_timestamp": today_start_timestamp,
+            "rpc_log_today_start_block": today_start_block,
             "rpc_log_chunk_size": chunk_size,
             "rpc_log_workers": rpc_log_workers,
         }
@@ -464,7 +557,9 @@ def collect_rpc_log_candidates(
         ranges.append((start, current))
         current = start - 1
 
-    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], int, int]:
+    first_seen_block: dict[str, int] = {}
+
+    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], dict[str, int], int, int]:
         start, end = block_range
         parsed = rpc_call(
             rpc_url,
@@ -481,9 +576,11 @@ def collect_rpc_log_candidates(
             raise RuntimeError(f"Unexpected eth_getLogs response: {type(parsed).__name__}")
 
         local_counter: Counter[str] = Counter()
+        local_first_seen: dict[str, int] = {}
         for log in parsed:
             if not isinstance(log, dict):
                 continue
+            block_number = hex_to_int(log.get("blockNumber"))
             topics = log.get("topics")
             if not isinstance(topics, list):
                 continue
@@ -491,20 +588,28 @@ def collect_rpc_log_candidates(
                 address = topic_to_probable_address(topic)
                 if is_probably_user_address(address):
                     local_counter[address] += 1
-        return local_counter, end - start + 1, len(parsed)
+                    if block_number is not None:
+                        previous = local_first_seen.get(address)
+                        if previous is None or block_number < previous:
+                            local_first_seen[address] = block_number
+        return local_counter, local_first_seen, end - start + 1, len(parsed)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_log_workers, 6))) as pool:
         future_map = {pool.submit(fetch_range, block_range): block_range for block_range in ranges}
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
             block_range = future_map[future]
             try:
-                batch_counter, blocks_scanned, logs_seen = future.result()
+                batch_counter, batch_first_seen, blocks_scanned, logs_seen = future.result()
             except Exception as exc:
                 meta["rpc_log_error_count"] += 1
                 if meta["rpc_log_error_count"] <= 10:
                     print(f"[warn] rpc log range {block_range[0]}-{block_range[1]} failed: {exc}", file=sys.stderr)
                 continue
             log_counter.update(batch_counter)
+            for address, block_number in batch_first_seen.items():
+                previous = first_seen_block.get(address)
+                if previous is None or block_number < previous:
+                    first_seen_block[address] = block_number
             meta["rpc_log_blocks_scanned"] += blocks_scanned
             meta["rpc_logs_seen"] += logs_seen
             if progress and idx % 5 == 0:
@@ -516,6 +621,14 @@ def collect_rpc_log_candidates(
                 )
 
     meta["rpc_log_addresses_seen"] = len(log_counter)
+    meta["rpc_log_first_seen_tracked"] = len(first_seen_block)
+    if today_start_block is not None:
+        meta["today_new_wallet_count"] = sum(
+            1 for block_number in first_seen_block.values() if block_number >= today_start_block
+        )
+    else:
+        meta["today_new_wallet_count"] = None
+    meta["today_new_wallet_basis"] = "first POWER-contract log on current UTC chain day"
     return log_counter, meta
 
 
@@ -1180,7 +1293,40 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
                 except Exception as exc:
                     print(f"[warn] nodes lookup failed for {row.address}: {exc}", file=sys.stderr)
 
-    network_total_power = int(request_json("/power/stats").get("totalPower", "0") or 0)
+    try:
+        network_stats = request_json("/stats")
+    except Exception as exc:
+        network_stats = {}
+        print(f"[warn] network stats lookup failed: {exc}", file=sys.stderr)
+
+    power_stats = request_json("/power/stats")
+    network_total_power = int(power_stats.get("totalPower", "0") or 0)
+    network_total_burned_tokens = int(power_stats.get("totalBurnedTokens", "0") or 0)
+    explorer_total_addresses = int(network_stats.get("totalAddresses", 0) or 0) if isinstance(network_stats, dict) else 0
+
+    daily_power_history_days = 0
+    today_chain_day = None
+    today_utc_date = None
+    today_new_power = None
+    previous_total_power = None
+    try:
+        history_days, history_powers = fetch_daily_total_power_history(args.rpc_url)
+        daily_power_history_days = len(history_days)
+        history_map = dict(zip(history_days, history_powers))
+        latest_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
+        if isinstance(latest_timestamp, int):
+            today_chain_day = latest_timestamp // 86_400
+        elif history_days:
+            today_chain_day = max(history_days)
+        if today_chain_day is not None:
+            today_utc_date = time.strftime("%Y-%m-%d", time.gmtime(today_chain_day * 86_400))
+            previous_days = [day for day in history_days if day < today_chain_day]
+            if previous_days:
+                previous_total_power = history_map[max(previous_days)]
+                today_new_power = max(0, network_total_power - previous_total_power)
+    except Exception as exc:
+        print(f"[warn] daily total power history lookup failed: {exc}", file=sys.stderr)
+
     discovered_total_power = sum(row.power for row in all_rows)
     meta = {
         "generated_at": int(time.time()),
@@ -1206,10 +1352,22 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "rpc_log_blocks_scanned": rpc_log_meta.get("rpc_log_blocks_scanned", 0),
         "rpc_logs_seen": rpc_log_meta.get("rpc_logs_seen", 0),
         "rpc_log_addresses_seen": rpc_log_meta.get("rpc_log_addresses_seen", 0),
+        "rpc_log_first_seen_tracked": rpc_log_meta.get("rpc_log_first_seen_tracked", 0),
         "rpc_log_start_block": rpc_log_meta.get("rpc_log_start_block"),
         "rpc_log_end_block": rpc_log_meta.get("rpc_log_end_block"),
         "rpc_log_latest_block": rpc_log_meta.get("rpc_log_latest_block"),
+        "rpc_log_latest_timestamp": rpc_log_meta.get("rpc_log_latest_timestamp"),
+        "rpc_log_today_start_timestamp": rpc_log_meta.get("rpc_log_today_start_timestamp"),
+        "rpc_log_today_start_block": rpc_log_meta.get("rpc_log_today_start_block"),
         "rpc_log_error_count": rpc_log_meta.get("rpc_log_error_count", 0),
+        "today_chain_day": today_chain_day,
+        "today_utc_date": today_utc_date,
+        "today_new_wallet_count": rpc_log_meta.get("today_new_wallet_count"),
+        "today_new_wallet_basis": rpc_log_meta.get("today_new_wallet_basis"),
+        "today_new_power": today_new_power,
+        "today_new_power_basis": "current explorer totalPower minus previous UTC day contract dailyTotalPower",
+        "previous_day_total_power": previous_total_power,
+        "daily_power_history_days": daily_power_history_days,
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
         "upline_limit": args.upline_limit,
@@ -1225,8 +1383,10 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "seed_candidate_count": len(ordered_candidates),
         "candidate_count": len(seen_addresses),
         "positive_power_count": len(all_rows),
+        "explorer_total_addresses": explorer_total_addresses,
         "discovered_total_power": discovered_total_power,
         "network_total_power": network_total_power,
+        "network_total_burned_tokens": network_total_burned_tokens,
         "discovered_power_coverage": (discovered_total_power / network_total_power) if network_total_power else 0.0,
         "ranked_count": len(rows),
     }
