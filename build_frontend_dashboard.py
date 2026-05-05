@@ -2361,6 +2361,19 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <meta name="description" content="{escape(subtitle)}">
   <meta name="theme-color" content="#030612">
 {analytics_head}
+  <script>
+    (function() {{
+      var params = new URLSearchParams(window.location.search);
+      if (params.get("desktop") === "1") return;
+      if (window.location.pathname !== "/" && window.location.pathname !== "/index.html") return;
+      var ua = navigator.userAgent || "";
+      var isMobileUa = /Android|iPhone|iPod|Mobile|Windows Phone/i.test(ua);
+      var isNarrowTouch = window.matchMedia && window.matchMedia("(max-width: 760px)").matches && navigator.maxTouchPoints > 0;
+      if (isMobileUa || isNarrowTouch) {{
+        window.location.replace("/m/");
+      }}
+    }})();
+  </script>
   <style>{SCROLL_DASHBOARD_CSS}</style>
 </head>
 <body>
@@ -2453,6 +2466,308 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
 <script>{SCROLL_DASHBOARD_JS}</script>
+</body>
+</html>
+"""
+
+
+MOBILE_DASHBOARD_CSS = r"""
+:root {
+  --bg: #030712;
+  --panel: rgba(12, 23, 44, .88);
+  --panel2: rgba(19, 35, 64, .78);
+  --line: rgba(121, 225, 255, .18);
+  --line2: rgba(121, 225, 255, .34);
+  --text: #f5fbff;
+  --muted: #9aabc5;
+  --cyan: #56efff;
+  --blue: #7e8cff;
+  --green: #81f5b2;
+  --amber: #ffd37e;
+  --font: "Avenir Next", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mono: "SFMono-Regular", "JetBrains Mono", monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; background: var(--bg); color: var(--text); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  font-family: var(--font);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(86,239,255,.24), transparent 34%),
+    radial-gradient(circle at 94% 9%, rgba(126,140,255,.24), transparent 36%),
+    linear-gradient(180deg, #030712 0%, #071429 48%, #030712 100%);
+}
+body:before {
+  content: "";
+  position: fixed;
+  inset: -20% -35% auto;
+  height: 520px;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(121,225,255,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(121,225,255,.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+  transform: perspective(620px) rotateX(62deg) translateY(-120px);
+  opacity: .55;
+}
+a { color: inherit; }
+.m-shell { width: calc(100% - 28px); max-width: 420px; margin: 0 auto; position: relative; z-index: 1; }
+.m-top {
+  position: sticky;
+  top: 10px;
+  z-index: 30;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(6, 14, 30, .72);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 48px rgba(0,0,0,.34);
+}
+.m-brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.m-brand-main { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 950; }
+.m-mark { width: 30px; height: 30px; border-radius: 12px; background: conic-gradient(from 210deg, var(--cyan), var(--blue), #ff7ac6, var(--cyan)); box-shadow: 0 0 30px rgba(86,239,255,.35); }
+.m-desktop-link { flex: 0 0 auto; color: #bfefff; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; }
+.m-nav { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
+.m-nav::-webkit-scrollbar { display: none; }
+.m-nav a { flex: 0 0 auto; text-decoration: none; border: 1px solid rgba(121,225,255,.14); border-radius: 999px; padding: 8px 11px; color: #bfcee4; background: rgba(255,255,255,.045); font-size: 12px; font-weight: 900; }
+.m-hero { padding: 34px 0 36px; }
+.m-chip { display: inline-flex; align-items: center; gap: 8px; border: 1px solid rgba(86,239,255,.28); border-radius: 999px; padding: 8px 12px; color: #c5fbff; background: rgba(86,239,255,.08); font-size: 12px; font-weight: 950; }
+.m-chip:before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 16px var(--green); }
+.m-hero h1 { margin: 18px 0 14px; font-size: clamp(46px, 15vw, 60px); line-height: .9; letter-spacing: -.075em; }
+.m-hero h1 span { display: block; background: linear-gradient(110deg, #fff, #bff8ff 48%, #cbd2ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.m-lead { margin: 0; color: #c6d4ea; font-size: 15px; line-height: 1.72; }
+.m-hero-grid { display: grid; gap: 10px; margin-top: 22px; }
+.m-primary { border: 0; border-radius: 22px; padding: 18px; color: #03111a; background: linear-gradient(135deg, var(--cyan), var(--blue)); box-shadow: 0 22px 56px rgba(86,239,255,.20); }
+.m-primary span, .m-card span { display: block; font-size: 12px; font-weight: 950; opacity: .82; }
+.m-primary b { display: block; margin-top: 8px; font-size: 42px; letter-spacing: -.07em; }
+.m-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+.m-card b { display: block; margin-top: 12px; font-size: 25px; line-height: 1; letter-spacing: -.055em; overflow-wrap: anywhere; }
+.m-card small { display: block; margin-top: 8px; color: #8394ad; font-size: 11px; line-height: 1.45; }
+.m-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.m-btn { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 16px; background: rgba(255,255,255,.055); text-decoration: none; font-size: 13px; font-weight: 950; }
+.m-section { padding: 34px 0; }
+.m-section-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; margin-bottom: 14px; }
+.m-kicker { color: #9cf7ff; font-size: 11px; font-weight: 950; letter-spacing: .12em; }
+.m-section h2 { margin: 7px 0 0; font-size: 30px; line-height: 1; letter-spacing: -.06em; }
+.m-section-head p { max-width: 145px; margin: 0; color: #8fa2bd; font-size: 12px; line-height: 1.55; text-align: right; }
+.m-list { display: grid; gap: 10px; }
+.m-flow-card { border: 1px solid var(--line); border-radius: 22px; padding: 17px; background: var(--panel); }
+.m-flow-card label { display: flex; justify-content: space-between; gap: 10px; color: #b8c8df; font-size: 13px; font-weight: 950; }
+.m-flow-card strong { display: block; margin-top: 20px; font-size: 38px; line-height: 1; letter-spacing: -.06em; }
+.m-flow-card small { display: block; margin-top: 10px; color: #8798b2; font-size: 12px; line-height: 1.55; }
+.m-rank-card { border: 1px solid var(--line); border-radius: 21px; padding: 15px; background: linear-gradient(180deg, rgba(20,36,66,.88), rgba(8,16,32,.92)); }
+.m-rank-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.m-rank-top em { font-style: normal; font-family: var(--mono); color: #a9b9d2; }
+.m-rank-top strong { font-size: 25px; letter-spacing: -.045em; }
+.m-rank-card code { display: block; margin: 13px 0 12px; color: #e5efff; font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.m-bar { display: block; height: 7px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
+.m-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--blue)); box-shadow: 0 0 18px rgba(86,239,255,.34); }
+.m-note { border: 1px solid rgba(255,211,126,.24); border-radius: 22px; padding: 17px; background: rgba(255,211,126,.07); color: #ffe7b8; font-size: 13px; line-height: 1.75; }
+.m-meta { border: 1px solid var(--line); border-radius: 22px; padding: 15px; background: var(--panel); }
+.m-meta-row { display: flex; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid rgba(121,225,255,.10); font-size: 13px; }
+.m-meta-row:last-child { border-bottom: 0; }
+.m-meta-row span { color: #9cafc9; }
+.m-meta-row b { text-align: right; font-family: var(--mono); word-break: break-word; }
+.m-footer { padding: 34px 8px 42px; text-align: center; color: #74849b; font-size: 12px; line-height: 1.7; }
+.m-reveal { opacity: 0; transform: translateY(18px); transition: opacity .52s ease, transform .52s ease; }
+.m-reveal.visible { opacity: 1; transform: none; }
+@media (max-width: 360px) {
+  .m-shell { width: calc(100% - 20px); }
+  .m-card-grid, .m-actions { grid-template-columns: 1fr; }
+  .m-section-head { display: block; }
+  .m-section-head p { max-width: none; text-align: left; margin-top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+"""
+
+
+MOBILE_DASHBOARD_JS = r"""
+const mobileObserver = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) entry.target.classList.add('visible');
+  });
+}, { threshold: .12 });
+
+document.querySelectorAll('.m-reveal').forEach((node) => mobileObserver.observe(node));
+
+document.querySelectorAll('[data-track]').forEach((node) => {
+  node.addEventListener('click', () => {
+    window._hmt = window._hmt || [];
+    window._hmt.push(['_trackEvent', 'marschain_mobile', node.dataset.track || 'click', node.dataset.label || '']);
+    if (window.clarity) window.clarity('event', 'mobile_' + (node.dataset.track || 'click'));
+  });
+});
+"""
+
+
+def _build_mobile_metric_cards(items: list[tuple[str, str, str]]) -> str:
+    return "\n".join(
+        '<article class="m-card m-reveal"><span>%s</span><b>%s</b><small>%s</small></article>'
+        % (escape(label), escape(value), escape(note))
+        for label, value, note in items
+    )
+
+
+def _build_mobile_flow_cards(items: list[tuple[str, str, str, str]]) -> str:
+    return "\n".join(
+        '<article class="m-flow-card m-reveal"><label>%s<span>%s</span></label><strong>%s</strong><small>%s</small></article>'
+        % (escape(label), escape(tag), escape(value), escape(note))
+        for label, tag, value, note in items
+    )
+
+
+def _build_mobile_rank_cards(rows: list[dict]) -> str:
+    top_rows = rows[:10]
+    max_power = max([_as_float(row.get("power")) for row in top_rows] or [1.0]) or 1.0
+    cards: list[str] = []
+    for index, row in enumerate(top_rows):
+        power = _as_float(row.get("power"))
+        width = max(4.0, min(100.0, (power / max_power) * 100))
+        cards.append(
+            '<article class="m-rank-card m-reveal">'
+            '<div class="m-rank-top"><em>#%02d</em><strong>%s</strong></div>'
+            "<code>%s</code>"
+            '<span class="m-bar"><i style="width:%.3f%%"></i></span>'
+            "</article>"
+            % (index + 1, escape(_fmt_power(power)), _short_address(row.get("address")), width)
+        )
+    return "\n".join(cards)
+
+
+def build_mobile_html(payload: dict) -> str:
+    """Render the mobile-first MarsChain site at /m/."""
+    meta = payload.get("meta", {})
+    rows = payload.get("rows", [])
+    title = "MarsChain 算力排行榜 · 手机版"
+    subtitle = "手机端查看 MarsChain 全网算力、统计日新增地址和头部排行。"
+    analytics_head = build_analytics_head()
+
+    generated_at = _format_generated_at_from_meta(meta)
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
+    coverage_label = _fmt_percent(meta.get("discovered_power_coverage"))
+    network_total_power = meta.get("network_total_power")
+    candidate_count = meta.get("candidate_count")
+    positive_power_count = meta.get("positive_power_count")
+    explorer_total_addresses = meta.get("explorer_total_addresses")
+    active_wallet_count = meta.get("statistics_window_active_wallet_address_count")
+    new_address_count = meta.get("statistics_window_new_candidate_address_count")
+    if new_address_count is None:
+        new_address_count = meta.get("today_new_wallet_count")
+    new_power = meta.get("statistics_window_new_power")
+    if new_power is None:
+        new_power = meta.get("today_new_power")
+
+    total_supply = str(meta.get("emission_total_supply_cap_display") or "2000亿")
+    daily_total = str(meta.get("emission_daily_total_display") or "待刷新")
+    daily_miner = str(meta.get("emission_daily_miner_display") or "待刷新")
+    daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
+    power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
+
+    key_cards = _build_mobile_metric_cards(
+        [
+            ("全网总算力", _fmt_power(network_total_power), "公开接口统计"),
+            ("每日产币量", daily_total, "官方经济模型口径"),
+            ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃"),
+            ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志"),
+            ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径"),
+            ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
+        ]
+    )
+    flow_cards = _build_mobile_flow_cards(
+        [
+            ("总钱包数量", "地址总量", _fmt_chinese_number(explorer_total_addresses), "公开接口返回的地址规模，不代表全部参与挖矿。"),
+            ("候选地址", "日志发现", _fmt_chinese_number(candidate_count), "从 POWER 合约日志识别出的相关地址。"),
+            ("正算力地址", "算力 > 0", _fmt_chinese_number(positive_power_count), "当前查询到算力大于 0 的钱包地址。"),
+        ]
+    )
+    rank_cards = _build_mobile_rank_cards(rows)
+    meta_rows = _build_timeline(
+        [
+            ("最近刷新", generated_at),
+            ("统计周期", statistics_window_label),
+            ("刷新频率", "每 5 小时"),
+            ("总产量", total_supply),
+            ("矿工日产币量", daily_miner),
+            ("节点日产币量", daily_node),
+        ]
+    ).replace('class="line"', 'class="m-meta-row"')
+    warning_html = _build_warning(meta, _fmt_percent(meta.get("coverage_target", 0.8))).replace('class="alert"', 'class="m-note"')
+    embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
+
+    return f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>{escape(title)}</title>
+  <meta name="description" content="{escape(subtitle)}">
+  <meta name="theme-color" content="#030712">
+  <link rel="preload" href="/data/latest.json" as="fetch" crossorigin>
+{analytics_head}
+  <style>{MOBILE_DASHBOARD_CSS}</style>
+</head>
+<body>
+<div class="m-shell">
+  <header class="m-top">
+    <div class="m-brand">
+      <div class="m-brand-main"><span class="m-mark"></span><span>MarsChain Rank</span></div>
+      <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
+    </div>
+    <nav class="m-nav">
+      <a href="#core">核心</a>
+      <a href="#wallets">地址</a>
+      <a href="#rank">排行</a>
+      <a href="#risk">说明</a>
+    </nav>
+  </header>
+  <main>
+    <section class="m-hero">
+      <span class="m-chip">数据已加载 · 每 5 小时刷新</span>
+      <h1><span>MarsChain</span><span>算力榜</span></h1>
+      <p class="m-lead">手机端优先展示最关键结果：覆盖率、全网算力、活跃地址、新增地址和头部排行。</p>
+      <div class="m-hero-grid">
+        <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
+        <div class="m-card-grid">
+          <article class="m-card"><span>全网总算力</span><b>{escape(_fmt_power(network_total_power))}</b><small>公开接口统计</small></article>
+          <article class="m-card"><span>统计日活跃地址</span><b>{escape(_fmt_count_unit(active_wallet_count))}</b><small>北京 08:00 至次日 08:00</small></article>
+          <article class="m-card"><span>统计日新增地址</span><b>{escape(_fmt_count_unit(new_address_count))}</b><small>首次进入 POWER 日志</small></article>
+          <article class="m-card"><span>每日产币量</span><b>{escape(daily_total)}</b><small>官方经济模型口径</small></article>
+        </div>
+        <div class="m-actions">
+          <a class="m-btn" href="/downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
+          <a class="m-btn" href="/downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
+        </div>
+      </div>
+      {warning_html}
+    </section>
+    <section id="core" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">01 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
+      <div class="m-card-grid">{key_cards}</div>
+    </section>
+    <section id="wallets" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">02 / WALLET</span><h2>地址口径</h2></div><p>三个地址数字不能混用。</p></div>
+      <div class="m-list">{flow_cards}</div>
+    </section>
+    <section id="rank" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">03 / RANK</span><h2>头部排行</h2></div><p>按当前算力降序。</p></div>
+      <div class="m-list">{rank_cards}</div>
+    </section>
+    <section id="risk" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
+      <div class="m-meta">{meta_rows}</div>
+      <p class="m-note">榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。</p>
+    </section>
+  </main>
+  <footer class="m-footer">MarsChain Rank 手机版 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
+</div>
+<script id="rankData" type="application/json">{embedded_payload}</script>
+<script>{MOBILE_DASHBOARD_JS}</script>
 </body>
 </html>
 """

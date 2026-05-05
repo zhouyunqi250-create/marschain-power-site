@@ -10,7 +10,7 @@ import time
 from argparse import Namespace
 from pathlib import Path
 
-from build_frontend_dashboard import build_html
+from build_frontend_dashboard import build_html, build_mobile_html
 from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
 
 
@@ -140,11 +140,14 @@ def make_args(
 def write_site_bundle(site_dir: Path, payload: dict, csv_path: Path, xlsx_path: Path) -> None:
     data_dir = site_dir / "data"
     downloads_dir = site_dir / "downloads"
+    mobile_dir = site_dir / "m"
     site_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
     downloads_dir.mkdir(parents=True, exist_ok=True)
+    mobile_dir.mkdir(parents=True, exist_ok=True)
 
     (site_dir / "index.html").write_text(build_html(payload))
+    (mobile_dir / "index.html").write_text(build_mobile_html(payload))
     (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
     shutil.copy2(csv_path, downloads_dir / "latest.csv")
     shutil.copy2(xlsx_path, downloads_dir / "latest.xlsx")
