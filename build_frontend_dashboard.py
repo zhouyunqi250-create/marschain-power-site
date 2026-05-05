@@ -2363,14 +2363,19 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 {analytics_head}
   <script>
     (function() {{
+      var path = window.location.pathname;
+      if (path === "/m/") {{
+        window.location.replace("/m/index.html");
+        return;
+      }}
       var params = new URLSearchParams(window.location.search);
       if (params.get("desktop") === "1") return;
-      if (window.location.pathname !== "/" && window.location.pathname !== "/index.html") return;
+      if (path !== "/" && path !== "/index.html") return;
       var ua = navigator.userAgent || "";
       var isMobileUa = /Android|iPhone|iPod|Mobile|Windows Phone/i.test(ua);
       var isNarrowTouch = window.matchMedia && window.matchMedia("(max-width: 760px)").matches && navigator.maxTouchPoints > 0;
       if (isMobileUa || isNarrowTouch) {{
-        window.location.replace("/m/");
+        window.location.replace("/m/index.html");
       }}
     }})();
   </script>
