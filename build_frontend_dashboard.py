@@ -2327,6 +2327,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
     current_price = str(meta.get("network_current_price_display") or "待刷新")
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
+    daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
     period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
@@ -2355,6 +2356,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00"),
         ("统计日新增地址数量", _fmt_count_unit(new_address_count), "北京时间 08:00 至次日 08:00"),
         ("统计日新增总算力", _fmt_power(new_power), "同一统计日口径"),
+        ("日销毁币量", daily_burned, "北京时间统计日口径"),
         ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
     ]
     marquee_items = [
@@ -2370,6 +2372,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
         ("统计日新增算力", _fmt_power(new_power)),
+        ("日销毁币量", daily_burned),
         ("7天新增算力", _fmt_power(period_7d_new_power)),
         ("7天新增地址", _fmt_count_unit(period_7d_new_address_count)),
         ("7天销毁", period_7d_burned),
@@ -2389,6 +2392,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("全网总算力", _fmt_power(network_total_power)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
+        ("日销毁币量", daily_burned),
         ("7 天新增算力", _fmt_power(period_7d_new_power)),
         ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
         ("7 天销毁", period_7d_burned),
@@ -2747,6 +2751,7 @@ def build_mobile_html(payload: dict) -> str:
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
     current_price = str(meta.get("network_current_price_display") or "待刷新")
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
+    daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
     period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
@@ -2770,6 +2775,7 @@ def build_mobile_html(payload: dict) -> str:
             ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃"),
             ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志"),
             ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径"),
+            ("日销毁币量", daily_burned, "北京时间统计日口径"),
             ("7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日"),
             ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志"),
             ("7 天销毁", period_7d_burned, "TokensBurned 汇总"),
@@ -2795,6 +2801,7 @@ def build_mobile_html(payload: dict) -> str:
             ("全网流通量", circulation),
             ("当前价格", current_price),
             ("累计销毁", total_burned),
+            ("日销毁币量", daily_burned),
             ("7 天新增算力", _fmt_power(period_7d_new_power)),
             ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
             ("7 天销毁", period_7d_burned),
@@ -2847,6 +2854,7 @@ def build_mobile_html(payload: dict) -> str:
           <article class="m-card"><span>全网流通量</span><b>{escape(circulation)}</b><small>公开接口统计</small></article>
           <article class="m-card"><span>统计日活跃地址</span><b>{escape(_fmt_count_unit(active_wallet_count))}</b><small>北京 08:00 至次日 08:00</small></article>
           <article class="m-card"><span>统计日新增地址</span><b>{escape(_fmt_count_unit(new_address_count))}</b><small>首次进入 POWER 日志</small></article>
+          <article class="m-card"><span>日销毁币量</span><b>{escape(daily_burned)}</b><small>北京 08:00 至次日 08:00</small></article>
           <article class="m-card"><span>7 天新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b><small>最近 7 个完整统计日</small></article>
           <article class="m-card"><span>7 天新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b><small>首次进入 POWER 日志</small></article>
           <article class="m-card"><span>每日产币量</span><b>{escape(daily_total)}</b><small>官方经济模型口径</small></article>

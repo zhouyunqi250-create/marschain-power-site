@@ -838,9 +838,10 @@ def collect_rpc_log_candidates(
         current = start - 1
 
     first_seen_block: dict[str, int] = {}
+    burned_by_statistics_window = 0
     burned_by_period: dict[int, int] = {7: 0, 30: 0}
 
-    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], dict[str, int], dict[int, int], int, int]:
+    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], dict[str, int], int, dict[int, int], int, int]:
         start, end = block_range
         parsed = rpc_call(
             rpc_url,
@@ -858,6 +859,7 @@ def collect_rpc_log_candidates(
 
         local_counter: Counter[str] = Counter()
         local_first_seen: dict[str, int] = {}
+        local_burned_by_statistics_window = 0
         local_burned_by_period: dict[int, int] = {7: 0, 30: 0}
         for log in parsed:
             if not isinstance(log, dict):
@@ -870,6 +872,12 @@ def collect_rpc_log_candidates(
                 words = decode_log_uint256_words(log.get("data"))
                 burned_amount = words[0] if words else 0
                 if block_number is not None and burned_amount > 0:
+                    if (
+                        isinstance(statistics_window_start_block, int)
+                        and isinstance(statistics_window_end_block, int)
+                        and statistics_window_start_block <= block_number < statistics_window_end_block
+                    ):
+                        local_burned_by_statistics_window += burned_amount
                     for days, window in period_windows.items():
                         start_block = window.get("start_block")
                         end_block = window.get("end_block")
@@ -887,14 +895,21 @@ def collect_rpc_log_candidates(
                         previous = local_first_seen.get(address)
                         if previous is None or block_number < previous:
                             local_first_seen[address] = block_number
-        return local_counter, local_first_seen, local_burned_by_period, end - start + 1, len(parsed)
+        return local_counter, local_first_seen, local_burned_by_statistics_window, local_burned_by_period, end - start + 1, len(parsed)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_log_workers, 6))) as pool:
         future_map = {pool.submit(fetch_range, block_range): block_range for block_range in ranges}
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
             block_range = future_map[future]
             try:
-                batch_counter, batch_first_seen, batch_burned_by_period, blocks_scanned, logs_seen = future.result()
+                (
+                    batch_counter,
+                    batch_first_seen,
+                    batch_burned_by_statistics_window,
+                    batch_burned_by_period,
+                    blocks_scanned,
+                    logs_seen,
+                ) = future.result()
             except Exception as exc:
                 meta["rpc_log_error_count"] += 1
                 if meta["rpc_log_error_count"] <= 10:
@@ -905,6 +920,7 @@ def collect_rpc_log_candidates(
                 previous = first_seen_block.get(address)
                 if previous is None or block_number < previous:
                     first_seen_block[address] = block_number
+            burned_by_statistics_window += batch_burned_by_statistics_window
             for days, burned_amount in batch_burned_by_period.items():
                 burned_by_period[days] = burned_by_period.get(days, 0) + burned_amount
             meta["rpc_log_blocks_scanned"] += blocks_scanned
@@ -930,6 +946,16 @@ def collect_rpc_log_candidates(
     meta["statistics_window_new_candidate_address_basis"] = "first POWER-contract log in the latest completed Beijing 08:00 statistics day"
     meta["today_new_wallet_count"] = meta["statistics_window_new_candidate_address_count"]
     meta["today_new_wallet_basis"] = meta["statistics_window_new_candidate_address_basis"]
+    if statistics_window_start_block is not None and statistics_window_end_block is not None:
+        meta["statistics_window_burned_tokens"] = burned_by_statistics_window
+        meta["statistics_window_burned_display"] = format_token_chinese(burned_by_statistics_window)
+    else:
+        meta["statistics_window_burned_tokens"] = None
+        meta["statistics_window_burned_display"] = None
+    meta["statistics_window_burned_basis"] = "sum TokensBurned event first uint256 amount in the latest completed Beijing 08:00 statistics day"
+    meta["today_burned_tokens"] = meta["statistics_window_burned_tokens"]
+    meta["today_burned_display"] = meta["statistics_window_burned_display"]
+    meta["today_burned_basis"] = meta["statistics_window_burned_basis"]
     for days in (7, 30):
         prefix = f"period_{days}d"
         window = period_windows.get(days, {})
@@ -1779,6 +1805,12 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "today_new_wallet_basis": rpc_log_meta.get("today_new_wallet_basis"),
         "statistics_window_new_candidate_address_count": rpc_log_meta.get("statistics_window_new_candidate_address_count"),
         "statistics_window_new_candidate_address_basis": rpc_log_meta.get("statistics_window_new_candidate_address_basis"),
+        "statistics_window_burned_tokens": rpc_log_meta.get("statistics_window_burned_tokens"),
+        "statistics_window_burned_display": rpc_log_meta.get("statistics_window_burned_display"),
+        "statistics_window_burned_basis": rpc_log_meta.get("statistics_window_burned_basis"),
+        "today_burned_tokens": rpc_log_meta.get("today_burned_tokens"),
+        "today_burned_display": rpc_log_meta.get("today_burned_display"),
+        "today_burned_basis": rpc_log_meta.get("today_burned_basis"),
         "today_new_power": today_new_power,
         "statistics_window_new_power": today_new_power,
         "today_new_power_basis": "completed Beijing 08:00 statistics day end totalPower minus start totalPower",
