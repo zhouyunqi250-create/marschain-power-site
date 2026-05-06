@@ -2325,6 +2325,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     if new_power is None:
         new_power = meta.get("today_new_power")
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
+    current_price = str(meta.get("network_current_price_display") or "待刷新")
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
@@ -2345,6 +2346,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     metric_items = [
         ("全网总算力", _fmt_power(network_total_power), "区块浏览器公开统计"),
         ("全网流通量", circulation, "区块浏览器公开统计"),
+        ("当前价格", current_price, "区块浏览器公开报价"),
         ("总产量", total_supply, "官网口径：永不增发"),
         ("每日产币量", daily_total, "官方经济模型口径"),
         ("累计销毁", total_burned, "POWER 合约累计燃烧"),
@@ -2358,6 +2360,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     marquee_items = [
         ("覆盖率", coverage_label),
         ("流通量", circulation),
+        ("当前价格", current_price),
         ("总产量", total_supply),
         ("每日产币量", daily_total),
         ("最新区块", f"{_as_int(meta.get('latest_block')) or _as_int(meta.get('rpc_log_end_block')):,}"),
@@ -2381,6 +2384,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计周期", statistics_window_label),
         ("刷新频率", "每 5 小时"),
         ("全网流通量", circulation),
+        ("当前价格", current_price),
         ("累计销毁", total_burned),
         ("全网总算力", _fmt_power(network_total_power)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
@@ -2741,6 +2745,7 @@ def build_mobile_html(payload: dict) -> str:
     if new_power is None:
         new_power = meta.get("today_new_power")
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
+    current_price = str(meta.get("network_current_price_display") or "待刷新")
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
@@ -2759,6 +2764,7 @@ def build_mobile_html(payload: dict) -> str:
         [
             ("全网总算力", _fmt_power(network_total_power), "公开接口统计"),
             ("全网流通量", circulation, "区块浏览器公开统计"),
+            ("当前价格", current_price, "区块浏览器公开报价"),
             ("每日产币量", daily_total, "官方经济模型口径"),
             ("累计销毁", total_burned, "POWER 合约累计燃烧"),
             ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃"),
@@ -2787,6 +2793,7 @@ def build_mobile_html(payload: dict) -> str:
             ("统计周期", statistics_window_label),
             ("刷新频率", "每 5 小时"),
             ("全网流通量", circulation),
+            ("当前价格", current_price),
             ("累计销毁", total_burned),
             ("7 天新增算力", _fmt_power(period_7d_new_power)),
             ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),

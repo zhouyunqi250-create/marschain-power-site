@@ -386,6 +386,18 @@ def format_token_chinese(raw: int | None) -> str | None:
     return format_chinese_amount(raw / 10**18)
 
 
+def format_price(value: object) -> str | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(str(value))
+    except (TypeError, ValueError):
+        return str(value)
+    if number < 1:
+        return f"{number:.6f}"
+    return f"{number:.3f}"
+
+
 def format_percent(value: float) -> str:
     return f"{value * 100:.2f}%"
 
@@ -1621,6 +1633,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     network_total_burned_tokens = int(power_stats.get("totalBurnedTokens", "0") or 0)
     explorer_total_addresses = int(network_stats.get("totalAddresses", 0) or 0) if isinstance(network_stats, dict) else 0
     network_total_circulation_tokens = int(network_stats.get("totalCirculation", "0") or 0) if isinstance(network_stats, dict) else 0
+    network_current_price = network_stats.get("currentPrice") if isinstance(network_stats, dict) else None
+    network_highest_price = network_stats.get("highestPrice") if isinstance(network_stats, dict) else None
+    network_lowest_price = network_stats.get("lowestPrice") if isinstance(network_stats, dict) else None
     statistics_reference_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
     if not isinstance(statistics_reference_timestamp, int):
         statistics_reference_timestamp = int(time.time())
@@ -1790,6 +1805,12 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "explorer_total_addresses": explorer_total_addresses,
         "network_total_circulation_tokens": network_total_circulation_tokens,
         "network_total_circulation_display": format_token_chinese(network_total_circulation_tokens),
+        "network_current_price": network_current_price,
+        "network_current_price_display": format_price(network_current_price),
+        "network_highest_price": network_highest_price,
+        "network_highest_price_display": format_price(network_highest_price),
+        "network_lowest_price": network_lowest_price,
+        "network_lowest_price_display": format_price(network_lowest_price),
         "discovered_total_power": discovered_total_power,
         "network_total_power": network_total_power,
         "network_total_burned_tokens": network_total_burned_tokens,
