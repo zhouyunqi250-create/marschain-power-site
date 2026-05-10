@@ -986,11 +986,6 @@ def build_html(payload: dict) -> str:
               <strong>{statistics_window_label}</strong>
             </div>
           </div>
-          <div class="action-row">
-            <a class="action-btn" href="./downloads/latest.csv" download data-track="download_csv" data-label="latest.csv">下载 CSV</a>
-            <a class="action-btn" href="./downloads/latest.xlsx" download data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
-            <a class="action-btn" href="./data/latest.json" target="_blank" rel="noopener" data-track="open_json" data-label="latest.json">查看 JSON</a>
-          </div>
         </div>
         <div class="coverage">
           <div class="coverage-ring" id="coverageRing">
@@ -1601,7 +1596,6 @@ h1 {
 }
 .lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 30px; }
-.download-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .hero-note {
   color: #91a5c0;
   line-height: 1.65;
@@ -1929,7 +1923,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     opacity: .48;
   }
   .shell { width: min(calc(100vw - 28px), 360px); }
-  .shell, .topbar, .hero, .hero-copy, .hero-actions, .download-actions, .metrics, .funnel, .rank-grid, .telemetry {
+  .shell, .topbar, .hero, .hero-copy, .hero-actions, .metrics, .funnel, .rank-grid, .telemetry {
     max-width: 100%;
     min-width: 0;
   }
@@ -1994,14 +1988,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     font-size: 12px;
     line-height: 1.55;
   }
-  .download-actions {
-    width: 100%;
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-    margin-top: 10px;
-  }
-  .hero-actions .btn, .download-actions .btn {
+  .hero-actions .btn {
     width: 100%;
     min-width: 0;
     height: 44px;
@@ -2100,7 +2087,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 @media (max-width: 380px) {
   .shell { width: calc(100vw - 18px); }
   h1 { font-size: 42px; }
-  .hero-actions, .download-actions, .metrics { grid-template-columns: 1fr; }
+  .hero-actions, .metrics { grid-template-columns: 1fr; }
   .hero-actions .btn.hot { grid-column: auto; }
   .command { min-height: 288px; }
   .mini { grid-template-columns: 1fr; }
@@ -2479,11 +2466,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
-        <span class="hero-note">核心数值在下方模块展开，首屏只保留覆盖状态和下载入口。</span>
-      </div>
-      <div class="download-actions">
-        <a class="btn" href="downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
-        <a class="btn" href="downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
+        <span class="hero-note">核心数值在下方模块展开，首屏只保留覆盖状态与关键说明。</span>
       </div>
       {warning_html}
       <div class="scroll-hint"><span class="mouse"></span><span>继续查看地址统计口径、头部排行与数据说明</span></div>
@@ -2531,7 +2514,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <section id="rank" class="section">
     <div class="section-head reveal">
       <div><span class="kicker">04 / 算力排行</span><h2>头部算力地址排行</h2></div>
-      <p>按当前查询到的算力降序展示头部地址。完整榜单可下载 CSV 或 Excel 查看。</p>
+      <p>按当前查询到的算力降序展示头部地址，页面仅展示公开看板视图。</p>
     </div>
     <div class="rank-grid">{rank_cards}</div>
   </section>
@@ -2633,8 +2616,6 @@ a { color: inherit; }
 .m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
 .m-card b { display: block; margin-top: 12px; font-size: 25px; line-height: 1; letter-spacing: -.055em; overflow-wrap: anywhere; }
 .m-card small { display: block; margin-top: 8px; color: #8394ad; font-size: 11px; line-height: 1.45; }
-.m-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-.m-btn { display: inline-flex; min-height: 46px; align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 16px; background: rgba(255,255,255,.055); text-decoration: none; font-size: 13px; font-weight: 950; }
 .m-section { padding: 34px 0; }
 .m-section-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; margin-bottom: 14px; }
 .m-kicker { color: #9cf7ff; font-size: 11px; font-weight: 950; letter-spacing: .12em; }
@@ -2663,7 +2644,7 @@ a { color: inherit; }
 .m-reveal.visible { opacity: 1; transform: none; }
 @media (max-width: 360px) {
   .m-shell { width: calc(100% - 20px); }
-  .m-card-grid, .m-actions { grid-template-columns: 1fr; }
+  .m-card-grid { grid-template-columns: 1fr; }
   .m-section-head { display: block; }
   .m-section-head p { max-width: none; text-align: left; margin-top: 8px; }
 }
@@ -2858,10 +2839,6 @@ def build_mobile_html(payload: dict) -> str:
           <article class="m-card"><span>7 天新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b><small>最近 7 个完整统计日</small></article>
           <article class="m-card"><span>7 天新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b><small>首次进入 POWER 日志</small></article>
           <article class="m-card"><span>每日产币量</span><b>{escape(daily_total)}</b><small>官方经济模型口径</small></article>
-        </div>
-        <div class="m-actions">
-          <a class="m-btn" href="/downloads/latest.csv" data-track="download_csv" data-label="latest.csv">下载 CSV</a>
-          <a class="m-btn" href="/downloads/latest.xlsx" data-track="download_xlsx" data-label="latest.xlsx">下载 Excel</a>
         </div>
       </div>
       {warning_html}

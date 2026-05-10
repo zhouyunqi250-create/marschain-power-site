@@ -190,20 +190,16 @@ def make_args(
     )
 
 
-def write_site_bundle(site_dir: Path, payload: dict, csv_path: Path, xlsx_path: Path) -> None:
+def write_site_bundle(site_dir: Path, payload: dict) -> None:
     data_dir = site_dir / "data"
-    downloads_dir = site_dir / "downloads"
     mobile_dir = site_dir / "m"
     site_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
-    downloads_dir.mkdir(parents=True, exist_ok=True)
     mobile_dir.mkdir(parents=True, exist_ok=True)
 
     (site_dir / "index.html").write_text(build_html(payload))
     (mobile_dir / "index.html").write_text(build_mobile_html(payload))
     (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    shutil.copy2(csv_path, downloads_dir / "latest.csv")
-    shutil.copy2(xlsx_path, downloads_dir / "latest.xlsx")
     (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
 
 
@@ -353,7 +349,7 @@ def main() -> int:
     shutil.copy2(html_path, latest_dir / "latest.html")
     shutil.copy2(xlsx_path, latest_dir / "latest.xlsx")
 
-    write_site_bundle(site_dir, payload, csv_path, xlsx_path)
+    write_site_bundle(site_dir, payload)
 
     summary = add_extra_build_meta({
         "generated_at": chosen_meta["generated_at"],
