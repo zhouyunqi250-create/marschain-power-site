@@ -1,5 +1,6 @@
 openpyxl>=3.1,<4
 oss2>=2.19,<3
+cryptography>=3,<47
 alibabacloud-cdn20180510>=9,<10
 alibabacloud-tea-openapi>=0.4,<1
 alibabacloud-credentials>=1,<2

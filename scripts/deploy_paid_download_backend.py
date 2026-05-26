@@ -93,7 +93,7 @@ def package_function() -> bytes:
         shutil.copy2(source, build_dir / "paid_download_service.py")
 
         subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", "oss2>=2.19,<3", "-t", str(build_dir)],
+            [sys.executable, "-m", "pip", "install", "-q", "oss2>=2.19,<3", "cryptography>=3,<47", "-t", str(build_dir)],
             check=True,
             stdout=sys.stderr,
             stderr=sys.stderr,
@@ -107,12 +107,15 @@ def package_function() -> bytes:
         return buffer.getvalue()
 
 
-def fc_client(region_id: str, access_key_id: str, access_key_secret: str) -> FcClient:
+def fc_client(region_id: str, account_id: str, access_key_id: str, access_key_secret: str) -> FcClient:
+    if not account_id or account_id == "unknown":
+        raise SystemExit("Cannot determine Alibaba Cloud account id for Function Compute endpoint")
+
     config = open_api_models.Config(
         access_key_id=access_key_id,
         access_key_secret=access_key_secret,
         region_id=region_id,
-        endpoint=f"fc.{region_id}.aliyuncs.com",
+        endpoint=f"{account_id}.{region_id}.fc.aliyuncs.com",
     )
     return FcClient(config)
 
@@ -260,7 +263,7 @@ def main() -> int:
     zip_bytes = package_function()
     code_object = upload_function_code(paid_bucket, paid_endpoint, auth, zip_bytes)
     code = code_input(paid_bucket, code_object)
-    client = fc_client(region_id, access_key_id, access_key_secret)
+    client = fc_client(region_id, account_id, access_key_id, access_key_secret)
     env = function_env(
         access_key_id=access_key_id,
         access_key_secret=access_key_secret,
