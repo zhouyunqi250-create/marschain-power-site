@@ -51,10 +51,28 @@ jobs:
       - name: Deploy paid download API
         id: paid_api
         run: |
-          python scripts/deploy_paid_download_backend.py | tee paid-deploy.json
+          if ! python scripts/deploy_paid_download_backend.py > paid-deploy.json 2> paid-deploy.err; then
+            python - <<'PY'
+          from pathlib import Path
+          detail = Path("paid-deploy.err").read_text(errors="replace")[-3500:].replace("%", "%25").replace("\n", "%0A").replace("\r", "%0D")
+          print(f"::error file=scripts/deploy_paid_download_backend.py::Paid backend deploy failed: {detail}")
+          PY
+            exit 1
+          fi
+          cat paid-deploy.json
           python - <<'PY' >> "$GITHUB_ENV"
           import json
-          data = json.load(open("paid-deploy.json"))
+          from pathlib import Path
+          try:
+              data = json.load(open("paid-deploy.json"))
+          except Exception as exc:
+              raw = Path("paid-deploy.json").read_text(errors="replace")[-1200:].replace("%", "%25").replace("\n", "%0A").replace("\r", "%0D")
+              print(f"::error file=.github/workflows/deploy-paid-download.yml::Could not parse paid-deploy.json: {exc}; tail={raw}")
+              raise
+          missing = [key for key in ["api_base", "paid_bucket", "paid_endpoint", "paid_prefix"] if key not in data]
+          if missing:
+              print(f"::error file=.github/workflows/deploy-paid-download.yml::paid-deploy.json missing keys: {missing}; keys={sorted(data)}")
+              raise SystemExit(1)
           print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={data['api_base']}")
           print(f"ALIYUN_PAID_OSS_BUCKET={data['paid_bucket']}")
           print(f"ALIYUN_PAID_OSS_ENDPOINT={data['paid_endpoint']}")
