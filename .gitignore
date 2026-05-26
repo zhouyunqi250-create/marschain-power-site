@@ -13,6 +13,7 @@ output/
 # Generated site artifacts; regenerate via refresh_site.py in CI or locally
 site/data/
 site/downloads/
+site/m/
 site/build-meta.json
 site/index.html
 site/robots.txt

@@ -11,6 +11,11 @@ from html import escape
 from pathlib import Path
 
 
+MARS_INITIAL_CYCLE_OUTPUT_TOKENS = 100_000_000_000
+MARS_HALVING_PERIOD_DAYS = 448
+MARS_MINER_SHARE = 0.75
+
+
 def format_generated_at(ts: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
 
@@ -1828,15 +1833,69 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .arrow { height: 2px; background: linear-gradient(90deg, var(--cyan), transparent); position: relative; overflow: hidden; }
 .arrow:after { content: ""; position: absolute; right: 0; top: -4px; border-left: 8px solid var(--cyan); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
 .arrow:before { content: ""; position: absolute; inset: -8px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.7), transparent); animation: arrowEnergy 2.4s ease-in-out infinite; }
-.rank-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-.rank-card { min-height: 142px; padding: 18px; border: 1px solid var(--line); border-radius: 22px; background: rgba(14,24,46,.82); }
-.rank-top { display: flex; justify-content: space-between; align-items: center; }
+.rank-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+.rank-section { padding-top: 48px; }
+.rank-card.is-page-hidden { display: none; }
+.rank-card {
+  min-height: auto;
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr) 220px;
+  align-items: center;
+  gap: 18px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: rgba(14,24,46,.82);
+}
+.rank-top { display: contents; }
 .rank-top em { font-style: normal; font-family: var(--mono); color: #cbd8ef; }
-.rank-top strong { font-size: 24px; }
-.rank-card code { display: block; margin: 18px 0 14px; color: #dfe8ff; font-family: var(--mono); }
+.rank-top strong { grid-column: 3; grid-row: 1; justify-self: end; font-size: 24px; }
+.rank-card code {
+  display: block;
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  color: #dfe8ff;
+  font-family: var(--mono);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 .rank-bar { display: block; height: 8px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; }
 .rank-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--cyan), var(--blue)); box-shadow: 0 0 18px rgba(82,239,255,.36); position: relative; overflow: hidden; }
 .rank-bar i:after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.78), transparent); transform: translateX(-120%); animation: barPulse 2.8s ease-in-out infinite; }
+.rank-bar { display: none; }
+.rank-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.rank-pages { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.rank-page-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  min-width: 42px;
+  border: 1px solid rgba(82,239,255,.38);
+  border-radius: 999px;
+  padding: 0 18px;
+  color: #cfefff;
+  background: rgba(82,239,255,.08);
+  box-shadow: 0 18px 42px rgba(82,239,255,.16);
+  font: 950 13px var(--font);
+  cursor: pointer;
+}
+.rank-page-button.is-active {
+  color: #03121b;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.rank-page-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
+.rank-page-button:not(:disabled):hover { filter: brightness(1.06); transform: translateY(-1px); }
+.rank-count { flex: 0 0 100%; color: #95a8c4; font-size: 13px; font-weight: 850; text-align: center; }
 .telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .timeline { padding: 24px; }
 .line { display: flex; justify-content: space-between; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -1903,7 +1962,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 @media (max-width: 1120px) {
   .hero, .telemetry { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: repeat(2, 1fr); }
-  .rank-grid { grid-template-columns: repeat(2, 1fr); }
+  .rank-grid { grid-template-columns: 1fr; }
   .funnel { grid-template-columns: 1fr; }
   .arrow { height: 36px; width: 2px; justify-self: center; background: linear-gradient(180deg, var(--cyan), transparent); }
   .arrow:after { right: -4px; top: auto; bottom: 0; transform: rotate(90deg); }
@@ -2028,6 +2087,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .track { gap: 8px; animation-duration: 42s; }
   .track span { padding: 8px 11px; font-size: 11px; letter-spacing: .03em; }
   .section { padding: 72px 0; }
+  .rank-section { padding-top: 34px; }
   .section-head {
     align-items: flex-start;
     flex-direction: column;
@@ -2066,12 +2126,27 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .arrow { height: 28px; opacity: .75; }
   .rank-grid { grid-template-columns: 1fr; gap: 10px; }
   .rank-card {
-    min-height: 120px;
+    min-height: auto;
     padding: 15px;
     border-radius: 19px;
   }
+  .rank-card {
+    grid-template-columns: 54px minmax(0, 1fr);
+    gap: 10px;
+    padding: 14px;
+  }
+  .rank-top em { grid-column: 1; }
+  .rank-top strong { grid-column: 2; justify-self: end; }
+  .rank-card code { grid-column: 1 / -1; grid-row: 2; font-size: 12px; }
   .rank-top strong { font-size: 21px; }
-  .rank-card code { margin: 14px 0 12px; font-size: 12px; }
+  .rank-card code { margin: 0; font-size: 12px; }
+  .rank-pagination {
+    align-items: stretch;
+    flex-direction: column;
+    margin-top: 14px;
+  }
+  .rank-page-button { width: 100%; }
+  .rank-count { text-align: center; }
   .telemetry { grid-template-columns: 1fr; gap: 12px; }
   .timeline, .risk { padding: 18px; border-radius: 22px; }
   .line {
@@ -2139,6 +2214,44 @@ document.querySelectorAll('.metric,.fcard,.rank-card,.panel,.command').forEach((
   }, { passive: true });
 });
 
+const rankGrid = document.getElementById('rankGrid');
+const rankPagination = document.querySelector('[data-rank-pagination]');
+if (rankGrid && rankPagination) {
+  const pageSize = Number(rankGrid.dataset.pageSize || 10);
+  const cards = Array.from(rankGrid.querySelectorAll('.rank-card'));
+  const totalCount = Number(rankGrid.dataset.totalCount || cards.length);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const buttons = Array.from(rankPagination.querySelectorAll('[data-rank-page]'));
+  const prev = rankPagination.querySelector('[data-rank-prev]');
+  const next = rankPagination.querySelector('[data-rank-next]');
+  const count = rankPagination.querySelector('[data-rank-count]');
+  let currentPage = 1;
+  const renderRankPage = (page) => {
+    currentPage = Math.max(1, Math.min(totalPages, page));
+    const start = (currentPage - 1) * pageSize;
+    const end = Math.min(start + pageSize, totalCount);
+    cards.forEach((card, index) => {
+      const visible = index >= start && index < end;
+      card.classList.toggle('is-page-hidden', !visible);
+      if (visible) card.classList.add('visible');
+    });
+    buttons.forEach((button) => {
+      const active = Number(button.dataset.rankPage) === currentPage;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    if (prev) prev.disabled = currentPage === 1;
+    if (next) next.disabled = currentPage === totalPages;
+    if (count) count.textContent = `第 ${currentPage} / ${totalPages} 页 · 当前显示 ${start + 1}-${end} / 共 ${totalCount} 名`;
+  };
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => renderRankPage(Number(button.dataset.rankPage || 1)));
+  });
+  if (prev) prev.addEventListener('click', () => renderRankPage(currentPage - 1));
+  if (next) next.addEventListener('click', () => renderRankPage(currentPage + 1));
+  renderRankPage(1);
+}
+
 document.querySelectorAll('[data-track]').forEach((node) => {
   node.addEventListener('click', () => {
     window._hmt = window._hmt || [];
@@ -2193,6 +2306,40 @@ def _fmt_count_unit(value: object, unit: str = "个") -> str:
     return f"{formatted}{unit}"
 
 
+def _fmt_token_daily_output(value: object) -> str:
+    number = _as_float(value)
+    if number <= 0:
+        return "待刷新"
+    if number >= 10_000:
+        formatted = _fmt_chinese_number(number, digits=3)
+    elif number >= 100:
+        formatted = f"{number:,.1f}".rstrip("0").rstrip(".")
+    elif number >= 1:
+        formatted = f"{number:,.3f}".rstrip("0").rstrip(".")
+    else:
+        formatted = f"{number:.6f}".rstrip("0").rstrip(".")
+    return f"{formatted}枚/日"
+
+
+def _fmt_one_yi_power_output(meta: dict) -> str:
+    power_required = _as_float(meta.get("power_required_per_mars_daily"))
+    if power_required <= 0:
+        network_power = _as_float(meta.get("network_total_power"))
+        miner_daily_tokens = _as_float(meta.get("emission_daily_miner_tokens"))
+        if miner_daily_tokens <= 0:
+            daily_total_tokens = _as_float(meta.get("emission_daily_total_tokens"))
+            miner_share = _as_float(meta.get("emission_miner_share"), MARS_MINER_SHARE)
+            if daily_total_tokens > 0:
+                miner_daily_tokens = daily_total_tokens * miner_share
+        if miner_daily_tokens <= 0:
+            miner_daily_tokens = (MARS_INITIAL_CYCLE_OUTPUT_TOKENS / MARS_HALVING_PERIOD_DAYS) * MARS_MINER_SHARE
+        if network_power > 0 and miner_daily_tokens > 0:
+            power_required = network_power / miner_daily_tokens
+    if power_required <= 0:
+        return "待刷新"
+    return _fmt_token_daily_output(100_000_000 / power_required)
+
+
 def _fmt_power(value: object) -> str:
     return _fmt_chinese_number(value, digits=3)
 
@@ -2234,24 +2381,27 @@ def _build_metric_cards(items: list[tuple[str, str, str]]) -> str:
     return "\n".join(cards)
 
 
-def _build_rank_cards(rows: list[dict]) -> str:
-    top_rows = rows[:8]
+def _build_rank_cards(rows: list[dict], limit: int = 100, page_size: int = 10) -> str:
+    top_rows = rows[:limit]
     max_power = max([_as_float(row.get("power")) for row in top_rows] or [1.0]) or 1.0
     cards: list[str] = []
     for index, row in enumerate(top_rows):
         power = _as_float(row.get("power"))
+        rank_number = _as_int(row.get("rank"), index + 1)
         width = max(4.0, min(100.0, (power / max_power) * 100))
+        page_class = " is-page-hidden" if index >= page_size else ""
         cards.append(
-            '<article class="rank-card reveal" style="--delay:%sms">'
+            '<article class="rank-card reveal%s" style="--delay:%sms">'
             '<div class="rank-top"><em>%02d</em><strong>%s</strong></div>'
             "<code>%s</code>"
             '<span class="rank-bar"><i style="width:%.3f%%"></i></span>'
             "</article>"
             % (
+                page_class,
                 (index + 1) * 55,
-                index + 1,
+                rank_number,
                 escape(_fmt_power(power)),
-                _short_address(row.get("address")),
+                escape(str(row.get("address") or "")),
                 width,
             )
         )
@@ -2330,6 +2480,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     daily_miner = str(meta.get("emission_daily_miner_display") or "待刷新")
     daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
     power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
+    one_yi_power_output = _fmt_one_yi_power_output(meta)
 
     metric_items = [
         ("全网总算力", _fmt_power(network_total_power), "区块浏览器公开统计"),
@@ -2345,6 +2496,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日新增总算力", _fmt_power(new_power), "同一统计日口径"),
         ("日销毁币量", daily_burned, "北京时间统计日口径"),
         ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
+        ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。"),
     ]
     marquee_items = [
         ("覆盖率", coverage_label),
@@ -2367,6 +2519,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("30天新增地址", _fmt_count_unit(period_30d_new_address_count)),
         ("30天销毁", period_30d_burned),
         ("单币日需算力", power_per_coin),
+        ("1亿算力产出", one_yi_power_output),
         ("缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
     ]
     timeline_items = [
@@ -2389,6 +2542,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("矿工日产币量", daily_miner),
         ("节点日产币量", daily_node),
         ("单币日需算力", power_per_coin),
+        ("1亿算力产出", one_yi_power_output),
         ("合约日志命中", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
         ("算力缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
         ("覆盖目标线", threshold_label),
@@ -2412,7 +2566,25 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <div class="line"><span>销毁数量</span><b>{escape(period_30d_burned)}</b></div>
       </article>
     """
-    rank_cards = _build_rank_cards(rows)
+    rank_total_count = min(100, len(rows))
+    rank_page_size = 10
+    rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
+    rank_first_page_end = min(rank_page_size, rank_total_count)
+    rank_cards = _build_rank_cards(rows, limit=100, page_size=rank_page_size)
+    rank_page_buttons = "".join(
+        '<button class="rank-page-button%s" type="button" data-rank-page="%d" aria-current="%s">%d</button>'
+        % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
+        for page in range(1, rank_total_pages + 1)
+    )
+    rank_controls_html = ""
+    if rank_total_count > rank_page_size:
+        rank_controls_html = f"""
+    <div class="rank-pagination" data-rank-pagination>
+      <button class="rank-page-button" type="button" data-rank-prev disabled>上一页</button>
+      <div class="rank-pages">{rank_page_buttons}</div>
+      <button class="rank-page-button" type="button" data-rank-next>下一页</button>
+      <span class="rank-count" data-rank-count>第 1 / {rank_total_pages} 页 · 当前显示 1-{rank_first_page_end} / 共 {rank_total_count} 名</span>
+    </div>"""
     timeline_rows = _build_timeline(timeline_items)
     marquee_html = _build_marquee(marquee_items)
     embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
@@ -2452,10 +2624,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <header class="topbar">
     <div class="brand"><span class="mark"></span>MarsChain Rank</div>
     <nav class="nav">
+      <a href="#rank">算力排行</a>
       <a href="#pulse">核心数据</a>
       <a href="#growth">周期增长</a>
       <a href="#wallets">地址统计</a>
-      <a href="#rank">算力排行</a>
       <a href="#risk">数据说明</a>
     </nav>
   </header>
@@ -2466,10 +2638,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
-        <span class="hero-note">核心数值在下方模块展开，首屏只保留覆盖状态与关键说明。</span>
+        <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
       </div>
       {warning_html}
-      <div class="scroll-hint"><span class="mouse"></span><span>继续查看地址统计口径、头部排行与数据说明</span></div>
+      <div class="scroll-hint"><span class="mouse"></span><span>继续查看核心数据、增长趋势与统计口径</span></div>
     </div>
     <aside class="command reveal visible">
       <div class="radar">
@@ -2483,24 +2655,32 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       </div>
     </aside>
   </section>
+  <section id="rank" class="section rank-section">
+    <div class="section-head reveal visible">
+      <div><span class="kicker">01 / 算力排行</span><h2>头部算力地址排行</h2></div>
+      <p>按当前查询到的算力降序展示前 100 名，每页 10 名，共 10 页。</p>
+    </div>
+    <div class="rank-grid" id="rankGrid" data-page-size="{rank_page_size}" data-total-count="{rank_total_count}">{rank_cards}</div>
+    {rank_controls_html}
+  </section>
   <div class="marquee"><div class="track">{marquee_html}</div></div>
   <section id="pulse" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">01 / 核心数据</span><h2>当前算力概览</h2></div>
+      <div><span class="kicker">02 / 核心数据</span><h2>当前算力概览</h2></div>
       <p>展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。</p>
     </div>
     <div class="metrics stagger">{metric_cards}</div>
   </section>
   <section id="growth" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">02 / 周期增长</span><h2>7 天与 30 天新增</h2></div>
+      <div><span class="kicker">03 / 周期增长</span><h2>7 天与 30 天新增</h2></div>
       <p>按最近完整北京时间统计日汇总新增算力、新增地址和 TokensBurned 销毁事件。</p>
     </div>
     <div class="growth-grid">{growth_cards}</div>
   </section>
   <section id="wallets" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">03 / 地址统计</span><h2>钱包地址统计口径</h2></div>
+      <div><span class="kicker">04 / 地址统计</span><h2>钱包地址统计口径</h2></div>
       <p>总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。</p>
     </div>
     <div class="funnel reveal">
@@ -2510,13 +2690,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <div class="arrow"></div>
       <article class="fcard"><label>正算力地址<span>算力 &gt; 0</span></label><strong>{_fmt_chinese_number(positive_power_count)}</strong><small>候选地址中当前算力大于 0 的钱包地址。</small></article>
     </div>
-  </section>
-  <section id="rank" class="section">
-    <div class="section-head reveal">
-      <div><span class="kicker">04 / 算力排行</span><h2>头部算力地址排行</h2></div>
-      <p>按当前查询到的算力降序展示头部地址，页面仅展示公开看板视图。</p>
-    </div>
-    <div class="rank-grid">{rank_cards}</div>
   </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
@@ -2626,6 +2799,7 @@ a { color: inherit; }
 .m-flow-card label { display: flex; justify-content: space-between; gap: 10px; color: #b8c8df; font-size: 13px; font-weight: 950; }
 .m-flow-card strong { display: block; margin-top: 20px; font-size: 38px; line-height: 1; letter-spacing: -.06em; }
 .m-flow-card small { display: block; margin-top: 10px; color: #8798b2; font-size: 12px; line-height: 1.55; }
+.m-rank-card.is-page-hidden { display: none; }
 .m-rank-card { border: 1px solid var(--line); border-radius: 21px; padding: 15px; background: linear-gradient(180deg, rgba(20,36,66,.88), rgba(8,16,32,.92)); }
 .m-rank-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
 .m-rank-top em { font-style: normal; font-family: var(--mono); color: #a9b9d2; }
@@ -2633,6 +2807,25 @@ a { color: inherit; }
 .m-rank-card code { display: block; margin: 13px 0 12px; color: #e5efff; font-family: var(--mono); font-size: 12px; word-break: break-all; }
 .m-bar { display: block; height: 7px; border-radius: 999px; background: rgba(255,255,255,.08); overflow: hidden; }
 .m-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--cyan), var(--blue)); box-shadow: 0 0 18px rgba(86,239,255,.34); }
+.m-rank-card { padding: 14px; }
+.m-rank-card code { font-size: 12px; margin: 11px 0 0; }
+.m-bar { display: none; }
+.m-rank-pagination { display: grid; gap: 9px; margin-top: 12px; }
+.m-rank-pages { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; }
+.m-rank-page-button {
+  min-height: 42px;
+  border: 1px solid rgba(86,239,255,.35);
+  border-radius: 999px;
+  color: #ccefff;
+  background: rgba(86,239,255,.08);
+  font: 950 13px var(--font);
+}
+.m-rank-page-button.is-active {
+  color: #03121b;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.m-rank-page-button:disabled { opacity: .42; }
+.m-rank-count { color: #91a4bf; text-align: center; font-size: 12px; font-weight: 900; }
 .m-note { border: 1px solid rgba(255,211,126,.24); border-radius: 22px; padding: 17px; background: rgba(255,211,126,.07); color: #ffe7b8; font-size: 13px; line-height: 1.75; }
 .m-meta { border: 1px solid var(--line); border-radius: 22px; padding: 15px; background: var(--panel); }
 .m-meta-row { display: flex; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid rgba(121,225,255,.10); font-size: 13px; }
@@ -2663,6 +2856,44 @@ const mobileObserver = new IntersectionObserver((entries) => {
 
 document.querySelectorAll('.m-reveal').forEach((node) => mobileObserver.observe(node));
 
+const mobileRankList = document.getElementById('mobileRankList');
+const mobileRankPagination = document.querySelector('[data-mobile-rank-pagination]');
+if (mobileRankList && mobileRankPagination) {
+  const pageSize = Number(mobileRankList.dataset.pageSize || 10);
+  const cards = Array.from(mobileRankList.querySelectorAll('.m-rank-card'));
+  const totalCount = Number(mobileRankList.dataset.totalCount || cards.length);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+  const buttons = Array.from(mobileRankPagination.querySelectorAll('[data-mobile-rank-page]'));
+  const prev = mobileRankPagination.querySelector('[data-mobile-rank-prev]');
+  const next = mobileRankPagination.querySelector('[data-mobile-rank-next]');
+  const count = mobileRankPagination.querySelector('[data-mobile-rank-count]');
+  let currentPage = 1;
+  const renderMobileRankPage = (page) => {
+    currentPage = Math.max(1, Math.min(totalPages, page));
+    const start = (currentPage - 1) * pageSize;
+    const end = Math.min(start + pageSize, totalCount);
+    cards.forEach((card, index) => {
+      const visible = index >= start && index < end;
+      card.classList.toggle('is-page-hidden', !visible);
+      if (visible) card.classList.add('visible');
+    });
+    buttons.forEach((button) => {
+      const active = Number(button.dataset.mobileRankPage) === currentPage;
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    if (prev) prev.disabled = currentPage === 1;
+    if (next) next.disabled = currentPage === totalPages;
+    if (count) count.textContent = `第 ${currentPage} / ${totalPages} 页 · 当前显示 ${start + 1}-${end} / 共 ${totalCount} 名`;
+  };
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => renderMobileRankPage(Number(button.dataset.mobileRankPage || 1)));
+  });
+  if (prev) prev.addEventListener('click', () => renderMobileRankPage(currentPage - 1));
+  if (next) next.addEventListener('click', () => renderMobileRankPage(currentPage + 1));
+  renderMobileRankPage(1);
+}
+
 document.querySelectorAll('[data-track]').forEach((node) => {
   node.addEventListener('click', () => {
     window._hmt = window._hmt || [];
@@ -2689,20 +2920,21 @@ def _build_mobile_flow_cards(items: list[tuple[str, str, str, str]]) -> str:
     )
 
 
-def _build_mobile_rank_cards(rows: list[dict]) -> str:
-    top_rows = rows[:10]
+def _build_mobile_rank_cards(rows: list[dict], limit: int = 100, page_size: int = 10) -> str:
+    top_rows = rows[:limit]
     max_power = max([_as_float(row.get("power")) for row in top_rows] or [1.0]) or 1.0
     cards: list[str] = []
     for index, row in enumerate(top_rows):
         power = _as_float(row.get("power"))
+        page_class = " is-page-hidden" if index >= page_size else ""
         width = max(4.0, min(100.0, (power / max_power) * 100))
         cards.append(
-            '<article class="m-rank-card m-reveal">'
+            '<article class="m-rank-card m-reveal%s">'
             '<div class="m-rank-top"><em>#%02d</em><strong>%s</strong></div>'
             "<code>%s</code>"
             '<span class="m-bar"><i style="width:%.3f%%"></i></span>'
             "</article>"
-            % (index + 1, escape(_fmt_power(power)), _short_address(row.get("address")), width)
+            % (page_class, _as_int(row.get("rank"), index + 1), escape(_fmt_power(power)), escape(str(row.get("address") or "")), width)
         )
     return "\n".join(cards)
 
@@ -2745,6 +2977,7 @@ def build_mobile_html(payload: dict) -> str:
     daily_miner = str(meta.get("emission_daily_miner_display") or "待刷新")
     daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
     power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
+    one_yi_power_output = _fmt_one_yi_power_output(meta)
 
     key_cards = _build_mobile_metric_cards(
         [
@@ -2764,6 +2997,7 @@ def build_mobile_html(payload: dict) -> str:
             ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志"),
             ("30 天销毁", period_30d_burned, "TokensBurned 汇总"),
             ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
+            ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算"),
         ]
     )
     flow_cards = _build_mobile_flow_cards(
@@ -2773,7 +3007,25 @@ def build_mobile_html(payload: dict) -> str:
             ("正算力地址", "算力 > 0", _fmt_chinese_number(positive_power_count), "当前查询到算力大于 0 的钱包地址。"),
         ]
     )
-    rank_cards = _build_mobile_rank_cards(rows)
+    rank_total_count = min(100, len(rows))
+    rank_page_size = 10
+    rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
+    rank_first_page_end = min(rank_page_size, rank_total_count)
+    rank_cards = _build_mobile_rank_cards(rows, limit=100, page_size=rank_page_size)
+    rank_page_buttons = "".join(
+        '<button class="m-rank-page-button%s" type="button" data-mobile-rank-page="%d" aria-current="%s">%d</button>'
+        % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
+        for page in range(1, rank_total_pages + 1)
+    )
+    rank_controls_html = ""
+    if rank_total_count > rank_page_size:
+        rank_controls_html = f"""
+      <div class="m-rank-pagination" data-mobile-rank-pagination>
+        <button class="m-rank-page-button" type="button" data-mobile-rank-prev disabled>上一页</button>
+        <div class="m-rank-pages">{rank_page_buttons}</div>
+        <button class="m-rank-page-button" type="button" data-mobile-rank-next>下一页</button>
+        <span class="m-rank-count" data-mobile-rank-count>第 1 / {rank_total_pages} 页 · 当前显示 1-{rank_first_page_end} / 共 {rank_total_count} 名</span>
+      </div>"""
     meta_rows = _build_timeline(
         [
             ("最近刷新", generated_at),
@@ -2792,6 +3044,7 @@ def build_mobile_html(payload: dict) -> str:
             ("总产量", total_supply),
             ("矿工日产币量", daily_miner),
             ("节点日产币量", daily_node),
+            ("1亿算力产出", one_yi_power_output),
         ]
     ).replace('class="line"', 'class="m-meta-row"')
     warning_html = _build_warning(meta, _fmt_percent(meta.get("coverage_target", 0.8))).replace('class="alert"', 'class="m-note"')
@@ -2817,9 +3070,9 @@ def build_mobile_html(payload: dict) -> str:
       <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
     </div>
     <nav class="m-nav">
+      <a href="#rank">排行</a>
       <a href="#core">核心</a>
       <a href="#wallets">地址</a>
-      <a href="#rank">排行</a>
       <a href="#risk">说明</a>
     </nav>
   </header>
@@ -2827,7 +3080,7 @@ def build_mobile_html(payload: dict) -> str:
     <section class="m-hero">
       <span class="m-chip">数据已加载 · 每 5 小时刷新</span>
       <h1><span>MarsChain</span><span>算力榜</span></h1>
-      <p class="m-lead">手机端优先展示最关键结果：覆盖率、全网算力、活跃地址、新增地址和头部排行。</p>
+      <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
       <div class="m-hero-grid">
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
         <div class="m-card-grid">
@@ -2843,17 +3096,18 @@ def build_mobile_html(payload: dict) -> str:
       </div>
       {warning_html}
     </section>
+    <section id="rank" class="m-section m-rank-section">
+      <div class="m-section-head"><div><span class="m-kicker">01 / RANK</span><h2>头部排行</h2></div><p>每页 10 名，共 10 页。</p></div>
+      <div class="m-list m-rank-list" id="mobileRankList" data-page-size="{rank_page_size}" data-total-count="{rank_total_count}">{rank_cards}</div>
+      {rank_controls_html}
+    </section>
     <section id="core" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">01 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">02 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
       <div class="m-card-grid">{key_cards}</div>
     </section>
     <section id="wallets" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">02 / WALLET</span><h2>地址口径</h2></div><p>三个地址数字不能混用。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">03 / WALLET</span><h2>地址口径</h2></div><p>三个地址数字不能混用。</p></div>
       <div class="m-list">{flow_cards}</div>
-    </section>
-    <section id="rank" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">03 / RANK</span><h2>头部排行</h2></div><p>按当前算力降序。</p></div>
-      <div class="m-list">{rank_cards}</div>
     </section>
     <section id="risk" class="m-section">
       <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
