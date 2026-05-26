@@ -5,9 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from build_frontend_dashboard import build_html
+
+PUBLIC_RANK_LIMIT = 100
 
 
 README_TEXT = """# MarsChain Power Dashboard
@@ -57,9 +60,22 @@ def main() -> int:
 
     site_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
+    downloads_dir = site_dir / "downloads"
+    if downloads_dir.exists():
+        shutil.rmtree(downloads_dir)
 
-    (site_dir / "index.html").write_text(build_html(payload))
-    (site_dir / "data" / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    public_payload = {
+        "meta": {
+            **payload.get("meta", {}),
+            "full_ranked_count": len(payload.get("rows", [])),
+            "public_rank_limit": PUBLIC_RANK_LIMIT,
+            "ranked_count": min(PUBLIC_RANK_LIMIT, len(payload.get("rows", []))),
+        },
+        "rows": payload.get("rows", [])[:PUBLIC_RANK_LIMIT],
+    }
+
+    (site_dir / "index.html").write_text(build_html(public_payload))
+    (site_dir / "data" / "latest.json").write_text(json.dumps(public_payload, ensure_ascii=False, indent=2) + "\n")
     (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
     (site_dir / "README.md").write_text(README_TEXT)
 

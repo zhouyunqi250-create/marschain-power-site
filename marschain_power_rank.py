@@ -1636,7 +1636,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         ),
         reverse=True,
     )
-    rows = all_rows[: args.top]
+    rows = all_rows if args.top <= 0 else all_rows[: args.top]
 
     if args.include_nodes and rows:
         with concurrent.futures.ThreadPoolExecutor(max_workers=min(args.workers, 8)) as pool:
@@ -1869,7 +1869,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rpc-log-chunk-size", type=int, default=50_000, help="Blocks per eth_getLogs range.")
     parser.add_argument("--rpc-log-workers", type=int, default=3, help="Concurrent eth_getLogs workers.")
     parser.add_argument("--max-candidates", type=int, default=3000, help="Maximum candidate addresses to power-check.")
-    parser.add_argument("--top", type=int, default=100, help="Number of ranked rows to output.")
+    parser.add_argument("--top", type=int, default=100, help="Number of ranked rows to output. Use 0 to output every discovered positive-power row.")
     parser.add_argument("--workers", type=int, default=16, help="Concurrent power lookups.")
     parser.add_argument("--include-to", action="store_true", help="Also include transaction recipient addresses as candidates.")
     parser.add_argument("--include-nodes", action="store_true", help="Fetch /nodes/{address} for final ranked rows.")

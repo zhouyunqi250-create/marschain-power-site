@@ -10,6 +10,7 @@ on:
       - "build_frontend_dashboard.py"
       - "deploy_to_oss.py"
       - "marschain_power_rank.py"
+      - "paid_download_service.py"
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
@@ -32,7 +33,11 @@ jobs:
       ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
       ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
       ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
+      ALIYUN_PAID_OSS_BUCKET: ${{ secrets.ALIYUN_PAID_OSS_BUCKET }}
+      ALIYUN_PAID_OSS_ENDPOINT: ${{ secrets.ALIYUN_PAID_OSS_ENDPOINT }}
+      ALIYUN_PAID_OSS_PREFIX: ${{ secrets.ALIYUN_PAID_OSS_PREFIX }}
       ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+      MARSCHAIN_PAID_DOWNLOAD_API_BASE: ${{ secrets.MARSCHAIN_PAID_DOWNLOAD_API_BASE }}
       BAIDU_TONGJI_SITE_ID: 1dc172d16803cd4223b85645006548b4
       MICROSOFT_CLARITY_PROJECT_ID: ${{ secrets.MICROSOFT_CLARITY_PROJECT_ID }}
     steps:
@@ -68,6 +73,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import shutil
           import urllib.request
           from pathlib import Path
 
@@ -87,6 +93,9 @@ jobs:
           mobile_dir = site_dir / "m"
           data_dir.mkdir(parents=True, exist_ok=True)
           mobile_dir.mkdir(parents=True, exist_ok=True)
+          downloads_dir = site_dir / "downloads"
+          if downloads_dir.exists():
+              shutil.rmtree(downloads_dir)
           (site_dir / "index.html").write_text(build_html(payload))
           (mobile_dir / "index.html").write_text(build_mobile_html(payload))
           (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")

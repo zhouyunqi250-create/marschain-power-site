@@ -13,6 +13,8 @@ from pathlib import Path
 from build_frontend_dashboard import build_html, build_mobile_html
 from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
 
+PUBLIC_RANK_LIMIT = 100
+
 
 SCAN_TIERS = [
     {
@@ -171,7 +173,7 @@ def make_args(
         rpc_log_chunk_size=100000,
         rpc_log_workers=4,
         max_candidates=max_candidates,
-        top=100,
+        top=0,
         workers=workers,
         include_to=True,
         include_nodes=False,
@@ -190,12 +192,32 @@ def make_args(
     )
 
 
+def build_public_payload(payload: dict, public_rank_limit: int = PUBLIC_RANK_LIMIT) -> dict:
+    rows = payload.get("rows", [])
+    meta = dict(payload.get("meta", {}))
+    public_rows = rows[:public_rank_limit]
+    meta["full_ranked_count"] = len(rows)
+    meta["public_rank_limit"] = public_rank_limit
+    meta["ranked_count"] = len(public_rows)
+    meta["paid_download"] = {
+        "enabled": True,
+        "free_rank_limit": public_rank_limit,
+        "price_mars": "1000",
+        "asset": "MARS",
+        "download_expires_seconds": 3600,
+    }
+    return {"meta": meta, "rows": public_rows}
+
+
 def write_site_bundle(site_dir: Path, payload: dict) -> None:
     data_dir = site_dir / "data"
     mobile_dir = site_dir / "m"
     site_dir.mkdir(parents=True, exist_ok=True)
     data_dir.mkdir(parents=True, exist_ok=True)
     mobile_dir.mkdir(parents=True, exist_ok=True)
+    downloads_dir = site_dir / "downloads"
+    if downloads_dir.exists():
+        shutil.rmtree(downloads_dir)
 
     (site_dir / "index.html").write_text(build_html(payload))
     (mobile_dir / "index.html").write_text(build_mobile_html(payload))
@@ -349,7 +371,8 @@ def main() -> int:
     shutil.copy2(html_path, latest_dir / "latest.html")
     shutil.copy2(xlsx_path, latest_dir / "latest.xlsx")
 
-    write_site_bundle(site_dir, payload)
+    public_payload = build_public_payload(payload)
+    write_site_bundle(site_dir, public_payload)
 
     summary = add_extra_build_meta({
         "generated_at": chosen_meta["generated_at"],

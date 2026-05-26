@@ -9,7 +9,9 @@
 - 算力缓存默认 3 小时过期，短于 5 小时定时周期，避免定时刷新继续使用旧算力
 - 首页明确展示全链地址、算力候选钱包、正算力钱包、链上今日新增钱包和链上今日新增总算力
 - 页面保留公开数据口径和风险提示，避免把 `best effort` 榜单误读成官方最终口径
+- 页面免费公开前 100 名，全量排行榜下载走 MARS 付款核销
 - 生成静态站点后上传到阿里云 OSS
+- 全量 CSV / Excel 可上传到私有 OSS Bucket，由后端生成 1 小时有效签名链接
 - 通过阿里云 CDN 和独立域名对外提供 HTTPS 访问
 
 ## 项目文件
@@ -19,6 +21,7 @@
 - [publish_site.py](publish_site.py)：把排行榜产物整理成静态站目录
 - [refresh_site.py](refresh_site.py)：总控脚本，负责分层扫描、覆盖率判断和站点刷新
 - [deploy_to_oss.py](deploy_to_oss.py)：把 `site/` 同步到阿里云 OSS，并刷新 CDN 缓存
+- [paid_download_service.py](paid_download_service.py)：核销 1000 MARS 转账并返回 1 小时有效的私有下载链接
 - [ALIYUN_DEPLOY.md](ALIYUN_DEPLOY.md)：阿里云上线步骤和 GitHub Secrets 配置说明
 - [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：每 5 小时自动更新的 GitHub Actions 工作流
 
@@ -50,8 +53,21 @@ python3 -m http.server 8000
 1. GitHub Actions 定时执行 `refresh_site.py`
 2. 扫描完成后生成 `site/`，即使未达 80% 也发布当轮最佳结果
 3. `deploy_to_oss.py` 将 `site/` 上传到阿里云 OSS
-4. 刷新 CDN 首页、JSON 和下载文件缓存
-5. 通过独立域名对外访问
+4. 如果配置了私有下载 Bucket，同步全量 CSV / Excel 到私有 OSS
+5. 刷新 CDN 首页、JSON 和构建摘要缓存
+6. 通过独立域名对外访问
+
+## 付费下载
+
+默认收费规则：
+
+- 前 100 名免费公开
+- 全量排行榜下载收费 `1000 MARS`
+- 收款地址：`0M8678F454D69d2185DfAa6643cF06faCB8DE17c7c`
+- 后端验账地址：`0x8678F454D69d2185DfAa6643cF06faCB8DE17c7c`
+- 下载链接有效期：1 小时
+
+前端只在 `MARSCHAIN_PAID_DOWNLOAD_API_BASE` 配置后启用订单按钮。后端需要部署 [paid_download_service.py](paid_download_service.py)，并使用私有 OSS Bucket 保存全量文件和订单记录。
 
 ## 访问统计
 
@@ -62,14 +78,7 @@ python3 -m http.server 8000
 
 只要把这两个值配置进 GitHub Secrets，构建时就会自动注入官方统计脚本。
 
-当前已埋点的前端行为：
-
-- 下载 `CSV`
-- 下载 `Excel`
-- 打开 `JSON`
-- 搜索榜单
-- 切换筛选条件
-- 点击表头排序
+当前已埋点的前端行为包括搜索、筛选、排序和付费下载入口点击。
 
 统计结果只会进入你自己的百度统计 / Clarity 后台，不会写进公开站点文件，也不会暴露给访客。
 

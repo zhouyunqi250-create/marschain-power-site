@@ -14,6 +14,10 @@ from pathlib import Path
 MARS_INITIAL_CYCLE_OUTPUT_TOKENS = 100_000_000_000
 MARS_HALVING_PERIOD_DAYS = 448
 MARS_MINER_SHARE = 0.75
+MARS_PAYMENT_ADDRESS_DISPLAY = "0M8678F454D69d2185DfAa6643cF06faCB8DE17c7c"
+MARS_PAYMENT_ADDRESS_VERIFY = "0x8678F454D69d2185DfAa6643cF06faCB8DE17c7c"
+MARS_PAID_DOWNLOAD_PRICE = "1000"
+MARS_PAID_DOWNLOAD_EXPIRES_SECONDS = 3600
 
 
 def format_generated_at(ts: int) -> str:
@@ -71,6 +75,16 @@ def build_analytics_head() -> str:
         return ""
 
     return "".join(scripts)
+
+
+def load_paid_download_config() -> dict[str, str]:
+    return {
+        "api_base": os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/"),
+        "pay_to_display": os.getenv("MARS_PAYMENT_ADDRESS_DISPLAY", MARS_PAYMENT_ADDRESS_DISPLAY).strip(),
+        "pay_to_verify": os.getenv("MARS_PAYMENT_ADDRESS_VERIFY", MARS_PAYMENT_ADDRESS_VERIFY).strip(),
+        "price_mars": os.getenv("MARS_PAID_DOWNLOAD_PRICE", MARS_PAID_DOWNLOAD_PRICE).strip() or MARS_PAID_DOWNLOAD_PRICE,
+        "expires_label": "1 小时",
+    }
 
 
 def build_html(payload: dict) -> str:
@@ -1896,6 +1910,61 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .rank-page-button:disabled { cursor: default; opacity: .42; box-shadow: none; }
 .rank-page-button:not(:disabled):hover { filter: brightness(1.06); transform: translateY(-1px); }
 .rank-count { flex: 0 0 100%; color: #95a8c4; font-size: 13px; font-weight: 850; text-align: center; }
+.paid-download {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 520px;
+  gap: 18px;
+  margin-top: 22px;
+  padding: 22px;
+  border: 1px solid rgba(255,211,126,.28);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(255,211,126,.16), transparent 34%),
+    linear-gradient(180deg, rgba(25,35,58,.9), rgba(8,15,30,.9));
+  box-shadow: 0 24px 70px rgba(0,0,0,.28);
+}
+.paid-copy span { color: var(--amber); font-size: 12px; font-weight: 950; letter-spacing: .12em; }
+.paid-copy h3 { margin: 10px 0 12px; font-size: 36px; line-height: 1; letter-spacing: -.045em; }
+.paid-copy p { margin: 0; max-width: 620px; color: #b7c4d9; line-height: 1.75; }
+.paid-box { display: grid; gap: 12px; }
+.paid-amount, .paid-address, .paid-controls, .paid-tx {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+.paid-amount span, .paid-address span { color: #9fb0c9; font-size: 13px; font-weight: 850; }
+.paid-amount b { color: var(--amber); font-size: 28px; letter-spacing: -.035em; }
+.paid-address code {
+  min-width: 0;
+  color: #f4f8ff;
+  font-family: var(--mono);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.paid-address button, .paid-controls button, .paid-tx button, .paid-controls select, .paid-tx input {
+  min-height: 42px;
+  border: 1px solid rgba(82,239,255,.28);
+  border-radius: 14px;
+  color: #eaf7ff;
+  background: rgba(255,255,255,.06);
+  font: 900 13px var(--font);
+}
+.paid-address button, .paid-controls button, .paid-tx button { cursor: pointer; padding: 0 15px; }
+.paid-controls button, .paid-tx button {
+  color: #03121b;
+  border: 0;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.paid-controls select, .paid-tx input { padding: 0 12px; width: 100%; }
+.paid-controls { grid-template-columns: 116px minmax(0, 1fr); }
+.paid-tx { grid-template-columns: minmax(0, 1fr) auto; }
+.paid-status { color: #95a8c4; font-size: 13px; line-height: 1.55; }
+.paid-status.is-error { color: #ffb7b7; }
+.paid-status.is-ok { color: #9df4c3; }
+.paid-link { display: none; color: var(--cyan); font-size: 13px; font-weight: 950; text-decoration: none; }
+.paid-link.is-ready { display: inline-flex; }
+.paid-download button:disabled, .paid-download input:disabled { opacity: .45; cursor: default; }
 .telemetry { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .timeline { padding: 24px; }
 .line { display: flex; justify-content: space-between; gap: 14px; padding: 16px 0; border-bottom: 1px solid var(--line); }
@@ -1963,6 +2032,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .hero, .telemetry { grid-template-columns: 1fr; }
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .rank-grid { grid-template-columns: 1fr; }
+  .paid-download { grid-template-columns: 1fr; }
   .funnel { grid-template-columns: 1fr; }
   .arrow { height: 36px; width: 2px; justify-self: center; background: linear-gradient(180deg, var(--cyan), transparent); }
   .arrow:after { right: -4px; top: auto; bottom: 0; transform: rotate(90deg); }
@@ -2147,6 +2217,21 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   }
   .rank-page-button { width: 100%; }
   .rank-count { text-align: center; }
+  .paid-download {
+    padding: 16px;
+    border-radius: 21px;
+    gap: 15px;
+  }
+  .paid-copy h3 { font-size: 28px; }
+  .paid-copy p { font-size: 13px; line-height: 1.7; }
+  .paid-amount, .paid-address, .paid-controls, .paid-tx {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .paid-amount b { font-size: 24px; }
+  .paid-address button, .paid-controls button, .paid-tx button, .paid-controls select, .paid-tx input {
+    width: 100%;
+  }
   .telemetry { grid-template-columns: 1fr; gap: 12px; }
   .timeline, .risk { padding: 18px; border-radius: 22px; }
   .line {
@@ -2251,6 +2336,115 @@ if (rankGrid && rankPagination) {
   if (next) next.addEventListener('click', () => renderRankPage(currentPage + 1));
   renderRankPage(1);
 }
+
+const setupPaidDownloadPanel = (panel) => {
+  const apiBase = (panel.dataset.apiBase || '').replace(/\/+$/, '');
+  const createButton = panel.querySelector('[data-paid-create]');
+  const verifyButton = panel.querySelector('[data-paid-verify]');
+  const copyButton = panel.querySelector('[data-paid-copy]');
+  const addressNode = panel.querySelector('[data-paid-address]');
+  const txInput = panel.querySelector('[data-paid-tx]');
+  const formatSelect = panel.querySelector('[data-paid-format]');
+  const statusNode = panel.querySelector('[data-paid-status]');
+  const linkNode = panel.querySelector('[data-paid-link]');
+  let orderId = '';
+
+  const setStatus = (text, mode = '') => {
+    if (!statusNode) return;
+    statusNode.textContent = text;
+    statusNode.classList.toggle('is-error', mode === 'error');
+    statusNode.classList.toggle('is-ok', mode === 'ok');
+  };
+  const postJson = async (path, body) => {
+    const response = await fetch(`${apiBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    let payload = {};
+    try { payload = await response.json(); } catch (error) {}
+    if (!response.ok) {
+      throw new Error(payload.message || payload.error || '请求失败');
+    }
+    return payload;
+  };
+
+  if (!apiBase) {
+    if (createButton) createButton.disabled = true;
+    if (verifyButton) verifyButton.disabled = true;
+    if (txInput) txInput.disabled = true;
+    setStatus('付费下载接口待接入', 'error');
+    return;
+  }
+
+  if (copyButton && addressNode) {
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(addressNode.textContent.trim());
+        setStatus('收款地址已复制', 'ok');
+      } catch (error) {
+        setStatus(addressNode.textContent.trim(), 'ok');
+      }
+    });
+  }
+
+  if (createButton) {
+    createButton.addEventListener('click', async () => {
+      createButton.disabled = true;
+      setStatus('正在生成付款订单...');
+      try {
+        const result = await postJson('/orders', { format: formatSelect ? formatSelect.value : 'xlsx' });
+        orderId = result.orderId || result.order_id || '';
+        if (txInput) txInput.disabled = false;
+        if (verifyButton) verifyButton.disabled = false;
+        setStatus(`订单已生成：支付 ${result.amountMars || '1000'} MARS 后提交交易哈希。`, 'ok');
+      } catch (error) {
+        setStatus(error.message || '订单生成失败', 'error');
+      } finally {
+        createButton.disabled = false;
+      }
+    });
+  }
+
+  if (verifyButton) {
+    verifyButton.addEventListener('click', async () => {
+      const txHash = txInput ? txInput.value.trim() : '';
+      if (!orderId) {
+        setStatus('请先生成付款订单', 'error');
+        return;
+      }
+      if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+        setStatus('交易哈希格式不正确', 'error');
+        return;
+      }
+      verifyButton.disabled = true;
+      setStatus('正在核销链上付款...');
+      try {
+        const result = await postJson(`/orders/${encodeURIComponent(orderId)}/verify`, {
+          txHash,
+          format: formatSelect ? formatSelect.value : 'xlsx',
+        });
+        if (result.status === 'WAITING_CONFIRMATIONS') {
+          setStatus(`交易已找到，等待确认数 ${result.confirmations || 0}/${result.requiredConfirmations || 3}`);
+          return;
+        }
+        if (result.downloadUrl && linkNode) {
+          linkNode.href = result.downloadUrl;
+          linkNode.classList.add('is-ready');
+          setStatus('核销成功，下载链接 1 小时内有效。', 'ok');
+        } else {
+          setStatus('核销成功，请重新打开下载链接。', 'ok');
+        }
+      } catch (error) {
+        setStatus(error.message || '核销失败', 'error');
+      } finally {
+        verifyButton.disabled = false;
+      }
+    });
+  }
+};
+
+document.querySelectorAll('[data-paid-panel]').forEach(setupPaidDownloadPanel);
 
 document.querySelectorAll('[data-track]').forEach((node) => {
   node.addEventListener('click', () => {
@@ -2433,6 +2627,40 @@ def _build_warning(meta: dict, threshold_label: str) -> str:
     )
 
 
+def _build_paid_download_panel(config: dict[str, str], *, mobile: bool = False) -> str:
+    prefix = "m-paid" if mobile else "paid"
+    copy_label = "复制"
+    return f"""
+    <section class="{prefix}-download" data-paid-panel data-api-base="{escape(config["api_base"])}">
+      <div class="{prefix}-copy">
+        <span>{'PAID DOWNLOAD' if not mobile else 'DOWNLOAD'}</span>
+        <h3>全量排行榜下载</h3>
+        <p>前 100 名免费查看，全量文件需支付 {escape(config["price_mars"])} MARS；核销成功后下载链接 {escape(config["expires_label"])} 内有效。</p>
+      </div>
+      <div class="{prefix}-box">
+        <div class="{prefix}-amount"><span>收款金额</span><b>{escape(config["price_mars"])} MARS</b></div>
+        <div class="{prefix}-address">
+          <span>收款地址</span>
+          <code data-paid-address>{escape(config["pay_to_display"])}</code>
+          <button type="button" data-paid-copy>{copy_label}</button>
+        </div>
+        <div class="{prefix}-controls">
+          <select data-paid-format aria-label="下载格式">
+            <option value="xlsx">Excel</option>
+            <option value="csv">CSV</option>
+          </select>
+          <button type="button" data-paid-create>生成付款订单</button>
+        </div>
+        <div class="{prefix}-tx">
+          <input data-paid-tx type="text" inputmode="text" placeholder="输入交易哈希" disabled>
+          <button type="button" data-paid-verify disabled>核销下载</button>
+        </div>
+        <div class="{prefix}-status" data-paid-status>{'付费下载接口待接入' if not config["api_base"] else '生成订单后提交交易哈希'}</div>
+        <a class="{prefix}-link" data-paid-link href="#" target="_blank" rel="noopener">打开下载链接</a>
+      </div>
+    </section>"""
+
+
 def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     """Render the new continuous-scroll MarsChain site."""
     meta = payload.get("meta", {})
@@ -2440,6 +2668,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     title = "MarsChain 算力排行榜"
     subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     analytics_head = build_analytics_head()
+    paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
@@ -2571,6 +2800,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
     rank_first_page_end = min(rank_page_size, rank_total_count)
     rank_cards = _build_rank_cards(rows, limit=100, page_size=rank_page_size)
+    paid_download_panel = _build_paid_download_panel(paid_download_config)
     rank_page_buttons = "".join(
         '<button class="rank-page-button%s" type="button" data-rank-page="%d" aria-current="%s">%d</button>'
         % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
@@ -2662,6 +2892,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     </div>
     <div class="rank-grid" id="rankGrid" data-page-size="{rank_page_size}" data-total-count="{rank_total_count}">{rank_cards}</div>
     {rank_controls_html}
+    {paid_download_panel}
   </section>
   <div class="marquee"><div class="track">{marquee_html}</div></div>
   <section id="pulse" class="section">
@@ -2826,6 +3057,43 @@ a { color: inherit; }
 }
 .m-rank-page-button:disabled { opacity: .42; }
 .m-rank-count { color: #91a4bf; text-align: center; font-size: 12px; font-weight: 900; }
+.m-paid-download {
+  display: grid;
+  gap: 13px;
+  margin-top: 13px;
+  padding: 15px;
+  border: 1px solid rgba(255,211,126,.26);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 14% 0%, rgba(255,211,126,.15), transparent 38%),
+    linear-gradient(180deg, rgba(20,34,60,.9), rgba(8,16,32,.92));
+}
+.m-paid-copy span { color: var(--amber); font-size: 11px; font-weight: 950; letter-spacing: .12em; }
+.m-paid-copy h3 { margin: 7px 0 8px; font-size: 25px; line-height: 1; letter-spacing: -.045em; }
+.m-paid-copy p { margin: 0; color: #b4c4da; font-size: 12px; line-height: 1.65; }
+.m-paid-box { display: grid; gap: 9px; }
+.m-paid-amount span, .m-paid-address span { display: block; color: #9fb0c9; font-size: 12px; font-weight: 900; }
+.m-paid-amount b { display: block; margin-top: 6px; color: var(--amber); font-size: 25px; }
+.m-paid-address code { display: block; margin: 6px 0; color: #f2f8ff; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.m-paid-address button, .m-paid-controls button, .m-paid-tx button, .m-paid-controls select, .m-paid-tx input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(86,239,255,.28);
+  border-radius: 14px;
+  color: #eaf7ff;
+  background: rgba(255,255,255,.06);
+  font: 900 13px var(--font);
+}
+.m-paid-address button, .m-paid-controls button, .m-paid-tx button { padding: 0 12px; }
+.m-paid-controls, .m-paid-tx { display: grid; gap: 8px; }
+.m-paid-controls button, .m-paid-tx button { color: #03121b; border: 0; background: linear-gradient(135deg, var(--cyan), var(--blue)); }
+.m-paid-controls select, .m-paid-tx input { padding: 0 12px; }
+.m-paid-status { color: #91a4bf; font-size: 12px; line-height: 1.55; }
+.m-paid-status.is-error { color: #ffb7b7; }
+.m-paid-status.is-ok { color: #9df4c3; }
+.m-paid-link { display: none; color: var(--cyan); font-size: 13px; font-weight: 950; text-decoration: none; }
+.m-paid-link.is-ready { display: inline-flex; }
+.m-paid-download button:disabled, .m-paid-download input:disabled { opacity: .45; }
 .m-note { border: 1px solid rgba(255,211,126,.24); border-radius: 22px; padding: 17px; background: rgba(255,211,126,.07); color: #ffe7b8; font-size: 13px; line-height: 1.75; }
 .m-meta { border: 1px solid var(--line); border-radius: 22px; padding: 15px; background: var(--panel); }
 .m-meta-row { display: flex; justify-content: space-between; gap: 14px; padding: 12px 0; border-bottom: 1px solid rgba(121,225,255,.10); font-size: 13px; }
@@ -2894,6 +3162,115 @@ if (mobileRankList && mobileRankPagination) {
   renderMobileRankPage(1);
 }
 
+const setupMobilePaidDownloadPanel = (panel) => {
+  const apiBase = (panel.dataset.apiBase || '').replace(/\/+$/, '');
+  const createButton = panel.querySelector('[data-paid-create]');
+  const verifyButton = panel.querySelector('[data-paid-verify]');
+  const copyButton = panel.querySelector('[data-paid-copy]');
+  const addressNode = panel.querySelector('[data-paid-address]');
+  const txInput = panel.querySelector('[data-paid-tx]');
+  const formatSelect = panel.querySelector('[data-paid-format]');
+  const statusNode = panel.querySelector('[data-paid-status]');
+  const linkNode = panel.querySelector('[data-paid-link]');
+  let orderId = '';
+
+  const setStatus = (text, mode = '') => {
+    if (!statusNode) return;
+    statusNode.textContent = text;
+    statusNode.classList.toggle('is-error', mode === 'error');
+    statusNode.classList.toggle('is-ok', mode === 'ok');
+  };
+  const postJson = async (path, body) => {
+    const response = await fetch(`${apiBase}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body || {}),
+    });
+    let payload = {};
+    try { payload = await response.json(); } catch (error) {}
+    if (!response.ok) {
+      throw new Error(payload.message || payload.error || '请求失败');
+    }
+    return payload;
+  };
+
+  if (!apiBase) {
+    if (createButton) createButton.disabled = true;
+    if (verifyButton) verifyButton.disabled = true;
+    if (txInput) txInput.disabled = true;
+    setStatus('付费下载接口待接入', 'error');
+    return;
+  }
+
+  if (copyButton && addressNode) {
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(addressNode.textContent.trim());
+        setStatus('收款地址已复制', 'ok');
+      } catch (error) {
+        setStatus(addressNode.textContent.trim(), 'ok');
+      }
+    });
+  }
+
+  if (createButton) {
+    createButton.addEventListener('click', async () => {
+      createButton.disabled = true;
+      setStatus('正在生成付款订单...');
+      try {
+        const result = await postJson('/orders', { format: formatSelect ? formatSelect.value : 'xlsx' });
+        orderId = result.orderId || result.order_id || '';
+        if (txInput) txInput.disabled = false;
+        if (verifyButton) verifyButton.disabled = false;
+        setStatus(`订单已生成：支付 ${result.amountMars || '1000'} MARS 后提交交易哈希。`, 'ok');
+      } catch (error) {
+        setStatus(error.message || '订单生成失败', 'error');
+      } finally {
+        createButton.disabled = false;
+      }
+    });
+  }
+
+  if (verifyButton) {
+    verifyButton.addEventListener('click', async () => {
+      const txHash = txInput ? txInput.value.trim() : '';
+      if (!orderId) {
+        setStatus('请先生成付款订单', 'error');
+        return;
+      }
+      if (!/^0x[a-fA-F0-9]{64}$/.test(txHash)) {
+        setStatus('交易哈希格式不正确', 'error');
+        return;
+      }
+      verifyButton.disabled = true;
+      setStatus('正在核销链上付款...');
+      try {
+        const result = await postJson(`/orders/${encodeURIComponent(orderId)}/verify`, {
+          txHash,
+          format: formatSelect ? formatSelect.value : 'xlsx',
+        });
+        if (result.status === 'WAITING_CONFIRMATIONS') {
+          setStatus(`交易已找到，等待确认数 ${result.confirmations || 0}/${result.requiredConfirmations || 3}`);
+          return;
+        }
+        if (result.downloadUrl && linkNode) {
+          linkNode.href = result.downloadUrl;
+          linkNode.classList.add('is-ready');
+          setStatus('核销成功，下载链接 1 小时内有效。', 'ok');
+        } else {
+          setStatus('核销成功，请重新打开下载链接。', 'ok');
+        }
+      } catch (error) {
+        setStatus(error.message || '核销失败', 'error');
+      } finally {
+        verifyButton.disabled = false;
+      }
+    });
+  }
+};
+
+document.querySelectorAll('[data-paid-panel]').forEach(setupMobilePaidDownloadPanel);
+
 document.querySelectorAll('[data-track]').forEach((node) => {
   node.addEventListener('click', () => {
     window._hmt = window._hmt || [];
@@ -2946,6 +3323,7 @@ def build_mobile_html(payload: dict) -> str:
     title = "MarsChain 算力排行榜 · 手机版"
     subtitle = "手机端查看 MarsChain 全网算力、统计日新增地址和头部排行。"
     analytics_head = build_analytics_head()
+    paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
@@ -3012,6 +3390,7 @@ def build_mobile_html(payload: dict) -> str:
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
     rank_first_page_end = min(rank_page_size, rank_total_count)
     rank_cards = _build_mobile_rank_cards(rows, limit=100, page_size=rank_page_size)
+    paid_download_panel = _build_paid_download_panel(paid_download_config, mobile=True)
     rank_page_buttons = "".join(
         '<button class="m-rank-page-button%s" type="button" data-mobile-rank-page="%d" aria-current="%s">%d</button>'
         % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
@@ -3100,6 +3479,7 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-section-head"><div><span class="m-kicker">01 / RANK</span><h2>头部排行</h2></div><p>每页 10 名，共 10 页。</p></div>
       <div class="m-list m-rank-list" id="mobileRankList" data-page-size="{rank_page_size}" data-total-count="{rank_total_count}">{rank_cards}</div>
       {rank_controls_html}
+      {paid_download_panel}
     </section>
     <section id="core" class="m-section">
       <div class="m-section-head"><div><span class="m-kicker">02 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>

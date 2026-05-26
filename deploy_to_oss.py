@@ -76,10 +76,15 @@ def guess_headers(rel_path: str) -> dict[str, str]:
     headers = {"Content-Type": content_type}
     if rel_path in NO_CACHE_KEYS:
         headers["Cache-Control"] = "no-store, no-cache, max-age=0, must-revalidate"
-    elif rel_path.startswith("downloads/"):
-        headers["Cache-Control"] = "public, max-age=300"
     else:
         headers["Cache-Control"] = "public, max-age=900"
+    return headers
+
+
+def paid_download_headers(rel_path: str) -> dict[str, str]:
+    headers = guess_headers(rel_path)
+    headers["Cache-Control"] = "private, no-store, max-age=0"
+    headers["Content-Disposition"] = f'attachment; filename="{Path(rel_path).name}"'
     return headers
 
 
@@ -92,8 +97,6 @@ def refresh_urls(base_url: str) -> list[str]:
         urljoin(canonical, "m/index.html"),
         urljoin(canonical, "build-meta.json"),
         urljoin(canonical, "data/latest.json"),
-        urljoin(canonical, "downloads/latest.csv"),
-        urljoin(canonical, "downloads/latest.xlsx"),
         urljoin(canonical, "robots.txt"),
     ]
 
@@ -143,6 +146,41 @@ def sync_site(
     return summary
 
 
+def sync_paid_downloads(
+    paid_download_dir: Path,
+    bucket_name: str,
+    endpoint: str,
+    prefix: str,
+    dry_run: bool,
+) -> dict[str, list[str]]:
+    source_files = [
+        ("latest.csv", paid_download_dir / "latest.csv"),
+        ("latest.xlsx", paid_download_dir / "latest.xlsx"),
+    ]
+    desired_files = [(rel, path) for rel, path in source_files if path.exists()]
+    summary = {"upload": []}
+    if not desired_files:
+        return summary
+
+    if dry_run:
+        summary["upload"].extend(build_remote_key(prefix, rel) for rel, _ in desired_files)
+        return summary
+
+    import oss2
+
+    access_key_id = resolve_setting(None, "ALIBABA_CLOUD_ACCESS_KEY_ID")
+    access_key_secret = resolve_setting(None, "ALIBABA_CLOUD_ACCESS_KEY_SECRET")
+    auth = oss2.Auth(access_key_id, access_key_secret)
+    bucket = oss2.Bucket(auth, endpoint, bucket_name)
+
+    for rel, path in desired_files:
+        remote_key = build_remote_key(prefix, rel)
+        with path.open("rb") as fh:
+            bucket.put_object(remote_key, fh, headers=paid_download_headers(rel))
+        summary["upload"].append(remote_key)
+    return summary
+
+
 def refresh_cdn(base_url: str, dry_run: bool) -> list[str]:
     urls = refresh_urls(base_url)
     if dry_run:
@@ -176,6 +214,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--endpoint", help="OSS endpoint. Falls back to ALIYUN_OSS_ENDPOINT.")
     parser.add_argument("--prefix", help="Optional remote key prefix. Falls back to ALIYUN_OSS_PREFIX.")
     parser.add_argument("--base-url", help="Public site base URL used for CDN refresh. Falls back to ALIYUN_SITE_BASE_URL.")
+    parser.add_argument("--paid-download-dir", default="output/latest", help="Directory containing private paid download files.")
+    parser.add_argument("--skip-paid-download-upload", action="store_true", help="Do not upload paid download files to the private OSS bucket.")
     parser.add_argument("--allow-bucket-root", action="store_true", help="Allow syncing to the bucket root when no prefix is set.")
     parser.add_argument("--skip-cdn-refresh", action="store_true", help="Upload to OSS but do not call CDN refresh.")
     parser.add_argument("--dry-run", action="store_true", help="Print intended uploads and refresh URLs without calling Alibaba Cloud.")
@@ -192,11 +232,24 @@ def main() -> int:
     endpoint = normalize_endpoint(resolve_setting(args.endpoint, "ALIYUN_OSS_ENDPOINT"))
     prefix = normalize_prefix(resolve_setting(args.prefix, "ALIYUN_OSS_PREFIX", required=False, default=""))
     base_url = resolve_setting(args.base_url, "ALIYUN_SITE_BASE_URL", required=False, default="")
+    paid_bucket_name = resolve_setting(None, "ALIYUN_PAID_OSS_BUCKET", required=False, default="")
+    paid_endpoint = normalize_endpoint(resolve_setting(None, "ALIYUN_PAID_OSS_ENDPOINT", required=False, default=endpoint))
+    paid_prefix = normalize_prefix(resolve_setting(None, "ALIYUN_PAID_OSS_PREFIX", required=False, default="paid-downloads"))
 
     if not prefix and not args.allow_bucket_root:
         raise SystemExit("Refusing to sync to OSS bucket root without --allow-bucket-root.")
 
     sync_summary = sync_site(site_dir, bucket_name, endpoint, prefix, args.dry_run)
+    paid_sync_summary = {"upload": []}
+    paid_upload_skipped = args.skip_paid_download_upload or not paid_bucket_name
+    if not paid_upload_skipped:
+        paid_sync_summary = sync_paid_downloads(
+            Path(args.paid_download_dir),
+            paid_bucket_name,
+            paid_endpoint,
+            paid_prefix,
+            args.dry_run,
+        )
     refreshed = []
     cdn_refresh_error = ""
     cdn_refresh_skipped = args.skip_cdn_refresh or not base_url
@@ -214,6 +267,9 @@ def main() -> int:
                 "prefix": prefix,
                 "uploaded_count": len(sync_summary["upload"]),
                 "deleted_count": len(sync_summary["delete"]),
+                "paid_bucket": paid_bucket_name,
+                "paid_uploaded_count": len(paid_sync_summary["upload"]),
+                "paid_upload_skipped": paid_upload_skipped,
                 "cdn_refresh_skipped": cdn_refresh_skipped,
                 "cdn_refresh_error": cdn_refresh_error,
                 "refreshed_urls": refreshed,
