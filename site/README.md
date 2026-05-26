@@ -31,7 +31,7 @@ python3 -m http.server 8000
 1. GitHub Actions 定时执行 [refresh_site.py](/Users/chu/Documents/openclaw/refresh_site.py)
 2. 生成最新 `site/` 目录
 3. 通过 [deploy_to_oss.py](/Users/chu/Documents/openclaw/deploy_to_oss.py) 同步到阿里云 OSS
-4. 刷新阿里云 CDN 的首页、JSON 和构建摘要缓存
+4. 刷新阿里云 CDN 的首页、JSON、构建摘要和旧公开下载文件缓存
 5. 由独立域名通过 CNAME 指向 CDN 域名对外提供 HTTPS 访问
 
 详细云端配置步骤见：

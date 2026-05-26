@@ -84,7 +84,7 @@
 4. 归档 `output/latest`
 5. 同步 `site/` 到 OSS
 6. 如果配置了 `ALIYUN_PAID_OSS_BUCKET`，把全量 CSV / Excel 上传到私有 OSS
-7. 如果配置了 `ALIYUN_SITE_BASE_URL`，再刷新首页、最新 JSON 和构建摘要的 CDN 缓存
+7. 如果配置了 `ALIYUN_SITE_BASE_URL`，再刷新首页、最新 JSON、构建摘要和旧公开下载文件的 CDN 缓存
 
 ## 5. 付费下载 API
 

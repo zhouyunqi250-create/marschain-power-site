@@ -54,7 +54,7 @@ python3 -m http.server 8000
 2. 扫描完成后生成 `site/`，即使未达 80% 也发布当轮最佳结果
 3. `deploy_to_oss.py` 将 `site/` 上传到阿里云 OSS
 4. 如果配置了私有下载 Bucket，同步全量 CSV / Excel 到私有 OSS
-5. 刷新 CDN 首页、JSON 和构建摘要缓存
+5. 刷新 CDN 首页、JSON、构建摘要和旧公开下载文件缓存
 6. 通过独立域名对外访问
 
 ## 付费下载

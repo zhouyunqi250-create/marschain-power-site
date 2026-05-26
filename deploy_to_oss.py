@@ -97,6 +97,8 @@ def refresh_urls(base_url: str) -> list[str]:
         urljoin(canonical, "m/index.html"),
         urljoin(canonical, "build-meta.json"),
         urljoin(canonical, "data/latest.json"),
+        urljoin(canonical, "downloads/latest.csv"),
+        urljoin(canonical, "downloads/latest.xlsx"),
         urljoin(canonical, "robots.txt"),
     ]
 
