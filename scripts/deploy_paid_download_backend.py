@@ -113,6 +113,7 @@ def fc_client(region_id: str, access_key_id: str, access_key_secret: str) -> FcC
         access_key_id=access_key_id,
         access_key_secret=access_key_secret,
         region_id=region_id,
+        endpoint=f"fc.{region_id}.aliyuncs.com",
     )
     return FcClient(config)
 
