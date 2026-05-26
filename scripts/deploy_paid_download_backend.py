@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import base64
 import io
 import json
 import os
@@ -83,7 +82,7 @@ def create_private_bucket(bucket_name: str, endpoint: str, auth: oss2.Auth) -> N
     time.sleep(2)
 
 
-def package_function() -> str:
+def package_function() -> bytes:
     source = ROOT / "paid_download_service.py"
     if not source.exists():
         raise SystemExit(f"Missing service source: {source}")
@@ -105,7 +104,7 @@ def package_function() -> str:
             for path in build_dir.rglob("*"):
                 if path.is_file():
                     zf.write(path, path.relative_to(build_dir).as_posix())
-        return base64.b64encode(buffer.getvalue()).decode("ascii")
+        return buffer.getvalue()
 
 
 def fc_client(region_id: str, access_key_id: str, access_key_secret: str) -> FcClient:
@@ -138,8 +137,22 @@ def caller_account_id(access_key_id: str, access_key_secret: str) -> str:
         return "unknown"
 
 
-def code_input(zip_file: str) -> fc_models.InputCodeLocation:
-    return fc_models.InputCodeLocation(zip_file=zip_file)
+def code_input(bucket_name: str, object_name: str) -> fc_models.InputCodeLocation:
+    return fc_models.InputCodeLocation(oss_bucket_name=bucket_name, oss_object_name=object_name)
+
+
+def upload_function_code(bucket_name: str, endpoint: str, auth: oss2.Auth, zip_bytes: bytes) -> str:
+    object_name = f"paid-download-code/{FUNCTION_NAME}-{int(time.time())}.zip"
+    bucket = oss2.Bucket(auth, endpoint, bucket_name)
+    bucket.put_object(
+        object_name,
+        zip_bytes,
+        headers={
+            "Content-Type": "application/zip",
+            "Cache-Control": "no-store",
+        },
+    )
+    return object_name
 
 
 def function_env(
@@ -168,7 +181,7 @@ def function_env(
     }
 
 
-def deploy_function(client: FcClient, body: fc_models.CreateFunctionInput, zip_file: str) -> None:
+def deploy_function(client: FcClient, body: fc_models.CreateFunctionInput, code: fc_models.InputCodeLocation) -> None:
     try:
         client.create_function(fc_models.CreateFunctionRequest(body=body))
         return
@@ -177,7 +190,7 @@ def deploy_function(client: FcClient, body: fc_models.CreateFunctionInput, zip_f
             raise
 
     update_body = fc_models.UpdateFunctionInput(
-        code=code_input(zip_file),
+        code=code,
         environment_variables=body.environment_variables,
         handler=body.handler,
         internet_access=body.internet_access,
@@ -244,7 +257,9 @@ def main() -> int:
     auth = oss2.Auth(access_key_id, access_key_secret)
     create_private_bucket(paid_bucket, paid_endpoint, auth)
 
-    zip_file = package_function()
+    zip_bytes = package_function()
+    code_object = upload_function_code(paid_bucket, paid_endpoint, auth, zip_bytes)
+    code = code_input(paid_bucket, code_object)
     client = fc_client(region_id, access_key_id, access_key_secret)
     env = function_env(
         access_key_id=access_key_id,
@@ -256,7 +271,7 @@ def main() -> int:
     body = fc_models.CreateFunctionInput(
         function_name=FUNCTION_NAME,
         description="MarsChain paid leaderboard download verifier",
-        code=code_input(zip_file),
+        code=code,
         handler="paid_download_service.handler",
         runtime=os.getenv("MARS_PAID_FUNCTION_RUNTIME", "python3.10"),
         memory_size=int(os.getenv("MARS_PAID_FUNCTION_MEMORY", "512")),
@@ -267,7 +282,7 @@ def main() -> int:
         internet_access=True,
         environment_variables=env,
     )
-    deploy_function(client, body, zip_file)
+    deploy_function(client, body, code)
     api_base = deploy_trigger(client)
     health = check_health(api_base)
 
@@ -282,6 +297,7 @@ def main() -> int:
                 "paid_bucket": paid_bucket,
                 "paid_endpoint": endpoint_host(paid_endpoint),
                 "paid_prefix": paid_prefix,
+                "code_object": code_object,
                 "health": health,
             },
             ensure_ascii=False,
