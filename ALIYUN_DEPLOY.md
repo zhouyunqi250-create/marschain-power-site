@@ -20,7 +20,7 @@
 7. 配置 HTTPS 证书，并强制 HTTPS。
 8. DNS 把自定义域名 `CNAME` 到 CDN 分配的加速域名。
 9. 另建一个**私有** OSS Bucket 保存付费下载文件和订单记录。
-10. 部署一个 HTTP 函数运行 [paid_download_service.py](/Users/chu/Documents/openclaw/paid_download_service.py)，并把 `/api/*` 转发到该函数。
+10. 部署一个 HTTP 函数运行 [paid_download_service.py](/Users/chu/Documents/openclaw/paid_download_service.py)。可以直接使用 `Deploy Paid Download Backend` 工作流自动完成。
 
 ## 2. RAM 子账号权限
 
@@ -110,6 +110,14 @@
 - `MARS_PAYMENT_CONFIRMATIONS`，默认 `3`
 
 这个函数只核销 MarsChain 原生 MARS 转账，不需要 ERC20 合约地址。
+
+也可以直接运行 GitHub Actions 里的 `Deploy Paid Download Backend` 工作流。它会：
+
+1. 创建或复用私有下载 Bucket
+2. 部署 HTTP 核销函数
+3. 用返回的函数 URL 重新生成站点
+4. 上传公开站点和私有全量下载文件
+5. 验证 `/health`、公开前 100 JSON 和全量数量
 
 ## 6. 本地验证
 

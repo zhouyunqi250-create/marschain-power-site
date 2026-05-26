@@ -63,6 +63,30 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Preserve paid download API base
+        if: ${{ env.MARSCHAIN_PAID_DOWNLOAD_API_BASE == '' }}
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python - <<'PY' >> "$GITHUB_ENV"
+          import html
+          import os
+          import re
+          import urllib.request
+
+          base = (os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com").rstrip("/")
+          try:
+              with urllib.request.urlopen(f"{base}/?v=paid-api-preserve", timeout=30) as resp:
+                  page = resp.read().decode("utf-8", "replace")
+          except Exception:
+              raise SystemExit(0)
+
+          match = re.search(r'data-api-base="([^"]+)"', page)
+          if match:
+              api_base = html.unescape(match.group(1)).strip()
+              if api_base:
+                  print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={api_base}")
+          PY
+
       - name: Refresh site with best-effort coverage
         if: ${{ !(github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) }}
         run: |

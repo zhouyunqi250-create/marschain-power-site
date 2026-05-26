@@ -22,8 +22,10 @@
 - [refresh_site.py](refresh_site.py)：总控脚本，负责分层扫描、覆盖率判断和站点刷新
 - [deploy_to_oss.py](deploy_to_oss.py)：把 `site/` 同步到阿里云 OSS，并刷新 CDN 缓存
 - [paid_download_service.py](paid_download_service.py)：核销 1000 MARS 转账并返回 1 小时有效的私有下载链接
+- [scripts/deploy_paid_download_backend.py](scripts/deploy_paid_download_backend.py)：创建私有下载桶并部署付费核销函数
 - [ALIYUN_DEPLOY.md](ALIYUN_DEPLOY.md)：阿里云上线步骤和 GitHub Secrets 配置说明
 - [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：每 5 小时自动更新的 GitHub Actions 工作流
+- [deploy-paid-download.yml](.github/workflows/deploy-paid-download.yml)：付费下载后端部署工作流
 
 ## 本地运行
 
@@ -68,6 +70,8 @@ python3 -m http.server 8000
 - 下载链接有效期：1 小时
 
 前端只在 `MARSCHAIN_PAID_DOWNLOAD_API_BASE` 配置后启用订单按钮。后端需要部署 [paid_download_service.py](paid_download_service.py)，并使用私有 OSS Bucket 保存全量文件和订单记录。
+
+可通过 GitHub Actions 的 `Deploy Paid Download Backend` 工作流自动部署后端。该流程会使用现有阿里云密钥创建或复用私有下载 Bucket，部署 HTTP 核销函数，重新生成全量榜单，把全量 CSV / Excel 上传到私有 Bucket，并用函数 API 地址重新发布站点。
 
 ## 访问统计
 

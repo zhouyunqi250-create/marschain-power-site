@@ -1,0 +1,96 @@
+name: Deploy Paid Download Backend
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-paid-download.yml"
+      - "scripts/deploy_paid_download_backend.py"
+      - "paid_download_service.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-paid-download
+  cancel-in-progress: false
+
+jobs:
+  deploy-paid-download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+      ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+      ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+      ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
+      ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+      ALIYUN_PAID_OSS_BUCKET: ${{ secrets.ALIYUN_PAID_OSS_BUCKET }}
+      ALIYUN_PAID_OSS_ENDPOINT: ${{ secrets.ALIYUN_PAID_OSS_ENDPOINT }}
+      ALIYUN_PAID_OSS_PREFIX: ${{ secrets.ALIYUN_PAID_OSS_PREFIX }}
+      BAIDU_TONGJI_SITE_ID: 1dc172d16803cd4223b85645006548b4
+      MICROSOFT_CLARITY_PROJECT_ID: ${{ secrets.MICROSOFT_CLARITY_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install alibabacloud_fc20230330 alibabacloud_sts20150401
+
+      - name: Deploy paid download API
+        id: paid_api
+        run: |
+          python scripts/deploy_paid_download_backend.py | tee paid-deploy.json
+          python - <<'PY' >> "$GITHUB_ENV"
+          import json
+          data = json.load(open("paid-deploy.json"))
+          print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={data['api_base']}")
+          print(f"ALIYUN_PAID_OSS_BUCKET={data['paid_bucket']}")
+          print(f"ALIYUN_PAID_OSS_ENDPOINT={data['paid_endpoint']}")
+          print(f"ALIYUN_PAID_OSS_PREFIX={data['paid_prefix']}")
+          PY
+
+      - name: Refresh full ranking and site
+        run: |
+          python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
+
+      - name: Deploy public site and private paid downloads
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python deploy_to_oss.py \
+            --site-dir site \
+            --bucket "$ALIYUN_OSS_BUCKET" \
+            --endpoint "$ALIYUN_OSS_ENDPOINT" \
+            --base-url "$SITE_BASE_URL" \
+            --prefix "${ALIYUN_OSS_PREFIX:-}" \
+            --allow-bucket-root
+
+      - name: Verify deployed paid site
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          base = os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com"
+          api_base = os.environ["MARSCHAIN_PAID_DOWNLOAD_API_BASE"]
+          with urllib.request.urlopen(f"{api_base}/health", timeout=60) as resp:
+              health = json.load(resp)
+          with urllib.request.urlopen(f"{base.rstrip('/')}/data/latest.json?v=paid-deploy", timeout=60) as resp:
+              payload = json.load(resp)
+          assert len(payload.get("rows", [])) == 100
+          assert payload.get("meta", {}).get("full_ranked_count", 0) >= 100
+          print(json.dumps({"api_base": api_base, "health": health, "public_rows": len(payload.get("rows", [])), "full_ranked_count": payload.get("meta", {}).get("full_ranked_count")}, ensure_ascii=False, indent=2))
+          PY
