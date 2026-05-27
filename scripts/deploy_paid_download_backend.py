@@ -93,7 +93,7 @@ def package_function() -> bytes:
         shutil.copy2(source, build_dir / "paid_download_service.py")
 
         subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-q", "oss2>=2.19,<3", "cryptography>=3.4,<3.5", "-t", str(build_dir)],
+            [sys.executable, "-m", "pip", "install", "-q", "oss2>=2.19,<3", "cryptography==42.0.8", "-t", str(build_dir)],
             check=True,
             stdout=sys.stderr,
             stderr=sys.stderr,
