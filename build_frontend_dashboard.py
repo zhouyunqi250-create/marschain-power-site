@@ -1926,6 +1926,28 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .paid-copy span { color: var(--amber); font-size: 12px; font-weight: 950; letter-spacing: .12em; }
 .paid-copy h3 { margin: 10px 0 12px; font-size: 36px; line-height: 1; letter-spacing: -.045em; }
 .paid-copy p { margin: 0; max-width: 620px; color: #b7c4d9; line-height: 1.75; }
+.paid-rules {
+  display: grid;
+  gap: 9px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #d2def0;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.paid-rules li { position: relative; padding-left: 18px; }
+.paid-rules li:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .72em;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  box-shadow: 0 0 14px rgba(255,211,126,.7);
+}
 .paid-box { display: grid; gap: 12px; }
 .paid-amount, .paid-address, .paid-controls, .paid-tx {
   display: grid;
@@ -2636,6 +2658,12 @@ def _build_paid_download_panel(config: dict[str, str], *, mobile: bool = False) 
         <span>{'PAID DOWNLOAD' if not mobile else 'DOWNLOAD'}</span>
         <h3>全量排行榜下载</h3>
         <p>前 100 名免费查看，全量文件需支付 {escape(config["price_mars"])} MARS；核销成功后下载链接 {escape(config["expires_label"])} 内有效。</p>
+        <ul class="{prefix}-rules">
+          <li>先生成付款订单，再用 MarsChain 钱包向收款地址转账 MARS。</li>
+          <li>{escape(config["price_mars"])} MARS 需单笔一次性支付，拆分多笔无法自动核销。</li>
+          <li>链上手续费由付款方承担，实际转账金额需不少于 {escape(config["price_mars"])} MARS。</li>
+          <li>转账确认后复制交易哈希，回到本页提交核销。</li>
+        </ul>
       </div>
       <div class="{prefix}-box">
         <div class="{prefix}-amount"><span>收款金额</span><b>{escape(config["price_mars"])} MARS</b></div>
@@ -3071,6 +3099,9 @@ a { color: inherit; }
 .m-paid-copy span { color: var(--amber); font-size: 11px; font-weight: 950; letter-spacing: .12em; }
 .m-paid-copy h3 { margin: 7px 0 8px; font-size: 25px; line-height: 1; letter-spacing: -.045em; }
 .m-paid-copy p { margin: 0; color: #b4c4da; font-size: 12px; line-height: 1.65; }
+.m-paid-rules { display: grid; gap: 7px; margin: 11px 0 0; padding: 0; list-style: none; color: #d1def0; font-size: 12px; line-height: 1.55; }
+.m-paid-rules li { position: relative; padding-left: 16px; }
+.m-paid-rules li:before { content: ""; position: absolute; left: 0; top: .68em; width: 5px; height: 5px; border-radius: 999px; background: var(--amber); }
 .m-paid-box { display: grid; gap: 9px; }
 .m-paid-amount span, .m-paid-address span { display: block; color: #9fb0c9; font-size: 12px; font-weight: 900; }
 .m-paid-amount b { display: block; margin-top: 6px; color: var(--amber); font-size: 25px; }

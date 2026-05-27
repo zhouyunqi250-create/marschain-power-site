@@ -68,6 +68,10 @@ python3 -m http.server 8000
 - 收款地址：`0M0fD038365577215292B44F89C92695C7AC8C3363`
 - 后端验账地址：`0x0fD038365577215292B44F89C92695C7AC8C3363`
 - 下载链接有效期：1 小时
+- 支付方式：先生成订单，再用 MarsChain 钱包向收款地址转账 MARS
+- 支付规则：`1000 MARS` 需单笔一次性支付，拆分多笔无法自动核销
+- 手续费：链上手续费由付款方承担，实际转账金额需不少于 `1000 MARS`
+- 核销方式：转账确认后复制交易哈希，回到页面提交核销
 
 前端只在 `MARSCHAIN_PAID_DOWNLOAD_API_BASE` 配置后启用订单按钮。后端需要部署 [paid_download_service.py](paid_download_service.py)，并使用私有 OSS Bucket 保存全量文件和订单记录。
 
