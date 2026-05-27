@@ -65,8 +65,8 @@ python3 -m http.server 8000
 
 - 前 100 名免费公开
 - 全量排行榜下载收费 `1000 MARS`
-- 收款地址：`0M8678F454D69d2185DfAa6643cF06faCB8DE17c7c`
-- 后端验账地址：`0x8678F454D69d2185DfAa6643cF06faCB8DE17c7c`
+- 收款地址：`0M0fD038365577215292B44F89C92695C7AC8C3363`
+- 后端验账地址：`0x0fD038365577215292B44F89C92695C7AC8C3363`
 - 下载链接有效期：1 小时
 
 前端只在 `MARSCHAIN_PAID_DOWNLOAD_API_BASE` 配置后启用订单按钮。后端需要部署 [paid_download_service.py](paid_download_service.py)，并使用私有 OSS Bucket 保存全量文件和订单记录。
