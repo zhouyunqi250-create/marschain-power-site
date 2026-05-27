@@ -5,10 +5,13 @@ from __future__ import annotations
 
 import json
 import os
+import base64
 import time
 import uuid
 import urllib.request
 from dataclasses import dataclass
+from http import HTTPStatus
+from urllib.parse import unquote
 from typing import Any, Callable
 
 
@@ -146,6 +149,37 @@ def parse_request(environ: dict[str, Any]) -> Request:
     if raw_body:
         try:
             body = json.loads(raw_body.decode("utf-8"))
+        except json.JSONDecodeError:
+            raise ApiError(400, "BAD_JSON", "请求内容不是有效 JSON")
+    return Request(method=method, path=path, body=body)
+
+
+def parse_fc_http_event(event: Any) -> Request:
+    if isinstance(event, (bytes, bytearray)):
+        event = json.loads(event.decode("utf-8"))
+    elif isinstance(event, str):
+        event = json.loads(event)
+    if not isinstance(event, dict):
+        raise ApiError(400, "BAD_EVENT", "函数事件格式不正确")
+
+    context = event.get("requestContext") or {}
+    http = context.get("http") or {}
+    method = str(http.get("method") or "GET").upper()
+    path = str(http.get("path") or event.get("rawPath") or "/")
+    path = unquote(path)
+
+    raw_body = event.get("body") or ""
+    if event.get("isBase64Encoded"):
+        raw_bytes = base64.b64decode(raw_body) if raw_body else b""
+    elif isinstance(raw_body, str):
+        raw_bytes = raw_body.encode("utf-8")
+    else:
+        raw_bytes = bytes(raw_body)
+
+    body: dict[str, Any] = {}
+    if raw_bytes:
+        try:
+            body = json.loads(raw_bytes.decode("utf-8"))
         except json.JSONDecodeError:
             raise ApiError(400, "BAD_JSON", "请求内容不是有效 JSON")
     return Request(method=method, path=path, body=body)
@@ -333,30 +367,56 @@ def response_headers(content_type: str = "application/json; charset=utf-8") -> l
     ]
 
 
-def handler(environ: dict[str, Any], start_response: Callable[[str, list[tuple[str, str]]], None]) -> list[bytes]:
+def handle_request(request: Request) -> tuple[int, dict[str, Any]]:
+    try:
+        payload = route(request)
+        return 200, payload
+    except ApiError as exc:
+        return exc.status, {"error": exc.code, "message": exc.message, **exc.extra}
+    except Exception as exc:
+        return 500, {"error": "SERVER_ERROR", "message": str(exc)}
+
+
+def wsgi_handler(environ: dict[str, Any], start_response: Callable[[str, list[tuple[str, str]]], None]) -> list[bytes]:
     if (environ.get("REQUEST_METHOD") or "").upper() == "OPTIONS":
         start_response("204 No Content", response_headers())
         return [b""]
 
+    status_code, payload = handle_request(parse_request(environ))
     try:
-        request = parse_request(environ)
-        payload = route(request)
-        status = "200 OK"
-    except ApiError as exc:
-        status = f"{exc.status} Error"
-        payload = {"error": exc.code, "message": exc.message, **exc.extra}
-    except Exception as exc:
-        status = "500 Error"
-        payload = {"error": "SERVER_ERROR", "message": str(exc)}
-
+        phrase = HTTPStatus(status_code).phrase
+    except ValueError:
+        phrase = "Error"
+    status = f"{status_code} {phrase}"
     start_response(status, response_headers())
     return [json.dumps(payload, ensure_ascii=False).encode("utf-8")]
+
+
+def fc_http_handler(event: Any, context: Any = None) -> dict[str, Any]:
+    del context
+    request = parse_fc_http_event(event)
+    if request.method == "OPTIONS":
+        return {"statusCode": 204, "headers": dict(response_headers()), "isBase64Encoded": False, "body": ""}
+
+    status_code, payload = handle_request(request)
+    return {
+        "statusCode": status_code,
+        "headers": dict(response_headers()),
+        "isBase64Encoded": False,
+        "body": json.dumps(payload, ensure_ascii=False),
+    }
+
+
+def handler(event: Any, context: Any = None) -> Any:
+    if callable(context):
+        return wsgi_handler(event, context)
+    return fc_http_handler(event, context)
 
 
 if __name__ == "__main__":
     from wsgiref.simple_server import make_server
 
     port = int(os.getenv("PORT", "8787"))
-    with make_server("127.0.0.1", port, handler) as server:
+    with make_server("127.0.0.1", port, wsgi_handler) as server:
         print(f"paid download API listening on http://127.0.0.1:{port}{ROUTE_PREFIX}")
         server.serve_forever()
