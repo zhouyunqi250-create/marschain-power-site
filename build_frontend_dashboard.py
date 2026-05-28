@@ -1614,6 +1614,36 @@ h1 {
   animation: titleShine 8s ease-in-out infinite;
 }
 .lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
+.hero-ad {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 700px;
+  margin-top: 22px;
+  padding: 14px 16px;
+  border: 1px solid rgba(255,211,126,.30);
+  border-radius: 18px;
+  color: #fff3cf;
+  background:
+    linear-gradient(135deg, rgba(255,211,126,.14), rgba(82,239,255,.08)),
+    rgba(255,255,255,.045);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px rgba(255,211,126,.10);
+}
+.hero-ad span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #06121d;
+  background: var(--amber);
+  font-size: 11px;
+  font-weight: 950;
+}
+.hero-ad b {
+  min-width: 0;
+  font-size: 15px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 30px; }
 .hero-note {
   color: #91a5c0;
@@ -2126,6 +2156,15 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     color: #d0dcf0;
     overflow-wrap: anywhere;
   }
+  .hero-ad {
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 16px;
+    padding: 12px;
+    border-radius: 17px;
+  }
+  .hero-ad span { padding: 4px 8px; font-size: 10px; }
+  .hero-ad b { font-size: 13px; line-height: 1.5; }
   .hero-actions {
     width: 100%;
     display: flex;
@@ -2894,6 +2933,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <span class="chip">数据已加载 · 每 5 小时刷新</span>
       <h1>MarsChain<br>算力指挥舱</h1>
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
+      <div class="hero-ad"><span>广告位</span><b>一亿算力以上可以加Mars chain铁军QQ群：7123708</b></div>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
         <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
@@ -3040,6 +3080,26 @@ a { color: inherit; }
 .m-hero h1 { margin: 18px 0 14px; font-size: clamp(46px, 15vw, 60px); line-height: .9; letter-spacing: -.075em; }
 .m-hero h1 span { display: block; background: linear-gradient(110deg, #fff, #bff8ff 48%, #cbd2ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .m-lead { margin: 0; color: #c6d4ea; font-size: 15px; line-height: 1.72; }
+.m-hero-ad {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+  padding: 13px;
+  border: 1px solid rgba(255,211,126,.28);
+  border-radius: 18px;
+  color: #fff0c7;
+  background: linear-gradient(135deg, rgba(255,211,126,.13), rgba(86,239,255,.08)), rgba(255,255,255,.045);
+}
+.m-hero-ad span {
+  width: max-content;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #06121d;
+  background: var(--amber);
+  font-size: 10px;
+  font-weight: 950;
+}
+.m-hero-ad b { font-size: 13px; line-height: 1.52; overflow-wrap: anywhere; }
 .m-hero-grid { display: grid; gap: 10px; margin-top: 22px; }
 .m-primary { border: 0; border-radius: 22px; padding: 18px; color: #03111a; background: linear-gradient(135deg, var(--cyan), var(--blue)); box-shadow: 0 22px 56px rgba(86,239,255,.20); }
 .m-primary span, .m-card span { display: block; font-size: 12px; font-weight: 950; opacity: .82; }
@@ -3491,6 +3551,7 @@ def build_mobile_html(payload: dict) -> str:
       <span class="m-chip">数据已加载 · 每 5 小时刷新</span>
       <h1><span>MarsChain</span><span>算力榜</span></h1>
       <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
+      <div class="m-hero-ad"><span>广告位</span><b>一亿算力以上可以加Mars chain铁军QQ群：7123708</b></div>
       <div class="m-hero-grid">
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
         <div class="m-card-grid">
