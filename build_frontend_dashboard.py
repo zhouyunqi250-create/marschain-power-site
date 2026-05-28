@@ -2695,7 +2695,7 @@ def _build_paid_download_panel(config: dict[str, str], *, mobile: bool = False) 
     <section class="{prefix}-download" data-paid-panel data-api-base="{escape(config["api_base"])}">
       <div class="{prefix}-copy">
         <span>{'PAID DOWNLOAD' if not mobile else 'DOWNLOAD'}</span>
-        <h3>全量排行榜下载</h3>
+        <h3>全球排行榜下载</h3>
         <p>前 100 名免费查看，全量文件需支付 {escape(config["price_mars"])} MARS；核销成功后下载链接 {escape(config["expires_label"])} 内有效。</p>
         <ul class="{prefix}-rules">
           <li>先生成付款订单，再用 MarsChain 钱包向收款地址转账 MARS。</li>
