@@ -1292,47 +1292,11 @@ def write_xlsx(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Ranking"
-    header = [
-        "Rank",
-        "Address",
-        "Power",
-        "Power Display",
-        "Total Burned",
-        "Total Burned Display",
-        "Burned",
-        "Burned Display",
-        "Tx Seen",
-        "Miner Seen",
-        "Log Seen",
-        "Upline Seen",
-        "Source Score",
-        "Nodes Count",
-        "Upline 1",
-        "Upline 2",
-    ]
+    ws.title = "排行榜"
+    header = ["排名", "地址", "算力"]
     ws.append(header)
     for idx, row in enumerate(rows, start=1):
-        ws.append(
-            [
-                idx,
-                row.address,
-                row.power,
-                row.to_dict()["power_display"],
-                row.total_burned_amount,
-                row.to_dict()["total_burned_amount_display"],
-                row.burned_amount,
-                row.to_dict()["burned_amount_display"],
-                row.tx_seen,
-                row.miner_seen,
-                row.log_seen,
-                row.upline_seen,
-                row.source_score,
-                row.nodes_count,
-                row.upline1,
-                row.upline2,
-            ]
-        )
+        ws.append([idx, row.address, row.power])
     fill = PatternFill("solid", fgColor="1F4B99")
     font = Font(color="FFFFFF", bold=True)
     for cell in ws[1]:
@@ -1344,45 +1308,10 @@ def write_xlsx(path: Path, rows: list[RankedAddress], meta: dict[str, Any]) -> N
     widths = {
         1: 8,
         2: 46,
-        3: 16,
-        4: 14,
-        5: 22,
-        6: 18,
-        7: 22,
-        8: 18,
-        9: 10,
-        10: 12,
-        11: 10,
-        12: 12,
-        13: 12,
-        14: 12,
-        15: 46,
-        16: 46,
+        3: 22,
     }
     for idx, width in widths.items():
         ws.column_dimensions[get_column_letter(idx)].width = width
-
-    summary = wb.create_sheet("Summary")
-    summary.append(["Metric", "Value"])
-    for key, value in [
-        ("Generated At", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(meta["generated_at"]))),
-        ("Ranking Type", meta["ranking_type"]),
-        ("Tx Pages", meta["tx_pages"]),
-        ("Block Pages", meta["block_pages"]),
-        ("Upline Depth", meta["upline_depth"]),
-        ("Candidate Count", meta["candidate_count"]),
-        ("Positive Power Count", meta["positive_power_count"]),
-        ("Ranked Count", meta["ranked_count"]),
-        ("Network Total Power", meta["network_total_power"]),
-        ("Discovered Total Power", meta["discovered_total_power"]),
-        ("Discovered Coverage", format_percent(meta["discovered_power_coverage"])),
-    ]:
-        summary.append([key, value])
-    for cell in summary[1]:
-        cell.fill = fill
-        cell.font = font
-    summary.column_dimensions["A"].width = 24
-    summary.column_dimensions["B"].width = 28
     wb.save(path)
 
 
@@ -1404,30 +1333,11 @@ def write_csv(path: Path, rows: list[RankedAddress]) -> None:
     with path.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
             fh,
-            fieldnames=[
-                "rank",
-                "address",
-                "power",
-                "power_display",
-                "total_burned_amount",
-                "total_burned_amount_display",
-                "burned_amount",
-                "burned_amount_display",
-                "tx_seen",
-                "miner_seen",
-                "log_seen",
-                "upline_seen",
-                "source_score",
-                "nodes_count",
-                "upline1",
-                "upline2",
-            ],
+            fieldnames=["排名", "地址", "算力"],
         )
         writer.writeheader()
         for idx, row in enumerate(rows, start=1):
-            out = row.to_dict()
-            out["rank"] = idx
-            writer.writerow(out)
+            writer.writerow({"排名": idx, "地址": row.address, "算力": row.power})
 
 
 def lookup_power_rows(
