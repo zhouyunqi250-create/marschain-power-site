@@ -7,6 +7,7 @@ import argparse
 import json
 import mimetypes
 import os
+import re
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -41,6 +42,17 @@ def normalize_endpoint(endpoint: str) -> str:
 def normalize_prefix(prefix: str) -> str:
     value = prefix.strip().strip("/")
     return value
+
+
+def derive_paid_bucket(site_bucket: str) -> str:
+    configured = os.getenv("ALIYUN_PAID_OSS_BUCKET", "").strip()
+    if configured:
+        return configured
+    base = re.sub(r"[^a-z0-9-]", "-", site_bucket.lower()).strip("-")
+    name = f"{base}-paid"
+    if len(name) <= 63:
+        return name
+    return f"{base[:58].rstrip('-')}-paid"
 
 
 def resolve_setting(cli_value: str | None, env_name: str, *, required: bool = True, default: str | None = None) -> str:
@@ -234,7 +246,7 @@ def main() -> int:
     endpoint = normalize_endpoint(resolve_setting(args.endpoint, "ALIYUN_OSS_ENDPOINT"))
     prefix = normalize_prefix(resolve_setting(args.prefix, "ALIYUN_OSS_PREFIX", required=False, default=""))
     base_url = resolve_setting(args.base_url, "ALIYUN_SITE_BASE_URL", required=False, default="")
-    paid_bucket_name = resolve_setting(None, "ALIYUN_PAID_OSS_BUCKET", required=False, default="")
+    paid_bucket_name = derive_paid_bucket(bucket_name)
     paid_endpoint = normalize_endpoint(resolve_setting(None, "ALIYUN_PAID_OSS_ENDPOINT", required=False, default=endpoint))
     paid_prefix = normalize_prefix(resolve_setting(None, "ALIYUN_PAID_OSS_PREFIX", required=False, default="paid-downloads"))
 
