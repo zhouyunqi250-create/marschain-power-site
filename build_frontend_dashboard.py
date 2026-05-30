@@ -1548,8 +1548,9 @@ body:after {
   box-shadow: 0 0 30px rgba(82,239,255,.4);
   animation: markSpin 10s linear infinite;
 }
+.top-actions { display: flex; align-items: center; gap: 8px; }
 .nav { display: flex; gap: 8px; }
-.nav a {
+.nav a, .lang-toggle {
   text-decoration: none;
   color: #adbad1;
   border: 1px solid transparent;
@@ -1557,9 +1558,18 @@ body:after {
   padding: 9px 12px;
   font-size: 13px;
   font-weight: 850;
+  font-family: inherit;
+  line-height: 1;
   transition: transform .24s ease, color .24s ease, border-color .24s ease, background .24s ease, box-shadow .24s ease;
 }
-.nav a:hover {
+.lang-toggle {
+  min-width: 52px;
+  cursor: pointer;
+  color: #d9faff;
+  background: rgba(82,239,255,.075);
+  border-color: rgba(82,239,255,.20);
+}
+.nav a:hover, .lang-toggle:hover {
   color: white;
   border-color: var(--line2);
   background: rgba(82,239,255,.08);
@@ -1614,36 +1624,6 @@ h1 {
   animation: titleShine 8s ease-in-out infinite;
 }
 .lead { font-size: 19px; line-height: 1.7; color: #c0cadf; max-width: 760px; margin: 0; }
-.hero-ad {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: 700px;
-  margin-top: 22px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255,211,126,.30);
-  border-radius: 18px;
-  color: #fff3cf;
-  background:
-    linear-gradient(135deg, rgba(255,211,126,.14), rgba(82,239,255,.08)),
-    rgba(255,255,255,.045);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 18px 44px rgba(255,211,126,.10);
-}
-.hero-ad span {
-  flex: 0 0 auto;
-  border-radius: 999px;
-  padding: 5px 9px;
-  color: #06121d;
-  background: var(--amber);
-  font-size: 11px;
-  font-weight: 950;
-}
-.hero-ad b {
-  min-width: 0;
-  font-size: 15px;
-  line-height: 1.45;
-  overflow-wrap: anywhere;
-}
 .hero-actions { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-top: 30px; }
 .hero-note {
   color: #91a5c0;
@@ -2119,8 +2099,14 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   }
   .brand { width: 100%; font-size: 16px; }
   .mark { width: 28px; height: 28px; border-radius: 10px; }
-  .nav {
+  .top-actions {
     width: 100%;
+    align-items: center;
+    gap: 8px;
+  }
+  .nav {
+    flex: 1 1 auto;
+    width: auto;
     gap: 8px;
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -2134,6 +2120,13 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     font-size: 12px;
     background: rgba(255,255,255,.045);
     border-color: rgba(125,225,255,.12);
+  }
+  .lang-toggle {
+    flex: 0 0 auto;
+    min-width: 48px;
+    padding: 8px 10px;
+    font-size: 12px;
+    align-self: flex-start;
   }
   .hero {
     min-height: auto;
@@ -2156,15 +2149,6 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     color: #d0dcf0;
     overflow-wrap: anywhere;
   }
-  .hero-ad {
-    align-items: flex-start;
-    gap: 10px;
-    margin-top: 16px;
-    padding: 12px;
-    border-radius: 17px;
-  }
-  .hero-ad span { padding: 4px 8px; font-size: 10px; }
-  .hero-ad b { font-size: 13px; line-height: 1.5; }
   .hero-actions {
     width: 100%;
     display: flex;
@@ -2389,6 +2373,7 @@ if (rankGrid && rankPagination) {
     if (prev) prev.disabled = currentPage === 1;
     if (next) next.disabled = currentPage === totalPages;
     if (count) count.textContent = `第 ${currentPage} / ${totalPages} 页 · 当前显示 ${start + 1}-${end} / 共 ${totalCount} 名`;
+    if (window.applyMarsLanguage) window.applyMarsLanguage();
   };
   buttons.forEach((button) => {
     button.addEventListener('click', () => renderRankPage(Number(button.dataset.rankPage || 1)));
@@ -2415,6 +2400,7 @@ const setupPaidDownloadPanel = (panel) => {
     statusNode.textContent = text;
     statusNode.classList.toggle('is-error', mode === 'error');
     statusNode.classList.toggle('is-ok', mode === 'ok');
+    if (window.applyMarsLanguage) window.applyMarsLanguage();
   };
   const postJson = async (path, body) => {
     const response = await fetch(`${apiBase}${path}`, {
@@ -2920,20 +2906,22 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 <div class="shell">
   <header class="topbar">
     <div class="brand"><span class="mark"></span>MarsChain Rank</div>
-    <nav class="nav">
-      <a href="#rank">算力排行</a>
-      <a href="#pulse">核心数据</a>
-      <a href="#growth">周期增长</a>
-      <a href="#wallets">地址统计</a>
-      <a href="#risk">数据说明</a>
-    </nav>
+    <div class="top-actions">
+      <nav class="nav">
+        <a href="#rank">算力排行</a>
+        <a href="#pulse">核心数据</a>
+        <a href="#growth">周期增长</a>
+        <a href="#wallets">地址统计</a>
+        <a href="#risk">数据说明</a>
+      </nav>
+      <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
+    </div>
   </header>
   <section class="hero">
     <div class="hero-copy reveal visible">
       <span class="chip">数据已加载 · 每 5 小时刷新</span>
       <h1>MarsChain<br>算力指挥舱</h1>
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
-      <div class="hero-ad"><span>广告位</span><b>一亿算力以上可以加Mars chain铁军QQ群：7123708</b></div>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
         <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
@@ -3006,7 +2994,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <footer class="footer">基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
-<script>{SCROLL_DASHBOARD_JS}</script>
+<script>{SCROLL_DASHBOARD_JS}
+{LANGUAGE_TOGGLE_JS}</script>
 </body>
 </html>
 """
@@ -3070,7 +3059,9 @@ a { color: inherit; }
 .m-brand { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .m-brand-main { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 950; }
 .m-mark { width: 30px; height: 30px; border-radius: 12px; background: conic-gradient(from 210deg, var(--cyan), var(--blue), #ff7ac6, var(--cyan)); box-shadow: 0 0 30px rgba(86,239,255,.35); }
-.m-desktop-link { flex: 0 0 auto; color: #bfefff; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; }
+.m-brand-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+.m-desktop-link, .m-lang-toggle { color: #bfefff; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; font-family: inherit; line-height: 1; background: rgba(255,255,255,.045); }
+.m-lang-toggle { min-width: 42px; cursor: pointer; color: #d9faff; background: rgba(86,239,255,.075); }
 .m-nav { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
 .m-nav::-webkit-scrollbar { display: none; }
 .m-nav a { flex: 0 0 auto; text-decoration: none; border: 1px solid rgba(121,225,255,.14); border-radius: 999px; padding: 8px 11px; color: #bfcee4; background: rgba(255,255,255,.045); font-size: 12px; font-weight: 900; }
@@ -3080,26 +3071,6 @@ a { color: inherit; }
 .m-hero h1 { margin: 18px 0 14px; font-size: clamp(46px, 15vw, 60px); line-height: .9; letter-spacing: -.075em; }
 .m-hero h1 span { display: block; background: linear-gradient(110deg, #fff, #bff8ff 48%, #cbd2ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .m-lead { margin: 0; color: #c6d4ea; font-size: 15px; line-height: 1.72; }
-.m-hero-ad {
-  display: grid;
-  gap: 7px;
-  margin-top: 14px;
-  padding: 13px;
-  border: 1px solid rgba(255,211,126,.28);
-  border-radius: 18px;
-  color: #fff0c7;
-  background: linear-gradient(135deg, rgba(255,211,126,.13), rgba(86,239,255,.08)), rgba(255,255,255,.045);
-}
-.m-hero-ad span {
-  width: max-content;
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: #06121d;
-  background: var(--amber);
-  font-size: 10px;
-  font-weight: 950;
-}
-.m-hero-ad b { font-size: 13px; line-height: 1.52; overflow-wrap: anywhere; }
 .m-hero-grid { display: grid; gap: 10px; margin-top: 22px; }
 .m-primary { border: 0; border-radius: 22px; padding: 18px; color: #03111a; background: linear-gradient(135deg, var(--cyan), var(--blue)); box-shadow: 0 22px 56px rgba(86,239,255,.20); }
 .m-primary span, .m-card span { display: block; font-size: 12px; font-weight: 950; opacity: .82; }
@@ -3244,6 +3215,7 @@ if (mobileRankList && mobileRankPagination) {
     if (prev) prev.disabled = currentPage === 1;
     if (next) next.disabled = currentPage === totalPages;
     if (count) count.textContent = `第 ${currentPage} / ${totalPages} 页 · 当前显示 ${start + 1}-${end} / 共 ${totalCount} 名`;
+    if (window.applyMarsLanguage) window.applyMarsLanguage();
   };
   buttons.forEach((button) => {
     button.addEventListener('click', () => renderMobileRankPage(Number(button.dataset.mobileRankPage || 1)));
@@ -3270,6 +3242,7 @@ const setupMobilePaidDownloadPanel = (panel) => {
     statusNode.textContent = text;
     statusNode.classList.toggle('is-error', mode === 'error');
     statusNode.classList.toggle('is-ok', mode === 'ok');
+    if (window.applyMarsLanguage) window.applyMarsLanguage();
   };
   const postJson = async (path, body) => {
     const response = await fetch(`${apiBase}${path}`, {
@@ -3369,6 +3342,278 @@ document.querySelectorAll('[data-track]').forEach((node) => {
     if (window.clarity) window.clarity('event', 'mobile_' + (node.dataset.track || 'click'));
   });
 });
+"""
+
+
+LANGUAGE_TOGGLE_JS = r"""
+(function() {
+  const STORAGE_KEY = 'marschain_lang';
+  const zhToEn = {
+    'MarsChain 算力排行榜': 'MarsChain Power Ranking',
+    '追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。': 'Track on-chain power distribution, top address changes, and Beijing-day growth trends.',
+    '算力排行': 'Power Rank',
+    '核心数据': 'Core Data',
+    '周期增长': 'Growth',
+    '地址统计': 'Wallet Stats',
+    '数据说明': 'Data Notes',
+    '排行': 'Rank',
+    '核心': 'Core',
+    '地址': 'Wallets',
+    '说明': 'Notes',
+    '电脑版': 'Desktop',
+    '数据已加载 · 每 5 小时刷新': 'Data loaded · refreshes every 5 hours',
+    '算力指挥舱': 'Power Command Center',
+    '算力榜': 'Power Rank',
+    '基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。': 'Based on public explorer data, RPC, and POWER contract logs, showing total network power, wallet addresses, Beijing-day growth, and top address rankings.',
+    '下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。': 'Start with the top 100 power addresses, then review coverage, active wallets, and new growth data.',
+    '下方优先展示前 100 名算力地址，默认先看前 10。': 'Top 100 power addresses are shown below, with the first 10 visible by default.',
+    '继续查看核心数据、增长趋势与统计口径': 'Continue to core data, growth trends, and methodology',
+    '扫描覆盖率': 'Scan Coverage',
+    '候选地址': 'Candidate Addresses',
+    '正算力占比': 'Positive Power Share',
+    '未覆盖算力': 'Uncovered Power',
+    '01 / 算力排行': '01 / Power Rank',
+    '头部算力地址排行': 'Top Power Address Ranking',
+    '按当前查询到的算力降序展示前 100 名，每页 10 名，共 10 页。': 'Shows the top 100 addresses by current queried power, 10 per page across 10 pages.',
+    '全球排行榜下载': 'Global Ranking Download',
+    '前 100 名免费查看，全量文件需支付 1000 MARS；核销成功后下载链接 1 小时 内有效。': 'Top 100 are free to view. The full file costs 1000 MARS; after verification, the download link is valid for 1 hour.',
+    '先生成付款订单，再用 MarsChain 钱包向收款地址转账 MARS。': 'Create a payment order first, then transfer MARS from a MarsChain wallet to the payment address.',
+    '1000 MARS 需单笔一次性支付，拆分多笔无法自动核销。': '1000 MARS must be paid in one transaction; split payments cannot be verified automatically.',
+    '链上手续费由付款方承担，实际转账金额需不少于 1000 MARS。': 'On-chain fees are paid by the sender, and the received transfer amount must be at least 1000 MARS.',
+    '转账确认后复制交易哈希，回到本页提交核销。': 'After the transfer is confirmed, copy the transaction hash and submit it here for verification.',
+    '收款金额': 'Payment Amount',
+    '收款地址': 'Payment Address',
+    '复制': 'Copy',
+    '生成付款订单': 'Create Order',
+    '核销下载': 'Verify Download',
+    '付费下载接口待接入': 'Paid download API is not connected',
+    '生成订单后提交交易哈希': 'Create an order, then submit the transaction hash',
+    '打开下载链接': 'Open Download Link',
+    '上一页': 'Previous',
+    '下一页': 'Next',
+    '02 / 核心数据': '02 / Core Data',
+    '当前算力概览': 'Current Power Overview',
+    '展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。': 'Shows the latest network power, emission model, address scale, and Beijing-day growth data.',
+    '03 / 周期增长': '03 / Growth',
+    '7 天与 30 天新增': '7-Day and 30-Day Growth',
+    '按最近完整北京时间统计日汇总新增算力、新增地址和 TokensBurned 销毁事件。': 'Summarizes new power, new addresses, and TokensBurned events by complete Beijing-day windows.',
+    '7 天新增': '7-Day Growth',
+    '30 天新增': '30-Day Growth',
+    '新增算力': 'New Power',
+    '新增地址': 'New Addresses',
+    '销毁数量': 'Burned Amount',
+    '04 / 地址统计': '04 / Wallet Stats',
+    '钱包地址统计口径': 'Wallet Address Methodology',
+    '总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。': 'Total wallets, candidate addresses, and positive-power addresses use different methods and should be read separately.',
+    '总钱包数量': 'Total Wallets',
+    '地址总量': 'Total Addresses',
+    '公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。': 'Address scale returned by public APIs; not every address mines or has power.',
+    '日志发现': 'Log Discovery',
+    '从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。': 'Related addresses found from POWER contract logs; each still needs a current power query.',
+    '算力 > 0': 'Power > 0',
+    '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
+    '05 / 数据说明': '05 / Data Notes',
+    '数据来源与准确性说明': 'Data Sources and Accuracy',
+    '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
+    '公开口径说明': 'Public Methodology Notes',
+    '全网总算力': 'Global Network Power',
+    '全网流通量': 'Global Circulation',
+    '当前价格': 'Current Price',
+    '总产量': 'Total Supply',
+    '每日产币量': 'Daily Emission',
+    '累计销毁': 'Total Burned',
+    '正算力地址': 'Positive-Power Addresses',
+    '统计日活跃地址数量': 'Daily Active Addresses',
+    '统计日新增地址数量': 'Daily New Addresses',
+    '统计日新增总算力': 'Daily New Power',
+    '日销毁币量': 'Daily Burned',
+    '单币日需算力': 'Daily Power per Coin',
+    '1亿算力产出': 'Output per 100M Power',
+    '统计日活跃地址': 'Daily Active Addresses',
+    '统计日新增地址': 'Daily New Addresses',
+    '统计日新增算力': 'Daily New Power',
+    '7天新增算力': '7-Day New Power',
+    '7天新增地址': '7-Day New Addresses',
+    '7天销毁': '7-Day Burned',
+    '30天新增算力': '30-Day New Power',
+    '30天新增地址': '30-Day New Addresses',
+    '30天销毁': '30-Day Burned',
+    '7 天新增算力': '7-Day New Power',
+    '7 天新增地址': '7-Day New Addresses',
+    '7 天销毁': '7-Day Burned',
+    '30 天新增算力': '30-Day New Power',
+    '30 天新增地址': '30-Day New Addresses',
+    '30 天销毁': '30-Day Burned',
+    '矿工日产币量': 'Miner Daily Emission',
+    '节点日产币量': 'Node Daily Emission',
+    '合约日志命中': 'Contract Log Hits',
+    '算力缓存刷新': 'Power Cache Refreshes',
+    '覆盖目标线': 'Coverage Target',
+    '覆盖率': 'Coverage',
+    '流通量': 'Circulation',
+    '最新区块': 'Latest Block',
+    '算力日志': 'Power Logs',
+    '缓存刷新': 'Cache Refreshes',
+    '最近刷新': 'Last Refresh',
+    '统计周期': 'Statistics Window',
+    '刷新频率': 'Refresh Frequency',
+    '每 5 小时': 'Every 5 Hours',
+    '区块浏览器公开统计': 'Public explorer statistics',
+    '区块浏览器公开报价': 'Public explorer quote',
+    '官网口径：永不增发': 'Official rule: no additional issuance',
+    '官方经济模型口径': 'Official economic model',
+    'POWER 合约累计燃烧': 'Cumulative POWER contract burns',
+    '公开地址规模': 'Public address scale',
+    '算力大于 0': 'Power greater than 0',
+    '北京时间 08:00 至次日 08:00': 'Beijing time 08:00 to next-day 08:00',
+    '北京 08:00 至次日 08:00': 'Beijing 08:00 to next-day 08:00',
+    '同一统计日口径': 'Same statistics-day method',
+    '北京时间统计日口径': 'Beijing-day method',
+    '按矿工 75% 产量估算': 'Estimated with the 75% miner emission share',
+    '按矿工 75% 日产币口径估算': 'Estimated with the 75% miner daily-emission method',
+    '按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。': 'Estimated as 100M power divided by daily power per coin, using the 75% miner-emission method.',
+    '公开接口统计': 'Public API statistics',
+    '同一统计窗口内活跃': 'Active within the same statistics window',
+    '首次出现在合约日志': 'First appeared in contract logs',
+    '最近 7 个完整统计日': 'Latest 7 complete statistics days',
+    '最近 30 个完整统计日': 'Latest 30 complete statistics days',
+    '首次进入 POWER 日志': 'First entered POWER logs',
+    'TokensBurned 汇总': 'TokensBurned total',
+    '公开接口返回的地址规模，不代表全部参与挖矿。': 'Public API address scale; not all addresses participate in mining.',
+    '从 POWER 合约日志识别出的相关地址。': 'Related addresses identified from POWER contract logs.',
+    '当前查询到算力大于 0 的钱包地址。': 'Wallet addresses currently queried with power above 0.',
+    '01 / RANK': '01 / RANK',
+    '头部排行': 'Top Ranking',
+    '每页 10 名，共 10 页。': '10 entries per page, 10 pages total.',
+    '02 / CORE': '02 / CORE',
+    '核心数据': 'Core Data',
+    '先看结果，再看口径。': 'Read the results first, then the methodology.',
+    '03 / WALLET': '03 / WALLET',
+    '地址口径': 'Wallet Methodology',
+    '三个地址数字不能混用。': 'The three address counts should not be mixed.',
+    '04 / NOTE': '04 / NOTE',
+    '公开数据存在延迟。': 'Public data may lag.',
+    '榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。': 'The ranking is a best-effort result generated from public explorer APIs, RPC, and POWER contract logs. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.',
+    '待刷新': 'Pending refresh',
+    '收款地址已复制': 'Payment address copied',
+    '正在生成付款订单...': 'Creating payment order...',
+    '订单生成失败': 'Order creation failed',
+    '请先生成付款订单': 'Create a payment order first',
+    '交易哈希格式不正确': 'Invalid transaction hash format',
+    '正在核销链上付款...': 'Verifying on-chain payment...',
+    '核销成功，下载链接 1 小时内有效。': 'Verified. The download link is valid for 1 hour.',
+    '核销成功，请重新打开下载链接。': 'Verified. Please reopen the download link.',
+    '核销失败': 'Verification failed',
+    '请求失败': 'Request failed'
+  };
+
+  const attrToEn = {
+    placeholder: {
+      '输入交易哈希': 'Enter transaction hash'
+    },
+    'aria-label': {
+      '下载格式': 'Download format'
+    }
+  };
+
+  const textOriginals = new WeakMap();
+
+  const translateDynamic = (text) => {
+    let match = text.match(/^第\s*(\d+)\s*\/\s*(\d+)\s*页\s*·\s*当前显示\s*(\d+)-(\d+)\s*\/\s*共\s*(\d+)\s*名$/);
+    if (match) return `Page ${match[1]} / ${match[2]} · Showing ${match[3]}-${match[4]} of ${match[5]}`;
+    match = text.match(/^覆盖率\s+(.+)$/);
+    if (match) return `Coverage ${match[1]}`;
+    match = text.match(/^订单已生成：支付\s*(.+?)\s*MARS 后提交交易哈希。$/);
+    if (match) return `Order created. Pay ${match[1]} MARS, then submit the transaction hash.`;
+    match = text.match(/^交易已找到，等待确认数\s*(.+)$/);
+    if (match) return `Transaction found. Waiting for confirmations ${match[1]}`;
+    match = text.match(/^本轮覆盖率为\s*(.+?)，低于目标\s*(.+?)。页面仍发布当轮最佳扫描结果，请结合风险说明理解数据边界。$/);
+    if (match) return `This scan coverage is ${match[1]}, below the ${match[2]} target. The page still publishes the best available scan results; read the data notes for boundaries.`;
+    match = text.match(/^榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：(.+?) 枚永不增发；每日产币量按官方公式与当前链龄计算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。$/);
+    if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${match[1]} coins with no additional issuance. Daily emission follows the official formula and current chain age. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
+    match = text.match(/^基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：(.+) · 统计周期：(.+)$/);
+    if (match) return `Best-effort ranking generated from public APIs, RPC, and contract logs · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
+    match = text.match(/^MarsChain Rank 手机版 · 最近刷新：(.+) · 统计周期：(.+)$/);
+    if (match) return `MarsChain Rank Mobile · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
+    return '';
+  };
+
+  const shouldSkipTextNode = (node) => {
+    const parent = node.parentElement;
+    if (!parent) return true;
+    if (parent.closest('[data-lang-toggle]')) return true;
+    return Boolean(parent.closest('script, style, noscript, code, pre, input, textarea, select'));
+  };
+
+  const translateTextNodes = (lang) => {
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach((node) => {
+      if (shouldSkipTextNode(node)) return;
+      if (!textOriginals.has(node)) textOriginals.set(node, node.nodeValue || '');
+      const original = textOriginals.get(node) || '';
+      const trimmed = original.replace(/\s+/g, ' ').trim();
+      if (!trimmed) {
+        node.nodeValue = original;
+        return;
+      }
+      if (lang === 'zh') {
+        node.nodeValue = original;
+        return;
+      }
+      const replacement = translateDynamic(trimmed) || zhToEn[trimmed];
+      if (!replacement) {
+        node.nodeValue = original;
+        return;
+      }
+      const leading = (original.match(/^\s*/) || [''])[0];
+      const trailing = (original.match(/\s*$/) || [''])[0];
+      node.nodeValue = `${leading}${replacement}${trailing}`;
+    });
+  };
+
+  const translateAttributes = (lang) => {
+    Object.entries(attrToEn).forEach(([attr, table]) => {
+      document.querySelectorAll(`[${attr}]`).forEach((node) => {
+        const originalAttr = `data-i18n-original-${attr}`;
+        if (!node.hasAttribute(originalAttr)) {
+          node.setAttribute(originalAttr, node.getAttribute(attr) || '');
+        }
+        const original = node.getAttribute(originalAttr) || '';
+        node.setAttribute(attr, lang === 'en' ? (table[original] || original) : original);
+      });
+    });
+  };
+
+  const setToggleLabels = (lang) => {
+    document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
+      button.textContent = lang === 'en' ? '中文' : 'EN';
+      button.setAttribute('aria-label', lang === 'en' ? 'Switch to Chinese' : 'Switch to English');
+    });
+  };
+
+  const applyLanguage = (lang) => {
+    const nextLang = lang === 'en' ? 'en' : 'zh';
+    document.documentElement.lang = nextLang === 'en' ? 'en' : 'zh-CN';
+    document.title = nextLang === 'en' ? 'MarsChain Power Ranking' : 'MarsChain 算力排行榜';
+    translateTextNodes(nextLang);
+    translateAttributes(nextLang);
+    setToggleLabels(nextLang);
+  };
+
+  window.applyMarsLanguage = () => applyLanguage(localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'zh');
+
+  document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const nextLang = localStorage.getItem(STORAGE_KEY) === 'en' ? 'zh' : 'en';
+      localStorage.setItem(STORAGE_KEY, nextLang);
+      window.applyMarsLanguage();
+    });
+  });
+
+  window.applyMarsLanguage();
+})();
 """
 
 
@@ -3537,7 +3782,10 @@ def build_mobile_html(payload: dict) -> str:
   <header class="m-top">
     <div class="m-brand">
       <div class="m-brand-main"><span class="m-mark"></span><span>MarsChain Rank</span></div>
-      <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
+      <div class="m-brand-actions">
+        <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
+        <button class="m-lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
+      </div>
     </div>
     <nav class="m-nav">
       <a href="#rank">排行</a>
@@ -3551,7 +3799,6 @@ def build_mobile_html(payload: dict) -> str:
       <span class="m-chip">数据已加载 · 每 5 小时刷新</span>
       <h1><span>MarsChain</span><span>算力榜</span></h1>
       <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
-      <div class="m-hero-ad"><span>广告位</span><b>一亿算力以上可以加Mars chain铁军QQ群：7123708</b></div>
       <div class="m-hero-grid">
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
         <div class="m-card-grid">
@@ -3590,7 +3837,8 @@ def build_mobile_html(payload: dict) -> str:
   <footer class="m-footer">MarsChain Rank 手机版 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
-<script>{MOBILE_DASHBOARD_JS}</script>
+<script>{MOBILE_DASHBOARD_JS}
+{LANGUAGE_TOGGLE_JS}</script>
 </body>
 </html>
 """
