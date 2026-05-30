@@ -3518,7 +3518,38 @@ LANGUAGE_TOGGLE_JS = r"""
 
   const textOriginals = new WeakMap();
 
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+
+  const formatCompactNumber = (value) => {
+    const abs = Math.abs(value);
+    if (abs >= 1_000_000_000_000) return `${trimZeros((value / 1_000_000_000_000).toFixed(3))}T`;
+    if (abs >= 1_000_000_000) return `${trimZeros((value / 1_000_000_000).toFixed(3))}B`;
+    if (abs >= 1_000_000) return `${trimZeros((value / 1_000_000).toFixed(3))}M`;
+    if (abs >= 1_000) return `${trimZeros((value / 1_000).toFixed(3))}K`;
+    if (Number.isInteger(value)) return value.toLocaleString('en-US');
+    return trimZeros(value.toLocaleString('en-US', { maximumFractionDigits: 6 }));
+  };
+
+  const translateChineseNumericUnit = (text) => {
+    let match = text.match(/^(-?[\d,]+(?:\.\d+)?)(万亿|亿|万)(个|枚\/日|\/日)?$/);
+    if (match) {
+      const raw = Number(match[1].replace(/,/g, ''));
+      if (!Number.isFinite(raw)) return '';
+      const scale = match[2] === '万亿' ? 1_000_000_000_000 : match[2] === '亿' ? 100_000_000 : 10_000;
+      const suffix = match[3] || '';
+      if (suffix === '枚/日' || suffix === '/日') return `${formatCompactNumber(raw * scale)}/day`;
+      return formatCompactNumber(raw * scale);
+    }
+    match = text.match(/^(-?[\d,]+(?:\.\d+)?)个$/);
+    if (match) return Number(match[1].replace(/,/g, '')).toLocaleString('en-US');
+    match = text.match(/^(-?[\d,]+(?:\.\d+)?)枚\/日$/);
+    if (match) return `${match[1]} coins/day`;
+    return '';
+  };
+
   const translateDynamic = (text) => {
+    const numericUnit = translateChineseNumericUnit(text);
+    if (numericUnit) return numericUnit;
     let match = text.match(/^第\s*(\d+)\s*\/\s*(\d+)\s*页\s*·\s*当前显示\s*(\d+)-(\d+)\s*\/\s*共\s*(\d+)\s*名$/);
     if (match) return `Page ${match[1]} / ${match[2]} · Showing ${match[3]}-${match[4]} of ${match[5]}`;
     match = text.match(/^覆盖率\s+(.+)$/);
@@ -3530,7 +3561,7 @@ LANGUAGE_TOGGLE_JS = r"""
     match = text.match(/^本轮覆盖率为\s*(.+?)，低于目标\s*(.+?)。页面仍发布当轮最佳扫描结果，请结合风险说明理解数据边界。$/);
     if (match) return `This scan coverage is ${match[1]}, below the ${match[2]} target. The page still publishes the best available scan results; read the data notes for boundaries.`;
     match = text.match(/^榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：(.+?) 枚永不增发；每日产币量按官方公式与当前链龄计算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。$/);
-    if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${match[1]} coins with no additional issuance. Daily emission follows the official formula and current chain age. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
+    if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${translateChineseNumericUnit(match[1]) || match[1]} coins with no additional issuance. Daily emission follows the official formula and current chain age. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
     match = text.match(/^基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：(.+) · 统计周期：(.+)$/);
     if (match) return `Best-effort ranking generated from public APIs, RPC, and contract logs · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
     match = text.match(/^MarsChain Rank 手机版 · 最近刷新：(.+) · 统计周期：(.+)$/);
