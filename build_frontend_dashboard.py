@@ -2730,8 +2730,8 @@ def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") ->
         points.append((x, y))
     line_path = " ".join(("M" if index == 0 else "L") + f"{x:.2f},{y:.2f}" for index, (x, y) in enumerate(points))
     area_path = f"{line_path} L {points[-1][0]:.2f},{height:.2f} L {points[0][0]:.2f},{height:.2f} Z"
-    start_label = "采样中" if sampling else "低"
-    end_label = "趋势采样中" if sampling else label
+    start_label = "首个采样点" if sampling else "低"
+    end_label = "等待下次刷新" if sampling else label
     css_class = "metric-trend is-sampling" if sampling else "metric-trend"
     last_x, last_y = points[-1]
     return (
@@ -3688,9 +3688,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '04 / NOTE': '04 / NOTE',
     '公开数据存在延迟。': 'Public data may lag.',
     '低': 'Low',
-    '采样中': 'Sampling',
+    '首个采样点': 'First Sample',
     '近 30 次趋势': 'Last 30 Samples',
-    '趋势采样中': 'Sampling Trend',
+    '等待下次刷新': 'Next Refresh Builds Trend',
     '榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。': 'The ranking is a best-effort result generated from public explorer APIs, RPC, and POWER contract logs. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.',
     '待刷新': 'Pending refresh',
     '收款地址已复制': 'Payment address copied',

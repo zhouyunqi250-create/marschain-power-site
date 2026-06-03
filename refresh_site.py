@@ -309,16 +309,16 @@ def load_metric_history(site_dir: Path) -> list[dict]:
 
 def merge_metric_history(existing: list[dict], snapshot: dict) -> list[dict]:
     merged = normalize_metric_history(existing)
-    identity = snapshot.get("statistics_window_end_timestamp") or snapshot.get("generated_at")
+    identity = snapshot.get("generated_at") or snapshot.get("statistics_window_end_timestamp")
     if identity:
         merged = [
             item
             for item in merged
-            if (item.get("statistics_window_end_timestamp") or item.get("generated_at")) != identity
+            if (item.get("generated_at") or item.get("statistics_window_end_timestamp")) != identity
         ]
     if snapshot.get("values"):
         merged.append(snapshot)
-    merged.sort(key=lambda item: item.get("statistics_window_end_timestamp") or item.get("generated_at") or 0)
+    merged.sort(key=lambda item: item.get("generated_at") or item.get("statistics_window_end_timestamp") or 0)
     return merged[-METRIC_HISTORY_LIMIT:]
 
 
