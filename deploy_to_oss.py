@@ -26,6 +26,7 @@ TEXT_TYPES = {
 NO_CACHE_KEYS = {
     "build-meta.json",
     "data/latest.json",
+    "data/metric-history.json",
     "index.html",
     "m/",
     "m/index.html",
@@ -109,6 +110,7 @@ def refresh_urls(base_url: str) -> list[str]:
         urljoin(canonical, "m/index.html"),
         urljoin(canonical, "build-meta.json"),
         urljoin(canonical, "data/latest.json"),
+        urljoin(canonical, "data/metric-history.json"),
         urljoin(canonical, "downloads/latest.csv"),
         urljoin(canonical, "downloads/latest.xlsx"),
         urljoin(canonical, "robots.txt"),

@@ -14,6 +14,29 @@ from build_frontend_dashboard import build_html, build_mobile_html
 from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
 
 PUBLIC_RANK_LIMIT = 100
+METRIC_HISTORY_LIMIT = 90
+
+METRIC_SNAPSHOT_FIELDS = {
+    "network_total_power": "network_total_power",
+    "network_total_circulation": "network_total_circulation_tokens",
+    "network_current_price": "network_current_price",
+    "total_supply": "emission_total_supply_cap_tokens",
+    "daily_emission": "emission_daily_total_tokens",
+    "total_burned": "network_total_burned_tokens",
+    "total_wallets": "explorer_total_addresses",
+    "positive_power_addresses": "positive_power_count",
+    "daily_active_addresses": "statistics_window_active_wallet_address_count",
+    "daily_new_addresses": "statistics_window_new_candidate_address_count",
+    "daily_new_power": "statistics_window_new_power",
+    "daily_burned": "statistics_window_burned_tokens",
+    "period_7d_new_power": "period_7d_new_power",
+    "period_7d_new_addresses": "period_7d_new_candidate_address_count",
+    "period_7d_burned": "period_7d_burned_tokens",
+    "period_30d_new_power": "period_30d_new_power",
+    "period_30d_new_addresses": "period_30d_new_candidate_address_count",
+    "period_30d_burned": "period_30d_burned_tokens",
+    "power_per_coin": "power_required_per_mars_daily",
+}
 
 
 SCAN_TIERS = [
@@ -209,7 +232,125 @@ def build_public_payload(payload: dict, public_rank_limit: int = PUBLIC_RANK_LIM
     return {"meta": meta, "rows": public_rows}
 
 
-def write_site_bundle(site_dir: Path, payload: dict) -> None:
+def _as_metric_number(value: object) -> float | int | None:
+    if value is None or value == "":
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    if number != number:
+        return None
+    if number.is_integer():
+        return int(number)
+    return number
+
+
+def build_metric_snapshot(meta: dict) -> dict:
+    values: dict[str, float | int] = {}
+    for metric_key, meta_key in METRIC_SNAPSHOT_FIELDS.items():
+        value = _as_metric_number(meta.get(meta_key))
+        if value is not None:
+            values[metric_key] = value
+    power_required = _as_metric_number(meta.get("power_required_per_mars_daily"))
+    if power_required and power_required > 0:
+        values["one_yi_power_output"] = 100_000_000 / float(power_required)
+    return {
+        "generated_at": meta.get("generated_at"),
+        "generated_at_local": meta.get("generated_at_local"),
+        "statistics_window_end_timestamp": meta.get("statistics_window_end_timestamp"),
+        "statistics_window_end_local": meta.get("statistics_window_end_local"),
+        "statistics_window_label": meta.get("statistics_window_label"),
+        "values": values,
+    }
+
+
+def normalize_metric_history(raw: object) -> list[dict]:
+    if isinstance(raw, dict):
+        raw = raw.get("snapshots") or []
+    if not isinstance(raw, list):
+        return []
+    normalized: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        values = item.get("values")
+        if not isinstance(values, dict):
+            continue
+        cleaned_values = {
+            key: value
+            for key, value in ((key, _as_metric_number(value)) for key, value in values.items())
+            if value is not None
+        }
+        if not cleaned_values:
+            continue
+        normalized.append(
+            {
+                "generated_at": item.get("generated_at"),
+                "generated_at_local": item.get("generated_at_local"),
+                "statistics_window_end_timestamp": item.get("statistics_window_end_timestamp"),
+                "statistics_window_end_local": item.get("statistics_window_end_local"),
+                "statistics_window_label": item.get("statistics_window_label"),
+                "values": cleaned_values,
+            }
+        )
+    return normalized[-METRIC_HISTORY_LIMIT:]
+
+
+def load_metric_history(site_dir: Path) -> list[dict]:
+    path = site_dir / "data" / "metric-history.json"
+    if not path.exists():
+        return []
+    try:
+        return normalize_metric_history(json.loads(path.read_text()))
+    except Exception:
+        return []
+
+
+def merge_metric_history(existing: list[dict], snapshot: dict) -> list[dict]:
+    merged = normalize_metric_history(existing)
+    identity = snapshot.get("statistics_window_end_timestamp") or snapshot.get("generated_at")
+    if identity:
+        merged = [
+            item
+            for item in merged
+            if (item.get("statistics_window_end_timestamp") or item.get("generated_at")) != identity
+        ]
+    if snapshot.get("values"):
+        merged.append(snapshot)
+    merged.sort(key=lambda item: item.get("statistics_window_end_timestamp") or item.get("generated_at") or 0)
+    return merged[-METRIC_HISTORY_LIMIT:]
+
+
+def build_metric_trends(meta: dict, metric_history: list[dict]) -> dict:
+    trends: dict[str, dict] = {}
+    daily_power_history = meta.get("daily_total_power_history")
+    if isinstance(daily_power_history, list):
+        values = [
+            {"label": item.get("date") or item.get("day"), "value": _as_metric_number(item.get("value"))}
+            for item in daily_power_history
+            if isinstance(item, dict) and _as_metric_number(item.get("value")) is not None
+        ]
+        if values:
+            trends["network_total_power"] = {"source": "POWER 合约日趋势", "values": values[-30:]}
+    history = normalize_metric_history(metric_history)
+    for metric_key in set(METRIC_SNAPSHOT_FIELDS) | {"one_yi_power_output"}:
+        if metric_key == "network_total_power" and metric_key in trends:
+            continue
+        values = [
+            {
+                "label": item.get("statistics_window_end_local") or item.get("generated_at_local"),
+                "value": item.get("values", {}).get(metric_key),
+            }
+            for item in history
+            if item.get("values", {}).get(metric_key) is not None
+        ]
+        if values:
+            trends[metric_key] = {"source": "站点刷新趋势", "values": values[-30:]}
+    return trends
+
+
+def write_site_bundle(site_dir: Path, payload: dict, metric_history: list[dict] | None = None) -> None:
     data_dir = site_dir / "data"
     mobile_dir = site_dir / "m"
     site_dir.mkdir(parents=True, exist_ok=True)
@@ -222,6 +363,10 @@ def write_site_bundle(site_dir: Path, payload: dict) -> None:
     (site_dir / "index.html").write_text(build_html(payload))
     (mobile_dir / "index.html").write_text(build_mobile_html(payload))
     (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    if metric_history is not None:
+        (data_dir / "metric-history.json").write_text(
+            json.dumps({"snapshots": normalize_metric_history(metric_history)}, ensure_ascii=False, indent=2) + "\n"
+        )
     (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
 
 
@@ -371,8 +516,10 @@ def main() -> int:
     shutil.copy2(html_path, latest_dir / "latest.html")
     shutil.copy2(xlsx_path, latest_dir / "latest.xlsx")
 
+    metric_history = merge_metric_history(load_metric_history(site_dir), build_metric_snapshot(chosen_meta))
     public_payload = build_public_payload(payload)
-    write_site_bundle(site_dir, public_payload)
+    public_payload["meta"]["metric_trends"] = build_metric_trends(public_payload["meta"], metric_history)
+    write_site_bundle(site_dir, public_payload, metric_history)
 
     summary = add_extra_build_meta({
         "generated_at": chosen_meta["generated_at"],

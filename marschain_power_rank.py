@@ -1597,10 +1597,19 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     statistics_window_start_total_power = None
     statistics_window_end_total_power = None
     period_power_meta: dict[str, Any] = {}
+    daily_total_power_history: list[dict[str, Any]] = []
     try:
         history_days, history_powers = fetch_daily_total_power_history(args.rpc_url)
         daily_power_history_days = len(history_days)
         history_map = dict(zip(history_days, history_powers))
+        daily_total_power_history = [
+            {
+                "day": int(day),
+                "date": time.strftime("%Y-%m-%d", time.gmtime(int(day) * 86_400)),
+                "value": int(power),
+            }
+            for day, power in sorted(history_map.items())[-90:]
+        ]
 
         def lookup_total_power_for_day(day: int) -> int | None:
             if day in history_map:
@@ -1618,6 +1627,16 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         statistics_window_end_total_power = history_map.get(statistics_window_end_day)
         if statistics_window_end_total_power is None:
             statistics_window_end_total_power = network_total_power
+        if statistics_window_end_day is not None and statistics_window_end_total_power is not None:
+            if not daily_total_power_history or daily_total_power_history[-1]["day"] != statistics_window_end_day:
+                daily_total_power_history.append(
+                    {
+                        "day": int(statistics_window_end_day),
+                        "date": time.strftime("%Y-%m-%d", time.gmtime(int(statistics_window_end_day) * 86_400)),
+                        "value": int(statistics_window_end_total_power),
+                    }
+                )
+                daily_total_power_history = daily_total_power_history[-90:]
         if statistics_window_start_total_power is not None and statistics_window_end_total_power is not None:
             today_new_power = max(0, statistics_window_end_total_power - statistics_window_start_total_power)
         for days in (7, 30):
@@ -1729,6 +1748,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "statistics_window_start_total_power": statistics_window_start_total_power,
         "statistics_window_end_total_power": statistics_window_end_total_power,
         "daily_power_history_days": daily_power_history_days,
+        "daily_total_power_history": daily_total_power_history,
         "include_to": args.include_to,
         "upline_depth": args.upline_depth,
         "upline_limit": args.upline_limit,

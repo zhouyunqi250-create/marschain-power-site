@@ -1815,13 +1815,15 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .metric {
-  min-height: 160px;
+  min-height: 214px;
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 24px;
   background: linear-gradient(180deg, rgba(30,46,76,.9), rgba(8,15,30,.92));
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .metric:after {
   content: "";
@@ -1833,9 +1835,42 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   border-radius: 50%;
   background: rgba(82,239,255,.11);
 }
-.metric span { color: #aebbd2; font-size: 13px; }
-.metric b { display: block; font-size: 34px; margin-top: 24px; letter-spacing: -.055em; }
+.metric > span { color: #aebbd2; font-size: 13px; }
+.metric b { display: block; font-size: 34px; margin-top: 20px; letter-spacing: -.055em; }
 .metric small { display: block; color: #8292ad; font-size: 12px; margin-top: 12px; }
+.metric-trend {
+  position: relative;
+  z-index: 1;
+  margin-top: auto;
+  padding-top: 14px;
+}
+.metric-trend svg {
+  display: block;
+  width: 100%;
+  height: 48px;
+  overflow: visible;
+}
+.metric-trend path.area { fill: rgba(82,239,255,.16); opacity: .9; }
+.metric-trend path.line {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 10px rgba(82,239,255,.35));
+}
+.metric-trend circle { fill: var(--green); filter: drop-shadow(0 0 9px rgba(129,245,178,.55)); }
+.metric-trend-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+  color: #71839f;
+  font-size: 11px;
+  line-height: 1.25;
+}
+.metric-trend.is-sampling path.line { stroke-dasharray: 5 7; opacity: .72; }
+.metric-trend.is-sampling circle { display: none; }
 .growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .growth-card {
   padding: 26px;
@@ -2611,13 +2646,115 @@ def _format_generated_at_from_meta(meta: dict) -> str:
     return format_generated_at(_as_int(meta.get("generated_at"), int(time.time())))
 
 
-def _build_metric_cards(items: list[tuple[str, str, str]]) -> str:
+def _clean_trend_values(values: object, limit: int = 30) -> list[float]:
+    if not isinstance(values, list):
+        return []
+    cleaned: list[float] = []
+    for item in values:
+        if isinstance(item, dict):
+            item = item.get("value")
+        try:
+            if item is None or item == "":
+                continue
+            value = float(item)
+        except (TypeError, ValueError):
+            continue
+        if value != value:
+            continue
+        cleaned.append(value)
+    return cleaned[-limit:]
+
+
+def _trend_values(meta: dict, key: str, fallback: list[object] | None = None, limit: int = 30) -> list[float]:
+    trends = meta.get("metric_trends")
+    if isinstance(trends, dict):
+        entry = trends.get(key)
+        if isinstance(entry, dict):
+            values = _clean_trend_values(entry.get("values"), limit=limit)
+            if values:
+                return values
+        elif isinstance(entry, list):
+            values = _clean_trend_values(entry, limit=limit)
+            if values:
+                return values
+    return _clean_trend_values(list(fallback or []), limit=limit)
+
+
+def _trend_from_cumulative(current: object, *increments: object) -> list[float]:
+    current_value = _as_float(current)
+    if current_value <= 0:
+        return []
+    points = [current_value]
+    running = current_value
+    for increment in increments:
+        inc_value = max(0.0, _as_float(increment))
+        if inc_value <= 0:
+            continue
+        running = max(0.0, running - inc_value)
+        points.insert(0, running)
+    return points
+
+
+def _trend_average_points(day_value: object, period_7d_value: object, period_30d_value: object) -> list[float]:
+    values: list[object] = []
+    period_30 = _as_float(period_30d_value)
+    period_7 = _as_float(period_7d_value)
+    current = _as_float(day_value)
+    if period_30 > 0:
+        values.append(period_30 / 30)
+    if period_7 > 0:
+        values.append(period_7 / 7)
+    if current > 0:
+        values.append(current)
+    return _clean_trend_values(values)
+
+
+def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") -> str:
+    clean = [value for value in values if value == value]
+    sampling = len(clean) < 2
+    if not clean:
+        clean = [0.0, 0.0]
+    elif len(clean) == 1:
+        clean = [clean[0], clean[0]]
+    width = 220.0
+    height = 48.0
+    pad_x = 2.0
+    pad_y = 5.0
+    min_value = min(clean)
+    max_value = max(clean)
+    span = max(max_value - min_value, max(abs(max_value), 1.0) * 0.08)
+    points: list[tuple[float, float]] = []
+    for index, value in enumerate(clean):
+        x = pad_x + (width - pad_x * 2) * (index / max(1, len(clean) - 1))
+        y = height - pad_y - ((value - min_value) / span) * (height - pad_y * 2)
+        points.append((x, y))
+    line_path = " ".join(("M" if index == 0 else "L") + f"{x:.2f},{y:.2f}" for index, (x, y) in enumerate(points))
+    area_path = f"{line_path} L {points[-1][0]:.2f},{height:.2f} L {points[0][0]:.2f},{height:.2f} Z"
+    start_label = "采样中" if sampling else "低"
+    end_label = "趋势采样中" if sampling else label
+    css_class = "metric-trend is-sampling" if sampling else "metric-trend"
+    last_x, last_y = points[-1]
+    return (
+        f'<div class="{css_class}" aria-label="{escape(end_label)}">'
+        '<svg viewBox="0 0 220 48" role="img" aria-hidden="true" focusable="false">'
+        f'<path class="area" d="{area_path}"></path>'
+        f'<path class="line" d="{line_path}"></path>'
+        f'<circle cx="{last_x:.2f}" cy="{last_y:.2f}" r="3.2"></circle>'
+        "</svg>"
+        f'<span class="metric-trend-label"><i>{escape(start_label)}</i><i>{escape(end_label)}</i></span>'
+        "</div>"
+    )
+
+
+def _build_metric_cards(items: list[tuple]) -> str:
     cards = []
-    for index, (label, value, note) in enumerate(items):
+    for index, item in enumerate(items):
+        label, value, note = item[:3]
+        trend_values = item[3] if len(item) > 3 else []
         cards.append(
             '<article class="metric" style="--delay:%sms">'
-            "<span>%s</span><b>%s</b><small>%s</small></article>"
-            % (index * 70, escape(label), escape(value), escape(note))
+            "<span>%s</span><b>%s</b><small>%s</small>%s</article>"
+            % (index * 70, escape(label), escape(value), escape(note), _build_sparkline(_clean_trend_values(trend_values)))
         )
     return "\n".join(cards)
 
@@ -2763,22 +2900,71 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
     power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
     one_yi_power_output = _fmt_one_yi_power_output(meta)
+    power_required_value = _as_float(meta.get("power_required_per_mars_daily"))
+    one_yi_power_output_value = 100_000_000 / power_required_value if power_required_value > 0 else None
+    total_burned_tokens = meta.get("network_total_burned_tokens")
+    total_circulation_tokens = meta.get("network_total_circulation_tokens")
+    daily_total_tokens = meta.get("emission_daily_total_tokens")
+    total_supply_tokens = meta.get("emission_total_supply_cap_tokens")
 
     metric_items = [
-        ("全网总算力", _fmt_power(network_total_power), "区块浏览器公开统计"),
-        ("全网流通量", circulation, "区块浏览器公开统计"),
-        ("当前价格", current_price, "区块浏览器公开报价"),
-        ("总产量", total_supply, "官网口径：永不增发"),
-        ("每日产币量", daily_total, "官方经济模型口径"),
-        ("累计销毁", total_burned, "POWER 合约累计燃烧"),
-        ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模"),
-        ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0"),
-        ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00"),
-        ("统计日新增地址数量", _fmt_count_unit(new_address_count), "北京时间 08:00 至次日 08:00"),
-        ("统计日新增总算力", _fmt_power(new_power), "同一统计日口径"),
-        ("日销毁币量", daily_burned, "北京时间统计日口径"),
-        ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
-        ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。"),
+        (
+            "全网总算力",
+            _fmt_power(network_total_power),
+            "区块浏览器公开统计",
+            _trend_values(
+                meta,
+                "network_total_power",
+                [
+                    meta.get("period_30d_start_total_power"),
+                    meta.get("period_7d_start_total_power"),
+                    meta.get("statistics_window_start_total_power"),
+                    network_total_power,
+                ],
+            ),
+        ),
+        ("全网流通量", circulation, "区块浏览器公开统计", _trend_values(meta, "network_total_circulation", [total_circulation_tokens])),
+        ("当前价格", current_price, "区块浏览器公开报价", _trend_values(meta, "network_current_price", [meta.get("network_current_price")])),
+        ("总产量", total_supply, "官网口径：永不增发", _trend_values(meta, "total_supply", [total_supply_tokens, total_supply_tokens])),
+        ("每日产币量", daily_total, "官方经济模型口径", _trend_values(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
+        (
+            "累计销毁",
+            total_burned,
+            "POWER 合约累计燃烧",
+            _trend_values(
+                meta,
+                "total_burned",
+                _trend_from_cumulative(
+                    total_burned_tokens,
+                    meta.get("period_30d_burned_tokens"),
+                    meta.get("period_7d_burned_tokens"),
+                    meta.get("statistics_window_burned_tokens"),
+                ),
+            ),
+        ),
+        ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_values(meta, "total_wallets", [explorer_total_addresses])),
+        ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0", _trend_values(meta, "positive_power_addresses", [positive_power_count])),
+        ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_values(meta, "daily_active_addresses", [active_wallet_count])),
+        (
+            "统计日新增地址数量",
+            _fmt_count_unit(new_address_count),
+            "北京时间 08:00 至次日 08:00",
+            _trend_values(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
+        ),
+        (
+            "统计日新增总算力",
+            _fmt_power(new_power),
+            "同一统计日口径",
+            _trend_values(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power)),
+        ),
+        (
+            "日销毁币量",
+            daily_burned,
+            "北京时间统计日口径",
+            _trend_values(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens"))),
+        ),
+        ("单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_values(meta, "power_per_coin", [power_required_value])),
+        ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_values(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
     marquee_items = [
         ("覆盖率", coverage_label),
@@ -3076,9 +3262,17 @@ a { color: inherit; }
 .m-primary span, .m-card span { display: block; font-size: 12px; font-weight: 950; opacity: .82; }
 .m-primary b { display: block; margin-top: 8px; font-size: 42px; letter-spacing: -.07em; }
 .m-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+.m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: 182px; }
 .m-card b { display: block; margin-top: 12px; font-size: 25px; line-height: 1; letter-spacing: -.055em; overflow-wrap: anywhere; }
 .m-card small { display: block; margin-top: 8px; color: #8394ad; font-size: 11px; line-height: 1.45; }
+.m-card .metric-trend { margin-top: auto; padding-top: 12px; }
+.m-card .metric-trend svg { height: 38px; }
+.m-card .metric-trend path.area { fill: rgba(86,239,255,.14); opacity: .9; }
+.m-card .metric-trend path.line { fill: none; stroke: var(--cyan); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.m-card .metric-trend circle { fill: var(--green); }
+.m-card .metric-trend-label { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: #788aa4; font-size: 10px; line-height: 1.25; }
+.m-card .metric-trend.is-sampling path.line { stroke-dasharray: 5 7; opacity: .72; }
+.m-card .metric-trend.is-sampling circle { display: none; }
 .m-section { padding: 34px 0; }
 .m-section-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; margin-bottom: 14px; }
 .m-kicker { color: #9cf7ff; font-size: 11px; font-weight: 950; letter-spacing: .12em; }
@@ -3493,6 +3687,10 @@ LANGUAGE_TOGGLE_JS = r"""
     '三个地址数字不能混用。': 'The three address counts should not be mixed.',
     '04 / NOTE': '04 / NOTE',
     '公开数据存在延迟。': 'Public data may lag.',
+    '低': 'Low',
+    '采样中': 'Sampling',
+    '近 30 次趋势': 'Last 30 Samples',
+    '趋势采样中': 'Sampling Trend',
     '榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。': 'The ranking is a best-effort result generated from public explorer APIs, RPC, and POWER contract logs. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.',
     '待刷新': 'Pending refresh',
     '收款地址已复制': 'Payment address copied',
@@ -3648,11 +3846,11 @@ LANGUAGE_TOGGLE_JS = r"""
 """
 
 
-def _build_mobile_metric_cards(items: list[tuple[str, str, str]]) -> str:
+def _build_mobile_metric_cards(items: list[tuple]) -> str:
     return "\n".join(
-        '<article class="m-card m-reveal"><span>%s</span><b>%s</b><small>%s</small></article>'
-        % (escape(label), escape(value), escape(note))
-        for label, value, note in items
+        '<article class="m-card m-reveal"><span>%s</span><b>%s</b><small>%s</small>%s</article>'
+        % (escape(item[0]), escape(item[1]), escape(item[2]), _build_sparkline(_clean_trend_values(item[3] if len(item) > 3 else [])))
+        for item in items
     )
 
 
@@ -3723,26 +3921,59 @@ def build_mobile_html(payload: dict) -> str:
     daily_node = str(meta.get("emission_daily_node_display") or "待刷新")
     power_per_coin = str(meta.get("power_required_per_mars_daily_display") or "待刷新")
     one_yi_power_output = _fmt_one_yi_power_output(meta)
+    power_required_value = _as_float(meta.get("power_required_per_mars_daily"))
+    one_yi_power_output_value = 100_000_000 / power_required_value if power_required_value > 0 else None
+    total_burned_tokens = meta.get("network_total_burned_tokens")
+    total_circulation_tokens = meta.get("network_total_circulation_tokens")
+    daily_total_tokens = meta.get("emission_daily_total_tokens")
 
     key_cards = _build_mobile_metric_cards(
         [
-            ("全网总算力", _fmt_power(network_total_power), "公开接口统计"),
-            ("全网流通量", circulation, "区块浏览器公开统计"),
-            ("当前价格", current_price, "区块浏览器公开报价"),
-            ("每日产币量", daily_total, "官方经济模型口径"),
-            ("累计销毁", total_burned, "POWER 合约累计燃烧"),
-            ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃"),
-            ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志"),
-            ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径"),
-            ("日销毁币量", daily_burned, "北京时间统计日口径"),
-            ("7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日"),
-            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志"),
-            ("7 天销毁", period_7d_burned, "TokensBurned 汇总"),
-            ("30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日"),
-            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志"),
-            ("30 天销毁", period_30d_burned, "TokensBurned 汇总"),
-            ("单币日需算力", power_per_coin, "按矿工 75% 产量估算"),
-            ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算"),
+            (
+                "全网总算力",
+                _fmt_power(network_total_power),
+                "公开接口统计",
+                _trend_values(
+                    meta,
+                    "network_total_power",
+                    [
+                        meta.get("period_30d_start_total_power"),
+                        meta.get("period_7d_start_total_power"),
+                        meta.get("statistics_window_start_total_power"),
+                        network_total_power,
+                    ],
+                ),
+            ),
+            ("全网流通量", circulation, "区块浏览器公开统计", _trend_values(meta, "network_total_circulation", [total_circulation_tokens])),
+            ("当前价格", current_price, "区块浏览器公开报价", _trend_values(meta, "network_current_price", [meta.get("network_current_price")])),
+            ("每日产币量", daily_total, "官方经济模型口径", _trend_values(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
+            (
+                "累计销毁",
+                total_burned,
+                "POWER 合约累计燃烧",
+                _trend_values(
+                    meta,
+                    "total_burned",
+                    _trend_from_cumulative(
+                        total_burned_tokens,
+                        meta.get("period_30d_burned_tokens"),
+                        meta.get("period_7d_burned_tokens"),
+                        meta.get("statistics_window_burned_tokens"),
+                    ),
+                ),
+            ),
+            ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃", _trend_values(meta, "daily_active_addresses", [active_wallet_count])),
+            ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志", _trend_values(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))),
+            ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径", _trend_values(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))),
+            ("日销毁币量", daily_burned, "北京时间统计日口径", _trend_values(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))),
+            ("7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_values(meta, "period_7d_new_power", [period_7d_new_power])),
+            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_values(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
+            ("7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_values(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
+            ("30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_values(meta, "period_30d_new_power", [period_30d_new_power])),
+            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_values(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
+            ("30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_values(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
+            ("单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_values(meta, "power_per_coin", [power_required_value])),
+            ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算", _trend_values(meta, "one_yi_power_output", [one_yi_power_output_value])),
         ]
     )
     flow_cards = _build_mobile_flow_cards(
