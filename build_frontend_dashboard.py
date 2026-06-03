@@ -2666,18 +2666,20 @@ def _clean_trend_values(values: object, limit: int = 30) -> list[float]:
 
 
 def _trend_values(meta: dict, key: str, fallback: list[object] | None = None, limit: int = 30) -> list[float]:
+    fallback_values = _clean_trend_values(list(fallback or []), limit=limit)
     trends = meta.get("metric_trends")
+    trend_values: list[float] = []
     if isinstance(trends, dict):
         entry = trends.get(key)
         if isinstance(entry, dict):
-            values = _clean_trend_values(entry.get("values"), limit=limit)
-            if values:
-                return values
+            trend_values = _clean_trend_values(entry.get("values"), limit=limit)
         elif isinstance(entry, list):
-            values = _clean_trend_values(entry, limit=limit)
-            if values:
-                return values
-    return _clean_trend_values(list(fallback or []), limit=limit)
+            trend_values = _clean_trend_values(entry, limit=limit)
+    if len(trend_values) >= 2:
+        return trend_values
+    if len(fallback_values) >= 2:
+        return fallback_values
+    return trend_values or fallback_values
 
 
 def _trend_from_cumulative(current: object, *increments: object) -> list[float]:
