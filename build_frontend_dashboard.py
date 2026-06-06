@@ -1824,6 +1824,11 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  cursor: pointer;
+}
+.metric:focus-visible {
+  outline: 2px solid rgba(82,239,255,.72);
+  outline-offset: 4px;
 }
 .metric:after {
   content: "";
@@ -1871,6 +1876,162 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .metric-trend.is-sampling path.line { stroke-dasharray: 5 7; opacity: .72; }
 .metric-trend.is-sampling circle { display: none; }
+.trend-modal[hidden] { display: none; }
+.trend-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(2, 7, 18, .72);
+  backdrop-filter: blur(18px);
+}
+.trend-panel {
+  width: min(920px, calc(100vw - 38px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid rgba(82,239,255,.28);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 82% 0%, rgba(82,239,255,.16), transparent 34%),
+    linear-gradient(180deg, rgba(15,27,50,.97), rgba(5,12,26,.98));
+  box-shadow: 0 34px 120px rgba(0,0,0,.58), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding: 24px 24px 16px;
+}
+.trend-title span {
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+.trend-title h3 {
+  margin: 7px 0 8px;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -.055em;
+}
+.trend-title p { margin: 0; color: #91a4bf; line-height: 1.6; }
+.trend-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(82,239,255,.25);
+  border-radius: 999px;
+  color: #ddf8ff;
+  background: rgba(255,255,255,.055);
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+.trend-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 24px 16px;
+}
+.trend-controls button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid rgba(82,239,255,.22);
+  border-radius: 999px;
+  color: #bfefff;
+  background: rgba(255,255,255,.055);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.trend-controls button.is-active {
+  color: #04111a;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.trend-chart {
+  position: relative;
+  margin: 0 24px;
+  min-height: 300px;
+  border: 1px solid rgba(82,239,255,.16);
+  border-radius: 22px;
+  background:
+    linear-gradient(rgba(82,239,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(82,239,255,.045) 1px, transparent 1px),
+    rgba(4, 12, 27, .68);
+  background-size: 100% 25%, 12.5% 100%, auto;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.trend-chart svg {
+  display: block;
+  width: 100%;
+  height: 300px;
+}
+.trend-chart .bar { fill: rgba(214, 86, 255, .55); }
+.trend-chart .area { fill: rgba(82,239,255,.16); }
+.trend-chart .line {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 14px rgba(82,239,255,.38));
+}
+.trend-chart .cursor-line { stroke: rgba(255,255,255,.66); stroke-width: 1.5; stroke-dasharray: 5 6; }
+.trend-chart .cursor-dot { fill: var(--green); filter: drop-shadow(0 0 12px rgba(129,245,178,.64)); }
+.trend-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #9fb0c9;
+  font-weight: 900;
+  text-align: center;
+  padding: 20px;
+}
+.trend-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 16px 24px 24px;
+}
+.trend-stat {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(82,239,255,.14);
+  border-radius: 16px;
+  background: rgba(255,255,255,.045);
+}
+.trend-stat span {
+  display: block;
+  color: #91a4bf;
+  font-size: 12px;
+  font-weight: 900;
+}
+.trend-stat b {
+  display: block;
+  margin-top: 8px;
+  font-size: 22px;
+  letter-spacing: -.035em;
+  word-break: break-word;
+}
+.trend-stat small {
+  display: block;
+  margin-top: 4px;
+  color: #72849d;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.trend-foot {
+  margin: -8px 24px 24px;
+  color: #899bb6;
+  font-size: 12px;
+  line-height: 1.55;
+}
 .growth-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .growth-card {
   padding: 26px;
@@ -2260,6 +2421,40 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .metric span { font-size: 12px; line-height: 1.35; }
   .metric b { font-size: 25px; margin-top: 18px; line-height: 1.05; }
   .metric small { font-size: 11px; line-height: 1.45; margin-top: 9px; }
+  .trend-modal { padding: 12px; align-items: end; }
+  .trend-panel {
+    width: calc(100vw - 24px);
+    max-width: 366px;
+    max-height: calc(100vh - 24px);
+    border-radius: 22px;
+    justify-self: start;
+  }
+  .trend-head {
+    padding: 18px 16px 12px;
+    gap: 12px;
+  }
+  .trend-title h3 { font-size: 29px; }
+  .trend-title p { font-size: 12px; }
+  .trend-controls {
+    padding: 0 16px 12px;
+    gap: 7px;
+  }
+  .trend-controls button {
+    flex: 1 1 calc(50% - 7px);
+  }
+  .trend-chart {
+    margin: 0 16px;
+    min-height: 230px;
+    border-radius: 17px;
+  }
+  .trend-chart svg { height: 230px; }
+  .trend-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding: 12px 16px 18px;
+  }
+  .trend-stat { padding: 12px; border-radius: 14px; }
+  .trend-stat b { font-size: 18px; }
+  .trend-foot { margin: -4px 16px 18px; }
   .growth-grid { grid-template-columns: 1fr; gap: 12px; }
   .growth-card { padding: 18px; border-radius: 22px; }
   .growth-card h3 { font-size: 28px; margin-bottom: 12px; }
@@ -2665,6 +2860,52 @@ def _clean_trend_values(values: object, limit: int = 30) -> list[float]:
     return cleaned[-limit:]
 
 
+def _clean_trend_points(values: object, limit: int = 120) -> list[dict[str, object]]:
+    if not isinstance(values, list):
+        return []
+    points: list[dict[str, object]] = []
+    for index, item in enumerate(values, start=1):
+        label = ""
+        value: object = item
+        if isinstance(item, dict):
+            value = item.get("value")
+            label = str(
+                item.get("label")
+                or item.get("date")
+                or item.get("day")
+                or item.get("time")
+                or item.get("created_at")
+                or ""
+            )
+        try:
+            if value is None or value == "":
+                continue
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number != number:
+            continue
+        points.append({"label": label or f"采样 {index}", "value": number})
+    return points[-limit:]
+
+
+def _trend_points(meta: dict, key: str, fallback: list[object] | None = None, limit: int = 120) -> list[dict[str, object]]:
+    fallback_points = _clean_trend_points(list(fallback or []), limit=limit)
+    trends = meta.get("metric_trends")
+    trend_points: list[dict[str, object]] = []
+    if isinstance(trends, dict):
+        entry = trends.get(key)
+        if isinstance(entry, dict):
+            trend_points = _clean_trend_points(entry.get("values"), limit=limit)
+        elif isinstance(entry, list):
+            trend_points = _clean_trend_points(entry, limit=limit)
+    if len(trend_points) >= 2:
+        return trend_points
+    if len(fallback_points) >= 2:
+        return fallback_points
+    return trend_points or fallback_points
+
+
 def _trend_values(meta: dict, key: str, fallback: list[object] | None = None, limit: int = 30) -> list[float]:
     fallback_values = _clean_trend_values(list(fallback or []), limit=limit)
     trends = meta.get("metric_trends")
@@ -2751,14 +2992,50 @@ def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") ->
 def _build_metric_cards(items: list[tuple]) -> str:
     cards = []
     for index, item in enumerate(items):
-        label, value, note = item[:3]
-        trend_values = item[3] if len(item) > 3 else []
+        if len(item) >= 5:
+            _, label, value, note, trend_points = item[:5]
+            trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
+        else:
+            label, value, note = item[:3]
+            trend_values = item[3] if len(item) > 3 else []
         cards.append(
-            '<article class="metric" style="--delay:%sms">'
+            '<article class="metric" style="--delay:%sms" role="button" tabindex="0" '
+            'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
             "<span>%s</span><b>%s</b><small>%s</small>%s</article>"
-            % (index * 70, escape(label), escape(value), escape(note), _build_sparkline(_clean_trend_values(trend_values)))
+            % (
+                index * 70,
+                index,
+                escape(str(label), quote=True),
+                escape(str(label), quote=True),
+                escape(label),
+                escape(value),
+                escape(note),
+                _build_sparkline(_clean_trend_values(trend_values)),
+            )
         )
     return "\n".join(cards)
+
+
+def _build_metric_trend_payload(items: list[tuple]) -> list[dict[str, object]]:
+    payload: list[dict[str, object]] = []
+    for index, item in enumerate(items):
+        if len(item) >= 5:
+            key, label, value, note, points = item[:5]
+            clean_points = _clean_trend_points(points, limit=120)
+        else:
+            key = f"metric_{index}"
+            label, value, note = item[:3]
+            clean_points = _clean_trend_points(item[3] if len(item) > 3 else [], limit=120)
+        payload.append(
+            {
+                "key": str(key),
+                "label": str(label),
+                "value": str(value),
+                "note": str(note),
+                "points": clean_points,
+            }
+        )
+    return payload
 
 
 def _build_rank_cards(rows: list[dict], limit: int = 100, page_size: int = 10) -> str:
@@ -2911,10 +3188,11 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 
     metric_items = [
         (
+            "network_total_power",
             "全网总算力",
             _fmt_power(network_total_power),
             "区块浏览器公开统计",
-            _trend_values(
+            _trend_points(
                 meta,
                 "network_total_power",
                 [
@@ -2925,15 +3203,16 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
                 ],
             ),
         ),
-        ("全网流通量", circulation, "区块浏览器公开统计", _trend_values(meta, "network_total_circulation", [total_circulation_tokens])),
-        ("当前价格", current_price, "区块浏览器公开报价", _trend_values(meta, "network_current_price", [meta.get("network_current_price")])),
-        ("总产量", total_supply, "官网口径：永不增发", _trend_values(meta, "total_supply", [total_supply_tokens, total_supply_tokens])),
-        ("每日产币量", daily_total, "官方经济模型口径", _trend_values(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
+        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
+        ("network_current_price", "当前价格", current_price, "区块浏览器公开报价", _trend_points(meta, "network_current_price", [meta.get("network_current_price")])),
+        ("total_supply", "总产量", total_supply, "官网口径：永不增发", _trend_points(meta, "total_supply", [total_supply_tokens, total_supply_tokens])),
+        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
         (
+            "total_burned",
             "累计销毁",
             total_burned,
             "POWER 合约累计燃烧",
-            _trend_values(
+            _trend_points(
                 meta,
                 "total_burned",
                 _trend_from_cumulative(
@@ -2944,29 +3223,32 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
                 ),
             ),
         ),
-        ("总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_values(meta, "total_wallets", [explorer_total_addresses])),
-        ("正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0", _trend_values(meta, "positive_power_addresses", [positive_power_count])),
-        ("统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_values(meta, "daily_active_addresses", [active_wallet_count])),
+        ("total_wallets", "总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_points(meta, "total_wallets", [explorer_total_addresses])),
+        ("positive_power_addresses", "正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0", _trend_points(meta, "positive_power_addresses", [positive_power_count])),
+        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
         (
+            "daily_new_addresses",
             "统计日新增地址数量",
             _fmt_count_unit(new_address_count),
             "北京时间 08:00 至次日 08:00",
-            _trend_values(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
+            _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
         ),
         (
+            "daily_new_power",
             "统计日新增总算力",
             _fmt_power(new_power),
             "同一统计日口径",
-            _trend_values(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power)),
+            _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power)),
         ),
         (
+            "daily_burned",
             "日销毁币量",
             daily_burned,
             "北京时间统计日口径",
-            _trend_values(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens"))),
+            _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens"))),
         ),
-        ("单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_values(meta, "power_per_coin", [power_required_value])),
-        ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_values(meta, "one_yi_power_output", [one_yi_power_output_value])),
+        ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
+        ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
     marquee_items = [
         ("覆盖率", coverage_label),
@@ -3059,6 +3341,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     timeline_rows = _build_timeline(timeline_items)
     marquee_html = _build_marquee(marquee_items)
     embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
+    metric_trend_payload = json.dumps(_build_metric_trend_payload(metric_items), ensure_ascii=False).replace("</script>", "<\\/script>")
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -3182,7 +3465,9 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <footer class="footer">基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
+<script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{SCROLL_DASHBOARD_JS}
+{METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
 </body>
 </html>
@@ -3264,7 +3549,8 @@ a { color: inherit; }
 .m-primary span, .m-card span { display: block; font-size: 12px; font-weight: 950; opacity: .82; }
 .m-primary b { display: block; margin-top: 8px; font-size: 42px; letter-spacing: -.07em; }
 .m-card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: 182px; }
+.m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: 182px; cursor: pointer; }
+.m-card:focus-visible { outline: 2px solid rgba(86,239,255,.72); outline-offset: 3px; }
 .m-card b { display: block; margin-top: 12px; font-size: 25px; line-height: 1; letter-spacing: -.055em; overflow-wrap: anywhere; }
 .m-card small { display: block; margin-top: 8px; color: #8394ad; font-size: 11px; line-height: 1.45; }
 .m-card .metric-trend { margin-top: auto; padding-top: 12px; }
@@ -3275,6 +3561,91 @@ a { color: inherit; }
 .m-card .metric-trend-label { display: flex; justify-content: space-between; gap: 6px; margin-top: 3px; color: #788aa4; font-size: 10px; line-height: 1.25; }
 .m-card .metric-trend.is-sampling path.line { stroke-dasharray: 5 7; opacity: .72; }
 .m-card .metric-trend.is-sampling circle { display: none; }
+.trend-modal[hidden] { display: none; }
+.trend-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  align-items: end;
+  padding: 12px;
+  background: rgba(2, 7, 18, .72);
+  backdrop-filter: blur(18px);
+}
+.trend-panel {
+  width: calc(100vw - 24px);
+  max-width: 366px;
+  max-height: calc(100vh - 24px);
+  justify-self: start;
+  overflow: auto;
+  border: 1px solid rgba(86,239,255,.28);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(15,27,50,.98), rgba(5,12,26,.99));
+  box-shadow: 0 26px 90px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.trend-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 16px 12px;
+}
+.trend-title span { color: var(--amber); font-size: 11px; font-weight: 950; letter-spacing: .12em; }
+.trend-title h3 { margin: 7px 0 8px; font-size: 29px; line-height: 1; letter-spacing: -.055em; }
+.trend-title p { margin: 0; color: #91a4bf; font-size: 12px; line-height: 1.55; }
+.trend-close {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(86,239,255,.25);
+  border-radius: 999px;
+  color: #ddf8ff;
+  background: rgba(255,255,255,.055);
+  font-size: 22px;
+  line-height: 1;
+}
+.trend-controls { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 16px 12px; }
+.trend-controls button {
+  flex: 1 1 calc(50% - 7px);
+  min-height: 34px;
+  border: 1px solid rgba(86,239,255,.22);
+  border-radius: 999px;
+  color: #bfefff;
+  background: rgba(255,255,255,.055);
+  font: 900 12px var(--font);
+}
+.trend-controls button.is-active {
+  color: #04111a;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.trend-chart {
+  position: relative;
+  margin: 0 16px;
+  min-height: 230px;
+  border: 1px solid rgba(86,239,255,.16);
+  border-radius: 17px;
+  background:
+    linear-gradient(rgba(86,239,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86,239,255,.045) 1px, transparent 1px),
+    rgba(4, 12, 27, .68);
+  background-size: 100% 25%, 12.5% 100%, auto;
+  overflow: hidden;
+  cursor: crosshair;
+}
+.trend-chart svg { display: block; width: 100%; height: 230px; }
+.trend-chart .bar { fill: rgba(214,86,255,.55); }
+.trend-chart .area { fill: rgba(86,239,255,.16); }
+.trend-chart .line { fill: none; stroke: var(--cyan); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 14px rgba(86,239,255,.38)); }
+.trend-chart .cursor-line { stroke: rgba(255,255,255,.66); stroke-width: 1.5; stroke-dasharray: 5 6; }
+.trend-chart .cursor-dot { fill: var(--green); filter: drop-shadow(0 0 12px rgba(129,245,178,.64)); }
+.trend-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #9fb0c9; font-weight: 900; text-align: center; padding: 20px; }
+.trend-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px 16px 18px; }
+.trend-stat { min-width: 0; padding: 12px; border: 1px solid rgba(86,239,255,.14); border-radius: 14px; background: rgba(255,255,255,.045); }
+.trend-stat span { display: block; color: #91a4bf; font-size: 12px; font-weight: 900; }
+.trend-stat b { display: block; margin-top: 8px; font-size: 18px; letter-spacing: -.035em; word-break: break-word; }
+.trend-stat small { display: block; margin-top: 4px; color: #72849d; font-size: 11px; line-height: 1.35; }
+.trend-foot { margin: -4px 16px 18px; color: #899bb6; font-size: 12px; line-height: 1.55; }
 .m-section { padding: 34px 0; }
 .m-section-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-end; margin-bottom: 14px; }
 .m-kicker { color: #9cf7ff; font-size: 11px; font-weight: 950; letter-spacing: .12em; }
@@ -3541,6 +3912,229 @@ document.querySelectorAll('[data-track]').forEach((node) => {
 """
 
 
+METRIC_TREND_JS = r"""
+(() => {
+  const dataNode = document.getElementById('metricTrendData');
+  if (!dataNode) return;
+  let metricTrends = [];
+  try {
+    metricTrends = JSON.parse(dataNode.textContent || '[]');
+  } catch (error) {
+    metricTrends = [];
+  }
+  if (!Array.isArray(metricTrends) || !metricTrends.length) return;
+
+  const periods = [
+    ['7', '一周', 7],
+    ['30', '一个月', 30],
+    ['90', '一季度', 90],
+    ['all', '全部', Infinity],
+  ];
+  let activeMetric = null;
+  let activePeriod = '30';
+  let activePoints = [];
+  let focusIndex = 0;
+  let modal = null;
+
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  const formatTrendValue = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    const abs = Math.abs(number);
+    if (abs >= 1_0000_0000_0000) return `${trimZeros((number / 1_0000_0000_0000).toFixed(3))}万亿`;
+    if (abs >= 1_0000_0000) return `${trimZeros((number / 1_0000_0000).toFixed(3))}亿`;
+    if (abs >= 1_0000) return `${trimZeros((number / 1_0000).toFixed(3))}万`;
+    if (abs > 0 && abs < 1) return trimZeros(number.toFixed(6));
+    if (Number.isInteger(number)) return number.toLocaleString('zh-CN');
+    return trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }));
+  };
+  const cleanPoints = (points) => Array.isArray(points)
+    ? points.map((point, index) => ({
+        label: String(point && point.label ? point.label : `采样 ${index + 1}`),
+        value: Number(point && point.value),
+      })).filter((point) => Number.isFinite(point.value))
+    : [];
+  const periodPoints = () => {
+    const all = cleanPoints(activeMetric ? activeMetric.points : []);
+    const period = periods.find((item) => item[0] === activePeriod) || periods[1];
+    return Number.isFinite(period[2]) ? all.slice(-period[2]) : all;
+  };
+  const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  }[char]));
+
+  const ensureModal = () => {
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.className = 'trend-modal';
+    modal.hidden = true;
+    modal.dataset.trendModal = 'true';
+    modal.innerHTML = `
+      <section class="trend-panel" role="dialog" aria-modal="true" aria-labelledby="trendTitle">
+        <div class="trend-head">
+          <div class="trend-title">
+            <span>数据趋势</span>
+            <h3 id="trendTitle" data-trend-title></h3>
+            <p data-trend-note></p>
+          </div>
+          <button class="trend-close" type="button" data-trend-close aria-label="关闭">×</button>
+        </div>
+        <div class="trend-controls" data-trend-periods></div>
+        <div class="trend-chart" data-trend-chart></div>
+        <div class="trend-stats">
+          <div class="trend-stat"><span>光标日期</span><b data-trend-focus-value>待刷新</b><small data-trend-focus-label></small></div>
+          <div class="trend-stat"><span>最新值</span><b data-trend-latest>待刷新</b><small data-trend-latest-label></small></div>
+          <div class="trend-stat"><span>最低</span><b data-trend-min>待刷新</b><small data-trend-min-label></small></div>
+          <div class="trend-stat"><span>最高</span><b data-trend-max>待刷新</b><small data-trend-max-label></small></div>
+        </div>
+        <p class="trend-foot" data-trend-foot>拖动图表查看具体日期。</p>
+      </section>
+    `;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal || event.target.closest('[data-trend-close]')) closeModal();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (!modal.hidden && event.key === 'Escape') closeModal();
+    });
+    return modal;
+  };
+
+  const closeModal = () => {
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.style.overflow = '';
+  };
+
+  const setFocus = (index) => {
+    if (!activePoints.length || !modal) return;
+    focusIndex = Math.max(0, Math.min(activePoints.length - 1, index));
+    const point = activePoints[focusIndex];
+    const values = activePoints.map((item) => item.value);
+    const minPoint = activePoints.reduce((best, item) => item.value < best.value ? item : best, activePoints[0]);
+    const maxPoint = activePoints.reduce((best, item) => item.value > best.value ? item : best, activePoints[0]);
+    const latest = activePoints[activePoints.length - 1];
+    modal.querySelector('[data-trend-focus-value]').textContent = formatTrendValue(point.value);
+    modal.querySelector('[data-trend-focus-label]').textContent = point.label;
+    modal.querySelector('[data-trend-latest]').textContent = formatTrendValue(latest.value);
+    modal.querySelector('[data-trend-latest-label]').textContent = latest.label;
+    modal.querySelector('[data-trend-min]').textContent = formatTrendValue(Math.min(...values));
+    modal.querySelector('[data-trend-min-label]').textContent = minPoint.label;
+    modal.querySelector('[data-trend-max]').textContent = formatTrendValue(Math.max(...values));
+    modal.querySelector('[data-trend-max-label]').textContent = maxPoint.label;
+    modal.querySelectorAll('[data-cursor-index]').forEach((node) => {
+      node.style.opacity = Number(node.dataset.cursorIndex) === focusIndex ? '1' : '0';
+    });
+  };
+
+  const renderChart = () => {
+    if (!modal || !activeMetric) return;
+    activePoints = periodPoints();
+    focusIndex = Math.max(0, activePoints.length - 1);
+    const chart = modal.querySelector('[data-trend-chart]');
+    const controls = modal.querySelector('[data-trend-periods]');
+    controls.innerHTML = periods.map(([key, label]) => (
+      `<button type="button" data-trend-period="${key}" class="${key === activePeriod ? 'is-active' : ''}">${label}</button>`
+    )).join('');
+    controls.querySelectorAll('[data-trend-period]').forEach((button) => {
+      button.addEventListener('click', () => {
+        activePeriod = button.dataset.trendPeriod || '30';
+        renderChart();
+        if (window.applyMarsLanguage) window.applyMarsLanguage();
+      });
+    });
+
+    if (!activePoints.length) {
+      chart.innerHTML = '<div class="trend-empty">趋势采样中，等待下次刷新。</div>';
+      modal.querySelector('[data-trend-foot]').textContent = '趋势采样中，等待下次刷新。';
+      setFocus(0);
+      return;
+    }
+
+    const width = 720;
+    const height = 300;
+    const pad = { left: 38, right: 20, top: 24, bottom: 38 };
+    const plotWidth = width - pad.left - pad.right;
+    const plotHeight = height - pad.top - pad.bottom;
+    const values = activePoints.map((point) => point.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const span = Math.max(max - min, Math.max(Math.abs(max), 1) * 0.08);
+    const xy = (point, index) => {
+      const x = pad.left + plotWidth * (index / Math.max(1, activePoints.length - 1));
+      const y = pad.top + plotHeight - ((point.value - min) / span) * plotHeight;
+      return [x, y];
+    };
+    const coords = activePoints.map(xy);
+    const linePath = coords.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+    const areaPath = `${linePath} L ${coords[coords.length - 1][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} L ${coords[0][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} Z`;
+    const barWidth = Math.max(2, Math.min(20, plotWidth / Math.max(1, activePoints.length) * 0.58));
+    const bars = coords.map(([x, y]) => {
+      const base = height - pad.bottom;
+      return `<rect class="bar" x="${(x - barWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.max(1, base - y).toFixed(2)}" rx="2"></rect>`;
+    }).join('');
+    const cursors = coords.map(([x, y], index) => (
+      `<g data-cursor-index="${index}" style="opacity:${index === focusIndex ? 1 : 0}">
+        <line class="cursor-line" x1="${x.toFixed(2)}" y1="${pad.top}" x2="${x.toFixed(2)}" y2="${height - pad.bottom}"></line>
+        <circle class="cursor-dot" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="5"></circle>
+      </g>`
+    )).join('');
+    chart.innerHTML = `
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(activeMetric.label)}趋势图">
+        ${bars}
+        <path class="area" d="${areaPath}"></path>
+        <path class="line" d="${linePath}"></path>
+        ${cursors}
+      </svg>
+    `;
+    const pickIndex = (event) => {
+      const rect = chart.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
+      setFocus(Math.round(pct * (activePoints.length - 1)));
+    };
+    chart.onpointermove = pickIndex;
+    chart.onpointerdown = (event) => {
+      chart.setPointerCapture?.(event.pointerId);
+      pickIndex(event);
+    };
+    const foot = activePoints.length < 7
+      ? `采样中：当前只有 ${activePoints.length} 个采样点，等待更多刷新形成完整趋势。`
+      : `拖动图表查看具体日期。当前周期共 ${activePoints.length} 个采样点。`;
+    modal.querySelector('[data-trend-foot]').textContent = foot;
+    setFocus(focusIndex);
+  };
+
+  const openMetric = (index) => {
+    activeMetric = metricTrends[index];
+    if (!activeMetric) return;
+    const node = ensureModal();
+    node.querySelector('[data-trend-title]').textContent = activeMetric.label || '数据趋势';
+    node.querySelector('[data-trend-note]').textContent = activeMetric.note || '';
+    activePeriod = '30';
+    renderChart();
+    node.hidden = false;
+    document.body.style.overflow = 'hidden';
+    node.querySelector('[data-trend-close]')?.focus();
+    if (window.applyMarsLanguage) window.applyMarsLanguage();
+  };
+
+  document.querySelectorAll('[data-trend-index]').forEach((card) => {
+    card.addEventListener('click', () => openMetric(Number(card.dataset.trendIndex || 0)));
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openMetric(Number(card.dataset.trendIndex || 0));
+      }
+    });
+  });
+})();
+"""
+
+
 LANGUAGE_TOGGLE_JS = r"""
 (function() {
   const STORAGE_KEY = 'marschain_lang';
@@ -3704,7 +4298,18 @@ LANGUAGE_TOGGLE_JS = r"""
     '核销成功，下载链接 1 小时内有效。': 'Verified. The download link is valid for 1 hour.',
     '核销成功，请重新打开下载链接。': 'Verified. Please reopen the download link.',
     '核销失败': 'Verification failed',
-    '请求失败': 'Request failed'
+    '请求失败': 'Request failed',
+    '数据趋势': 'Data Trend',
+    '一周': 'Week',
+    '一个月': 'Month',
+    '一季度': 'Quarter',
+    '全部': 'All',
+    '光标日期': 'Cursor Date',
+    '最新值': 'Latest',
+    '最低': 'Low',
+    '最高': 'High',
+    '拖动图表查看具体日期。': 'Drag across the chart to inspect each date.',
+    '趋势采样中，等待下次刷新。': 'Trend sampling, waiting for the next refresh.'
   };
 
   const attrToEn = {
@@ -3712,7 +4317,8 @@ LANGUAGE_TOGGLE_JS = r"""
       '输入交易哈希': 'Enter transaction hash'
     },
     'aria-label': {
-      '下载格式': 'Download format'
+      '下载格式': 'Download format',
+      '关闭': 'Close'
     }
   };
 
@@ -3752,6 +4358,12 @@ LANGUAGE_TOGGLE_JS = r"""
     if (numericUnit) return numericUnit;
     let match = text.match(/^第\s*(\d+)\s*\/\s*(\d+)\s*页\s*·\s*当前显示\s*(\d+)-(\d+)\s*\/\s*共\s*(\d+)\s*名$/);
     if (match) return `Page ${match[1]} / ${match[2]} · Showing ${match[3]}-${match[4]} of ${match[5]}`;
+    match = text.match(/^采样\s*(\d+)$/);
+    if (match) return `Sample ${match[1]}`;
+    match = text.match(/^采样中：当前只有\s*(\d+)\s*个采样点，等待更多刷新形成完整趋势。$/);
+    if (match) return `Sampling: only ${match[1]} samples are available. More refreshes will build a complete trend.`;
+    match = text.match(/^拖动图表查看具体日期。当前周期共\s*(\d+)\s*个采样点。$/);
+    if (match) return `Drag across the chart to inspect each date. This period has ${match[1]} samples.`;
     match = text.match(/^覆盖率\s+(.+)$/);
     if (match) return `Coverage ${match[1]}`;
     match = text.match(/^订单已生成：支付\s*(.+?)\s*MARS 后提交交易哈希。$/);
@@ -3849,11 +4461,29 @@ LANGUAGE_TOGGLE_JS = r"""
 
 
 def _build_mobile_metric_cards(items: list[tuple]) -> str:
-    return "\n".join(
-        '<article class="m-card m-reveal"><span>%s</span><b>%s</b><small>%s</small>%s</article>'
-        % (escape(item[0]), escape(item[1]), escape(item[2]), _build_sparkline(_clean_trend_values(item[3] if len(item) > 3 else [])))
-        for item in items
-    )
+    cards: list[str] = []
+    for index, item in enumerate(items):
+        if len(item) >= 5:
+            _, label, value, note, trend_points = item[:5]
+            trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
+        else:
+            label, value, note = item[:3]
+            trend_values = item[3] if len(item) > 3 else []
+        cards.append(
+            '<article class="m-card m-reveal" role="button" tabindex="0" '
+            'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
+            "<span>%s</span><b>%s</b><small>%s</small>%s</article>"
+            % (
+                index,
+                escape(str(label), quote=True),
+                escape(str(label), quote=True),
+                escape(label),
+                escape(value),
+                escape(note),
+                _build_sparkline(_clean_trend_values(trend_values)),
+            )
+        )
+    return "\n".join(cards)
 
 
 def _build_mobile_flow_cards(items: list[tuple[str, str, str, str]]) -> str:
@@ -3929,55 +4559,57 @@ def build_mobile_html(payload: dict) -> str:
     total_circulation_tokens = meta.get("network_total_circulation_tokens")
     daily_total_tokens = meta.get("emission_daily_total_tokens")
 
-    key_cards = _build_mobile_metric_cards(
-        [
-            (
-                "全网总算力",
-                _fmt_power(network_total_power),
-                "公开接口统计",
-                _trend_values(
-                    meta,
-                    "network_total_power",
-                    [
-                        meta.get("period_30d_start_total_power"),
-                        meta.get("period_7d_start_total_power"),
-                        meta.get("statistics_window_start_total_power"),
-                        network_total_power,
-                    ],
+    mobile_metric_items = [
+        (
+            "network_total_power",
+            "全网总算力",
+            _fmt_power(network_total_power),
+            "公开接口统计",
+            _trend_points(
+                meta,
+                "network_total_power",
+                [
+                    meta.get("period_30d_start_total_power"),
+                    meta.get("period_7d_start_total_power"),
+                    meta.get("statistics_window_start_total_power"),
+                    network_total_power,
+                ],
+            ),
+        ),
+        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
+        ("network_current_price", "当前价格", current_price, "区块浏览器公开报价", _trend_points(meta, "network_current_price", [meta.get("network_current_price")])),
+        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
+        (
+            "total_burned",
+            "累计销毁",
+            total_burned,
+            "POWER 合约累计燃烧",
+            _trend_points(
+                meta,
+                "total_burned",
+                _trend_from_cumulative(
+                    total_burned_tokens,
+                    meta.get("period_30d_burned_tokens"),
+                    meta.get("period_7d_burned_tokens"),
+                    meta.get("statistics_window_burned_tokens"),
                 ),
             ),
-            ("全网流通量", circulation, "区块浏览器公开统计", _trend_values(meta, "network_total_circulation", [total_circulation_tokens])),
-            ("当前价格", current_price, "区块浏览器公开报价", _trend_values(meta, "network_current_price", [meta.get("network_current_price")])),
-            ("每日产币量", daily_total, "官方经济模型口径", _trend_values(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
-            (
-                "累计销毁",
-                total_burned,
-                "POWER 合约累计燃烧",
-                _trend_values(
-                    meta,
-                    "total_burned",
-                    _trend_from_cumulative(
-                        total_burned_tokens,
-                        meta.get("period_30d_burned_tokens"),
-                        meta.get("period_7d_burned_tokens"),
-                        meta.get("statistics_window_burned_tokens"),
-                    ),
-                ),
-            ),
-            ("统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃", _trend_values(meta, "daily_active_addresses", [active_wallet_count])),
-            ("统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志", _trend_values(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))),
-            ("统计日新增算力", _fmt_power(new_power), "北京时间统计日口径", _trend_values(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))),
-            ("日销毁币量", daily_burned, "北京时间统计日口径", _trend_values(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))),
-            ("7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_values(meta, "period_7d_new_power", [period_7d_new_power])),
-            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_values(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
-            ("7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_values(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
-            ("30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_values(meta, "period_30d_new_power", [period_30d_new_power])),
-            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_values(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
-            ("30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_values(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
-            ("单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_values(meta, "power_per_coin", [power_required_value])),
-            ("1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算", _trend_values(meta, "one_yi_power_output", [one_yi_power_output_value])),
-        ]
-    )
+        ),
+        ("daily_active_addresses", "统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
+        ("daily_new_addresses", "统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志", _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))),
+        ("daily_new_power", "统计日新增算力", _fmt_power(new_power), "北京时间统计日口径", _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))),
+        ("daily_burned", "日销毁币量", daily_burned, "北京时间统计日口径", _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))),
+        ("period_7d_new_power", "7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_points(meta, "period_7d_new_power", [period_7d_new_power])),
+        ("period_7d_new_addresses", "7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
+        ("period_7d_burned", "7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
+        ("period_30d_new_power", "30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_points(meta, "period_30d_new_power", [period_30d_new_power])),
+        ("period_30d_new_addresses", "30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
+        ("period_30d_burned", "30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
+        ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
+        ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
+    ]
+    hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[:8])
+    key_cards = _build_mobile_metric_cards(mobile_metric_items)
     flow_cards = _build_mobile_flow_cards(
         [
             ("总钱包数量", "地址总量", _fmt_chinese_number(explorer_total_addresses), "公开接口返回的地址规模，不代表全部参与挖矿。"),
@@ -4028,6 +4660,7 @@ def build_mobile_html(payload: dict) -> str:
     ).replace('class="line"', 'class="m-meta-row"')
     warning_html = _build_warning(meta, _fmt_percent(meta.get("coverage_target", 0.8))).replace('class="alert"', 'class="m-note"')
     embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
+    metric_trend_payload = json.dumps(_build_metric_trend_payload(mobile_metric_items), ensure_ascii=False).replace("</script>", "<\\/script>")
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -4066,14 +4699,7 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-hero-grid">
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
         <div class="m-card-grid">
-          <article class="m-card"><span>全网总算力</span><b>{escape(_fmt_power(network_total_power))}</b><small>公开接口统计</small></article>
-          <article class="m-card"><span>全网流通量</span><b>{escape(circulation)}</b><small>公开接口统计</small></article>
-          <article class="m-card"><span>统计日活跃地址</span><b>{escape(_fmt_count_unit(active_wallet_count))}</b><small>北京 08:00 至次日 08:00</small></article>
-          <article class="m-card"><span>统计日新增地址</span><b>{escape(_fmt_count_unit(new_address_count))}</b><small>首次进入 POWER 日志</small></article>
-          <article class="m-card"><span>日销毁币量</span><b>{escape(daily_burned)}</b><small>北京 08:00 至次日 08:00</small></article>
-          <article class="m-card"><span>7 天新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b><small>最近 7 个完整统计日</small></article>
-          <article class="m-card"><span>7 天新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b><small>首次进入 POWER 日志</small></article>
-          <article class="m-card"><span>每日产币量</span><b>{escape(daily_total)}</b><small>官方经济模型口径</small></article>
+          {hero_metric_cards}
         </div>
       </div>
       {warning_html}
@@ -4101,7 +4727,9 @@ def build_mobile_html(payload: dict) -> str:
   <footer class="m-footer">MarsChain Rank 手机版 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
+<script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{MOBILE_DASHBOARD_JS}
+{METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
 </body>
 </html>
