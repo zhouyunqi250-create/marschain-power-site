@@ -333,18 +333,23 @@ def build_metric_trends(meta: dict, metric_history: list[dict]) -> dict:
         ]
         if values:
             trends["network_total_power"] = {"source": "POWER 合约日趋势", "values": values[-30:]}
+    def day_label(item: dict) -> str:
+        raw = str(item.get("statistics_window_end_local") or item.get("generated_at_local") or "")
+        if len(raw) >= 10:
+            return raw[:10]
+        return raw or "unknown"
+
     history = normalize_metric_history(metric_history)
-    for metric_key in set(METRIC_SNAPSHOT_FIELDS) | {"one_yi_power_output"}:
+    for metric_key in sorted(set(METRIC_SNAPSHOT_FIELDS) | {"one_yi_power_output"}):
         if metric_key == "network_total_power" and metric_key in trends:
             continue
-        values = [
-            {
-                "label": item.get("statistics_window_end_local") or item.get("generated_at_local"),
-                "value": item.get("values", {}).get(metric_key),
-            }
-            for item in history
-            if item.get("values", {}).get(metric_key) is not None
-        ]
+        daily_values: dict[str, dict] = {}
+        for item in history:
+            value = item.get("values", {}).get(metric_key)
+            if value is None:
+                continue
+            daily_values[day_label(item)] = {"label": day_label(item), "value": value}
+        values = list(daily_values.values())
         if values:
             trends[metric_key] = {"source": "站点刷新趋势", "values": values[-30:]}
     return trends

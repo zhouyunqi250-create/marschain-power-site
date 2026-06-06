@@ -1983,6 +1983,21 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .trend-chart .cursor-line { stroke: rgba(255,255,255,.66); stroke-width: 1.5; stroke-dasharray: 5 6; }
 .trend-chart .cursor-dot { fill: var(--green); filter: drop-shadow(0 0 12px rgba(129,245,178,.64)); }
+.trend-chart .axis-line { stroke: rgba(255,255,255,.12); stroke-width: 1; }
+.trend-chart .value-label {
+  fill: #eaf7ff;
+  font-size: 13px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: rgba(4, 12, 27, .92);
+  stroke-width: 5px;
+  stroke-linejoin: round;
+}
+.trend-chart .date-label {
+  fill: #7f91aa;
+  font-size: 12px;
+  font-weight: 850;
+}
 .trend-empty {
   position: absolute;
   inset: 0;
@@ -3639,6 +3654,9 @@ a { color: inherit; }
 .trend-chart .line { fill: none; stroke: var(--cyan); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 14px rgba(86,239,255,.38)); }
 .trend-chart .cursor-line { stroke: rgba(255,255,255,.66); stroke-width: 1.5; stroke-dasharray: 5 6; }
 .trend-chart .cursor-dot { fill: var(--green); filter: drop-shadow(0 0 12px rgba(129,245,178,.64)); }
+.trend-chart .axis-line { stroke: rgba(255,255,255,.12); stroke-width: 1; }
+.trend-chart .value-label { fill: #eaf7ff; font-size: 12px; font-weight: 900; paint-order: stroke; stroke: rgba(4,12,27,.92); stroke-width: 5px; stroke-linejoin: round; }
+.trend-chart .date-label { fill: #7f91aa; font-size: 11px; font-weight: 850; }
 .trend-empty { position: absolute; inset: 0; display: grid; place-items: center; color: #9fb0c9; font-weight: 900; text-align: center; padding: 20px; }
 .trend-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 12px 16px 18px; }
 .trend-stat { min-width: 0; padding: 12px; border: 1px solid rgba(86,239,255,.14); border-radius: 14px; background: rgba(255,255,255,.045); }
@@ -3936,9 +3954,21 @@ METRIC_TREND_JS = r"""
   let focusIndex = 0;
   let modal = null;
 
+  const TOKEN_WEI_METRICS = new Set([
+    'network_total_circulation',
+    'total_burned',
+    'daily_burned',
+    'period_7d_burned',
+    'period_30d_burned',
+  ]);
   const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-  const formatTrendValue = (value) => {
+  const displayNumber = (value) => {
     const number = Number(value);
+    if (!Number.isFinite(number)) return NaN;
+    return activeMetric && TOKEN_WEI_METRICS.has(activeMetric.key) ? number / 1e18 : number;
+  };
+  const formatTrendValue = (value) => {
+    const number = displayNumber(value);
     if (!Number.isFinite(number)) return '待刷新';
     const abs = Math.abs(number);
     if (abs >= 1_0000_0000_0000) return `${trimZeros((number / 1_0000_0000_0000).toFixed(3))}万亿`;
@@ -3947,6 +3977,12 @@ METRIC_TREND_JS = r"""
     if (abs > 0 && abs < 1) return trimZeros(number.toFixed(6));
     if (Number.isInteger(number)) return number.toLocaleString('zh-CN');
     return trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }));
+  };
+  const formatDateLabel = (value) => {
+    const text = String(value || '');
+    const match = text.match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[2]}-${match[3]}`;
+    return text.replace(/^采样\s*/, '#');
   };
   const cleanPoints = (points) => Array.isArray(points)
     ? points.map((point, index) => ({
@@ -3966,6 +4002,16 @@ METRIC_TREND_JS = r"""
     '"': '&quot;',
     "'": '&#39;',
   }[char]));
+  const chartLabelIndexes = (count) => {
+    if (count <= 0) return new Set();
+    if (count <= 16) return new Set(Array.from({ length: count }, (_, index) => index));
+    const maxLabels = 6;
+    const indexes = new Set([0, count - 1]);
+    for (let i = 1; i < maxLabels - 1; i += 1) {
+      indexes.add(Math.round((count - 1) * (i / (maxLabels - 1))));
+    }
+    return indexes;
+  };
 
   const ensureModal = () => {
     if (modal) return modal;
@@ -4057,7 +4103,7 @@ METRIC_TREND_JS = r"""
 
     const width = 720;
     const height = 300;
-    const pad = { left: 38, right: 20, top: 24, bottom: 38 };
+    const pad = { left: 38, right: 20, top: 44, bottom: 50 };
     const plotWidth = width - pad.left - pad.right;
     const plotHeight = height - pad.top - pad.bottom;
     const values = activePoints.map((point) => point.value);
@@ -4077,6 +4123,17 @@ METRIC_TREND_JS = r"""
       const base = height - pad.bottom;
       return `<rect class="bar" x="${(x - barWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.max(1, base - y).toFixed(2)}" rx="2"></rect>`;
     }).join('');
+    const labelIndexes = chartLabelIndexes(activePoints.length);
+    const topLabels = coords.map(([x, y], index) => {
+      if (!labelIndexes.has(index)) return '';
+      const anchor = index === 0 ? 'start' : index === activePoints.length - 1 ? 'end' : 'middle';
+      return `<text class="value-label" x="${x.toFixed(2)}" y="${Math.max(17, y - 10).toFixed(2)}" text-anchor="${anchor}">${escapeHtml(formatTrendValue(activePoints[index].value))}</text>`;
+    }).join('');
+    const dateLabels = coords.map(([x], index) => {
+      if (!labelIndexes.has(index)) return '';
+      const anchor = index === 0 ? 'start' : index === activePoints.length - 1 ? 'end' : 'middle';
+      return `<text class="date-label" x="${x.toFixed(2)}" y="${(height - 14).toFixed(2)}" text-anchor="${anchor}">${escapeHtml(formatDateLabel(activePoints[index].label))}</text>`;
+    }).join('');
     const cursors = coords.map(([x, y], index) => (
       `<g data-cursor-index="${index}" style="opacity:${index === focusIndex ? 1 : 0}">
         <line class="cursor-line" x1="${x.toFixed(2)}" y1="${pad.top}" x2="${x.toFixed(2)}" y2="${height - pad.bottom}"></line>
@@ -4085,9 +4142,12 @@ METRIC_TREND_JS = r"""
     )).join('');
     chart.innerHTML = `
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(activeMetric.label)}趋势图">
+        <line class="axis-line" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
         ${bars}
         <path class="area" d="${areaPath}"></path>
         <path class="line" d="${linePath}"></path>
+        ${topLabels}
+        ${dateLabels}
         ${cursors}
       </svg>
     `;
@@ -4103,7 +4163,7 @@ METRIC_TREND_JS = r"""
     };
     const foot = activePoints.length < 7
       ? `采样中：当前只有 ${activePoints.length} 个采样点，等待更多刷新形成完整趋势。`
-      : `拖动图表查看具体日期。当前周期共 ${activePoints.length} 个采样点。`;
+      : `每根柱子对应一个自然日。当前周期共 ${activePoints.length} 天。`;
     modal.querySelector('[data-trend-foot]').textContent = foot;
     setFocus(focusIndex);
   };
@@ -4364,6 +4424,8 @@ LANGUAGE_TOGGLE_JS = r"""
     if (match) return `Sampling: only ${match[1]} samples are available. More refreshes will build a complete trend.`;
     match = text.match(/^拖动图表查看具体日期。当前周期共\s*(\d+)\s*个采样点。$/);
     if (match) return `Drag across the chart to inspect each date. This period has ${match[1]} samples.`;
+    match = text.match(/^每根柱子对应一个自然日。当前周期共\s*(\d+)\s*天。$/);
+    if (match) return `Each bar represents one calendar day. This period has ${match[1]} days.`;
     match = text.match(/^覆盖率\s+(.+)$/);
     if (match) return `Coverage ${match[1]}`;
     match = text.match(/^订单已生成：支付\s*(.+?)\s*MARS 后提交交易哈希。$/);
