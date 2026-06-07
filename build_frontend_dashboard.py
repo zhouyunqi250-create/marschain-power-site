@@ -3397,7 +3397,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <a href="#rank">算力排行</a>
         <a href="#pulse">核心数据</a>
         <a href="#growth">周期增长</a>
-        <a href="#wallets">地址统计</a>
         <a href="#risk">数据说明</a>
       </nav>
       <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
@@ -3413,7 +3412,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
       </div>
       {warning_html}
-      <div class="scroll-hint"><span class="mouse"></span><span>继续查看核心数据、增长趋势与统计口径</span></div>
+      <div class="scroll-hint"><span class="mouse"></span><span>继续查看核心数据、增长趋势与数据说明</span></div>
     </div>
     <aside class="command reveal visible">
       <div class="radar">
@@ -3451,22 +3450,9 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     </div>
     <div class="growth-grid">{growth_cards}</div>
   </section>
-  <section id="wallets" class="section">
-    <div class="section-head reveal">
-      <div><span class="kicker">04 / 地址统计</span><h2>钱包地址统计口径</h2></div>
-      <p>总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。</p>
-    </div>
-    <div class="funnel reveal">
-      <article class="fcard"><label>总钱包数量<span>地址总量</span></label><strong>{_fmt_chinese_number(explorer_total_addresses)}</strong><small>公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。</small></article>
-      <div class="arrow"></div>
-      <article class="fcard"><label>候选地址<span>日志发现</span></label><strong>{_fmt_chinese_number(candidate_count)}</strong><small>从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。</small></article>
-      <div class="arrow"></div>
-      <article class="fcard"><label>正算力地址<span>算力 &gt; 0</span></label><strong>{_fmt_chinese_number(positive_power_count)}</strong><small>候选地址中当前算力大于 0 的钱包地址。</small></article>
-    </div>
-  </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">05 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
+      <div><span class="kicker">04 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
       <p>说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。</p>
     </div>
     <div class="telemetry">
@@ -4204,7 +4190,6 @@ LANGUAGE_TOGGLE_JS = r"""
     '算力排行': 'Power Rank',
     '核心数据': 'Core Data',
     '周期增长': 'Growth',
-    '地址统计': 'Wallet Stats',
     '数据说明': 'Data Notes',
     '排行': 'Rank',
     '核心': 'Core',
@@ -4217,7 +4202,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。': 'Based on public explorer data, RPC, and POWER contract logs, showing total network power, wallet addresses, Beijing-day growth, and top address rankings.',
     '下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。': 'Start with the top 100 power addresses, then review coverage, active wallets, and new growth data.',
     '下方优先展示前 100 名算力地址，默认先看前 10。': 'Top 100 power addresses are shown below, with the first 10 visible by default.',
-    '继续查看核心数据、增长趋势与统计口径': 'Continue to core data, growth trends, and methodology',
+    '继续查看核心数据、增长趋势与数据说明': 'Continue to core data, growth trends, and data notes',
     '扫描覆盖率': 'Scan Coverage',
     '候选地址': 'Candidate Addresses',
     '正算力占比': 'Positive Power Share',
@@ -4252,9 +4237,6 @@ LANGUAGE_TOGGLE_JS = r"""
     '新增算力': 'New Power',
     '新增地址': 'New Addresses',
     '销毁数量': 'Burned Amount',
-    '04 / 地址统计': '04 / Wallet Stats',
-    '钱包地址统计口径': 'Wallet Address Methodology',
-    '总钱包、候选地址与正算力地址来自不同计算口径，需要分开理解。': 'Total wallets, candidate addresses, and positive-power addresses use different methods and should be read separately.',
     '总钱包数量': 'Total Wallets',
     '地址总量': 'Total Addresses',
     '公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。': 'Address scale returned by public APIs; not every address mines or has power.',
@@ -4262,7 +4244,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。': 'Related addresses found from POWER contract logs; each still needs a current power query.',
     '算力 > 0': 'Power > 0',
     '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
-    '05 / 数据说明': '05 / Data Notes',
+    '04 / 数据说明': '04 / Data Notes',
     '数据来源与准确性说明': 'Data Sources and Accuracy',
     '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
     '公开口径说明': 'Public Methodology Notes',
@@ -4338,10 +4320,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '02 / CORE': '02 / CORE',
     '核心数据': 'Core Data',
     '先看结果，再看口径。': 'Read the results first, then the methodology.',
-    '03 / WALLET': '03 / WALLET',
-    '地址口径': 'Wallet Methodology',
-    '三个地址数字不能混用。': 'The three address counts should not be mixed.',
-    '04 / NOTE': '04 / NOTE',
+    '03 / NOTE': '03 / NOTE',
     '公开数据存在延迟。': 'Public data may lag.',
     '低': 'Low',
     '首个采样点': 'First Sample',
@@ -4672,13 +4651,6 @@ def build_mobile_html(payload: dict) -> str:
     ]
     hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[:8])
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
-    flow_cards = _build_mobile_flow_cards(
-        [
-            ("总钱包数量", "地址总量", _fmt_chinese_number(explorer_total_addresses), "公开接口返回的地址规模，不代表全部参与挖矿。"),
-            ("候选地址", "日志发现", _fmt_chinese_number(candidate_count), "从 POWER 合约日志识别出的相关地址。"),
-            ("正算力地址", "算力 > 0", _fmt_chinese_number(positive_power_count), "当前查询到算力大于 0 的钱包地址。"),
-        ]
-    )
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -4749,7 +4721,6 @@ def build_mobile_html(payload: dict) -> str:
     <nav class="m-nav">
       <a href="#rank">排行</a>
       <a href="#core">核心</a>
-      <a href="#wallets">地址</a>
       <a href="#risk">说明</a>
     </nav>
   </header>
@@ -4776,12 +4747,8 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-section-head"><div><span class="m-kicker">02 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
       <div class="m-card-grid">{key_cards}</div>
     </section>
-    <section id="wallets" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">03 / WALLET</span><h2>地址口径</h2></div><p>三个地址数字不能混用。</p></div>
-      <div class="m-list">{flow_cards}</div>
-    </section>
     <section id="risk" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">03 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
       <div class="m-meta">{meta_rows}</div>
       <p class="m-note">榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。</p>
     </section>
