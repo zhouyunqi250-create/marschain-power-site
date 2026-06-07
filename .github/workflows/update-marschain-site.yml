@@ -141,8 +141,12 @@ jobs:
           site_dir = Path("site")
           data_dir = site_dir / "data"
           mobile_dir = site_dir / "m"
+          output_latest_dir = Path("output/latest")
+          output_history_dir = Path("output/history")
           data_dir.mkdir(parents=True, exist_ok=True)
           mobile_dir.mkdir(parents=True, exist_ok=True)
+          output_latest_dir.mkdir(parents=True, exist_ok=True)
+          output_history_dir.mkdir(parents=True, exist_ok=True)
           downloads_dir = site_dir / "downloads"
           if downloads_dir.exists():
               shutil.rmtree(downloads_dir)
@@ -160,6 +164,9 @@ jobs:
           (data_dir / "metric-history.json").write_text(json.dumps({"snapshots": metric_history}, ensure_ascii=False, indent=2) + "\n")
           (site_dir / "build-meta.json").write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + "\n")
           (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
+          (output_latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+          (output_latest_dir / "build-meta.json").write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + "\n")
+          (output_history_dir / ".site-only").write_text("site-only build\n")
           PY
 
       - name: Upload build artifacts
