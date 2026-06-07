@@ -2060,6 +2060,20 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .growth-card h3 { margin: 10px 0 24px; font-size: 38px; letter-spacing: -.055em; }
 .growth-card .line { border-color: rgba(82,239,255,.14); }
 .growth-card .line b { font-size: 20px; }
+.equation-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.equation-grid .fcard {
+  min-height: 222px;
+  background:
+    radial-gradient(circle at 86% 10%, rgba(255,211,126,.18), transparent 34%),
+    linear-gradient(180deg, rgba(22,38,68,.88), rgba(8,15,30,.92));
+}
+.equation-grid .fcard strong { font-size: 46px; margin: 36px 0 10px; }
+.equation-note {
+  margin: 18px 0 0;
+  color: #8fa2bd;
+  font-size: 13px;
+  line-height: 1.65;
+}
 .funnel { display: grid; grid-template-columns: 1fr 72px 1fr 72px 1fr; align-items: center; gap: 12px; }
 .fcard { min-height: 230px; padding: 24px; border: 1px solid var(--line); border-radius: 26px; background: rgba(14,24,46,.82); }
 .fcard label { display: flex; justify-content: space-between; color: #abb9d0; font-weight: 950; }
@@ -2471,6 +2485,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .trend-stat b { font-size: 18px; }
   .trend-foot { margin: -4px 16px 18px; }
   .growth-grid { grid-template-columns: 1fr; gap: 12px; }
+  .equation-grid { grid-template-columns: 1fr; gap: 10px; }
   .growth-card { padding: 18px; border-radius: 22px; }
   .growth-card h3 { font-size: 28px; margin-bottom: 12px; }
   .growth-card .line b { font-size: 16px; }
@@ -2482,6 +2497,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   }
   .fcard label { font-size: 13px; }
   .fcard strong { font-size: 40px; margin: 26px 0 10px; }
+  .equation-grid .fcard strong { font-size: 40px; margin: 26px 0 10px; }
   .fcard small { font-size: 12px; }
   .arrow { height: 28px; opacity: .75; }
   .rank-grid { grid-template-columns: 1fr; gap: 10px; }
@@ -3333,6 +3349,12 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <div class="line"><span>销毁数量</span><b>{escape(period_30d_burned)}</b></div>
       </article>
     """
+    equation_cards = """
+      <article class="fcard reveal"><label>当前起始系数<span>算力倍增</span></label><strong>10x</strong><small>官方机制说明中的方程膨胀起始倍数。</small></article>
+      <article class="fcard reveal"><label>最高膨胀系数<span>上限</span></label><strong>160x</strong><small>方程膨胀系数逐级放大时的公开说明上限。</small></article>
+      <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>圣诞方程与预言机方程按 8 天窗口执行。</small></article>
+      <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制说明中每轮方程触发的流通量销毁比例。</small></article>
+    """
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -3397,6 +3419,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <a href="#rank">算力排行</a>
         <a href="#pulse">核心数据</a>
         <a href="#growth">周期增长</a>
+        <a href="#equation">方程系数</a>
         <a href="#risk">数据说明</a>
       </nav>
       <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
@@ -3450,9 +3473,17 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     </div>
     <div class="growth-grid">{growth_cards}</div>
   </section>
+  <section id="equation" class="section">
+    <div class="section-head reveal">
+      <div><span class="kicker">04 / 方程系数</span><h2>方程膨胀系数</h2></div>
+      <p>展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。</p>
+    </div>
+    <div class="equation-grid">{equation_cards}</div>
+    <p class="equation-note">系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。</p>
+  </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
-      <div><span class="kicker">04 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
+      <div><span class="kicker">05 / 数据说明</span><h2>数据来源与准确性说明</h2></div>
       <p>说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。</p>
     </div>
     <div class="telemetry">
@@ -4190,10 +4221,11 @@ LANGUAGE_TOGGLE_JS = r"""
     '算力排行': 'Power Rank',
     '核心数据': 'Core Data',
     '周期增长': 'Growth',
+    '方程系数': 'Equation Factor',
     '数据说明': 'Data Notes',
     '排行': 'Rank',
     '核心': 'Core',
-    '地址': 'Wallets',
+    '方程': 'Equation',
     '说明': 'Notes',
     '电脑版': 'Desktop',
     '数据已加载 · 每 5 小时刷新': 'Data loaded · refreshes every 5 hours',
@@ -4237,6 +4269,22 @@ LANGUAGE_TOGGLE_JS = r"""
     '新增算力': 'New Power',
     '新增地址': 'New Addresses',
     '销毁数量': 'Burned Amount',
+    '04 / 方程系数': '04 / Equation Factor',
+    '方程膨胀系数': 'Equation Expansion Factor',
+    '展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。': 'Shows public expansion parameters in the MarsChain dual-equation mechanism, including power multiplier, period, and burn ratio.',
+    '当前起始系数': 'Starting Factor',
+    '算力倍增': 'Power Multiplier',
+    '官方机制说明中的方程膨胀起始倍数。': 'Starting expansion multiplier in the official mechanism notes.',
+    '最高膨胀系数': 'Maximum Expansion Factor',
+    '上限': 'Cap',
+    '方程膨胀系数逐级放大时的公开说明上限。': 'Published cap for the stepped equation expansion factor.',
+    '执行周期': 'Execution Period',
+    '单轮': 'Per Round',
+    '8 天': '8 Days',
+    '圣诞方程与预言机方程按 8 天窗口执行。': 'The Christmas Equation and Oracle Equation run in an 8-day window.',
+    '销毁比例': 'Burn Ratio',
+    '机制说明中每轮方程触发的流通量销毁比例。': 'Circulation burn ratio described for each equation round.',
+    '系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。': 'The factor starts at 10x and steps up to 160x. This is a mechanism note, not a real-time earnings promise.',
     '总钱包数量': 'Total Wallets',
     '地址总量': 'Total Addresses',
     '公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。': 'Address scale returned by public APIs; not every address mines or has power.',
@@ -4244,7 +4292,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。': 'Related addresses found from POWER contract logs; each still needs a current power query.',
     '算力 > 0': 'Power > 0',
     '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
-    '04 / 数据说明': '04 / Data Notes',
+    '05 / 数据说明': '05 / Data Notes',
     '数据来源与准确性说明': 'Data Sources and Accuracy',
     '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
     '公开口径说明': 'Public Methodology Notes',
@@ -4320,7 +4368,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '02 / CORE': '02 / CORE',
     '核心数据': 'Core Data',
     '先看结果，再看口径。': 'Read the results first, then the methodology.',
-    '03 / NOTE': '03 / NOTE',
+    '03 / EQUATION': '03 / EQUATION',
+    '机制参数展示。': 'Mechanism parameters.',
+    '04 / NOTE': '04 / NOTE',
     '公开数据存在延迟。': 'Public data may lag.',
     '低': 'Low',
     '首个采样点': 'First Sample',
@@ -4651,6 +4701,14 @@ def build_mobile_html(payload: dict) -> str:
     ]
     hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[:8])
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
+    equation_cards = _build_mobile_flow_cards(
+        [
+            ("当前起始系数", "算力倍增", "10x", "官方机制说明中的方程膨胀起始倍数。"),
+            ("最高膨胀系数", "上限", "160x", "方程膨胀系数逐级放大时的公开说明上限。"),
+            ("执行周期", "单轮", "8 天", "圣诞方程与预言机方程按 8 天窗口执行。"),
+            ("销毁比例", "流通量", "35%", "机制说明中每轮方程触发的流通量销毁比例。"),
+        ]
+    )
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -4721,6 +4779,7 @@ def build_mobile_html(payload: dict) -> str:
     <nav class="m-nav">
       <a href="#rank">排行</a>
       <a href="#core">核心</a>
+      <a href="#equation">方程</a>
       <a href="#risk">说明</a>
     </nav>
   </header>
@@ -4747,8 +4806,13 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-section-head"><div><span class="m-kicker">02 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
       <div class="m-card-grid">{key_cards}</div>
     </section>
+    <section id="equation" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">03 / EQUATION</span><h2>方程膨胀系数</h2></div><p>机制参数展示。</p></div>
+      <div class="m-list">{equation_cards}</div>
+      <p class="m-note">系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。</p>
+    </section>
     <section id="risk" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">03 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
       <div class="m-meta">{meta_rows}</div>
       <p class="m-note">榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。</p>
     </section>
