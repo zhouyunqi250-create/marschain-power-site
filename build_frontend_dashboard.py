@@ -3215,7 +3215,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     total_burned_tokens = meta.get("network_total_burned_tokens")
     total_circulation_tokens = meta.get("network_total_circulation_tokens")
     daily_total_tokens = meta.get("emission_daily_total_tokens")
-    total_supply_tokens = meta.get("emission_total_supply_cap_tokens")
 
     metric_items = [
         (
@@ -3236,7 +3235,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ),
         ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
         ("network_current_price", "当前价格", current_price, "区块浏览器公开报价", _trend_points(meta, "network_current_price", [meta.get("network_current_price")])),
-        ("total_supply", "总产量", total_supply, "官网口径：永不增发", _trend_points(meta, "total_supply", [total_supply_tokens, total_supply_tokens])),
         ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
         (
             "total_burned",
@@ -3255,7 +3253,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             ),
         ),
         ("total_wallets", "总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_points(meta, "total_wallets", [explorer_total_addresses])),
-        ("positive_power_addresses", "正算力地址", _fmt_chinese_number(positive_power_count), "算力大于 0", _trend_points(meta, "positive_power_addresses", [positive_power_count])),
         ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
         (
             "daily_new_addresses",
