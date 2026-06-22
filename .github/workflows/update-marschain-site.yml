@@ -15,6 +15,205 @@ on:
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
+    - cron: "0 16 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: marschain-site
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+      ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+      ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+      ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
+      ALIYUN_PAID_OSS_BUCKET: ${{ secrets.ALIYUN_PAID_OSS_BUCKET }}
+      ALIYUN_PAID_OSS_ENDPOINT: ${{ secrets.ALIYUN_PAID_OSS_ENDPOINT }}
+      ALIYUN_PAID_OSS_PREFIX: ${{ secrets.ALIYUN_PAID_OSS_PREFIX }}
+      ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+      MARSCHAIN_PAID_DOWNLOAD_API_BASE: ${{ secrets.MARSCHAIN_PAID_DOWNLOAD_API_BASE }}
+      BAIDU_TONGJI_SITE_ID: 1dc172d16803cd4223b85645006548b4
+      MICROSOFT_CLARITY_PROJECT_ID: ${{ secrets.MICROSOFT_CLARITY_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Restore crawler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: output/marschain_power_cache.json
+          key: marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-
+            marschain-power-cache-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Preserve paid download API base
+        if: ${{ env.MARSCHAIN_PAID_DOWNLOAD_API_BASE == '' }}
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python - <<'PY' >> "$GITHUB_ENV"
+          import html
+          import os
+          import re
+          import urllib.request
+
+          base = (os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com").rstrip("/")
+          try:
+              with urllib.request.urlopen(f"{base}/?v=paid-api-preserve", timeout=30) as resp:
+                  page = resp.read().decode("utf-8", "replace")
+          except Exception:
+              raise SystemExit(0)
+
+          match = re.search(r'data-api-base="([^"]+)"', page)
+          if match:
+              api_base = html.unescape(match.group(1)).strip()
+              if api_base:
+                  print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={api_base}")
+          PY
+
+      - name: Restore public metric history
+        run: |
+          python - <<'PY'
+          import urllib.request
+          from pathlib import Path
+
+          origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
+          target = Path("site/data/metric-history.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          try:
+              with urllib.request.urlopen(f"{origin}/data/metric-history.json?v=restore", timeout=30) as resp:
+                  target.write_bytes(resp.read())
+                  print(f"restored {target}")
+          except Exception as exc:
+              print(f"metric history restore skipped: {exc}")
+          PY
+
+      - name: Backfill metric history from recent artifacts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python backfill_metric_history.py --site-dir site --repo "$GITHUB_REPOSITORY" --max-runs 10
+
+      - name: Refresh site with best-effort coverage
+        if: ${{ !(github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) }}
+        run: |
+          python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
+
+      - name: Rebuild site shell from current public data
+        if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]') }}
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import urllib.request
+          from pathlib import Path
+
+          from build_frontend_dashboard import build_html, build_mobile_html
+          from refresh_site import build_metric_trends, normalize_metric_history
+
+          origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
+          with urllib.request.urlopen(f"{origin}/data/latest.json", timeout=60) as resp:
+              payload = json.load(resp)
+          try:
+              with urllib.request.urlopen(f"{origin}/build-meta.json", timeout=60) as resp:
+                  build_meta = json.load(resp)
+          except Exception:
+              build_meta = payload.get("meta", {})
+
+          site_dir = Path("site")
+          data_dir = site_dir / "data"
+          mobile_dir = site_dir / "m"
+          output_latest_dir = Path("output/latest")
+          output_history_dir = Path("output/history")
+          data_dir.mkdir(parents=True, exist_ok=True)
+          mobile_dir.mkdir(parents=True, exist_ok=True)
+          output_latest_dir.mkdir(parents=True, exist_ok=True)
+          output_history_dir.mkdir(parents=True, exist_ok=True)
+          downloads_dir = site_dir / "downloads"
+          if downloads_dir.exists():
+              shutil.rmtree(downloads_dir)
+          metric_history_path = data_dir / "metric-history.json"
+          metric_history = []
+          if metric_history_path.exists():
+              try:
+                  metric_history = normalize_metric_history(json.loads(metric_history_path.read_text()))
+              except Exception:
+                  metric_history = []
+          payload["meta"]["metric_trends"] = build_metric_trends(payload.get("meta", {}), metric_history)
+          (site_dir / "index.html").write_text(build_html(payload))
+          (mobile_dir / "index.html").write_text(build_mobile_html(payload))
+          (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+          (data_dir / "metric-history.json").write_text(json.dumps({"snapshots": metric_history}, ensure_ascii=False, indent=2) + "\n")
+          (site_dir / "build-meta.json").write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + "\n")
+          (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
+          (output_latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+          (output_latest_dir / "build-meta.json").write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + "\n")
+          (output_history_dir / ".site-only").write_text("site-only build\n")
+          PY
+
+      - name: Upload build artifacts
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: marschain-site-build
+          path: |
+            site
+            output/latest
+            output/history
+          if-no-files-found: error
+
+      - name: Save crawler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: output/marschain_power_cache.json
+          key: marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+
+      - name: Deploy site to Alibaba Cloud OSS
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python deploy_to_oss.py \
+            --site-dir site \
+            --bucket "$ALIYUN_OSS_BUCKET" \
+            --endpoint "$ALIYUN_OSS_ENDPOINT" \
+            --base-url "$SITE_BASE_URL" \
+            --prefix "${ALIYUN_OSS_PREFIX:-}" \
+            --allow-bucket-root
+name: Update MarsChain Site
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/update-marschain-site.yml"
+      - "build_frontend_dashboard.py"
+      - "backfill_metric_history.py"
+      - "deploy_to_oss.py"
+      - "marschain_power_rank.py"
+      - "paid_download_service.py"
+      - "refresh_site.py"
+      - "requirements.txt"
+  schedule:
     - cron: "0 */5 * * *"
 
 permissions:
