@@ -105,7 +105,8 @@ def build_html(payload: dict) -> str:
     hero_meta_items = [
         f"最近刷新：{generated_at}",
         f"统计周期：{statistics_window_label}",
-        "刷新频率：每日 00:00（北京时间）",
+        "采集频率：每 24 小时一次",
+        "抓取时间：每日 00:00（北京时间，夜里 24:00）",
     ]
     if int(meta.get("tx_pages", 0) or 0) > 0:
         hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
@@ -3305,7 +3306,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     timeline_items = [
         ("最近刷新", generated_at),
         ("统计周期", statistics_window_label),
-        ("刷新频率", "每日 00:00（北京时间）"),
+        ("采集频率", "每 24 小时一次"),
+        ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
         ("全网流通量", circulation),
         ("当前价格", current_price),
         ("累计销毁", total_burned),
@@ -3424,7 +3426,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   </header>
   <section class="hero">
     <div class="hero-copy reveal visible">
-      <span class="chip">数据已加载 · 每日 00:00（北京时间）刷新</span>
+      <span class="chip">数据已加载 · 北京时间 00:00 每日采集</span>
       <h1>MarsChain<br>算力指挥舱</h1>
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
@@ -4225,7 +4227,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '方程': 'Equation',
     '说明': 'Notes',
     '电脑版': 'Desktop',
-    '数据已加载 · 每日 00:00（北京时间）刷新': 'Data loaded · refreshed daily at 00:00 Beijing time',
+    '数据已加载 · 北京时间 00:00 每日采集': 'Data loaded · collected daily at 00:00 Beijing time',
     '算力指挥舱': 'Power Command Center',
     '算力榜': 'Power Rank',
     '基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。': 'Based on public explorer data, RPC, and POWER contract logs, showing total network power, wallet addresses, Beijing-day growth, and top address rankings.',
@@ -4333,8 +4335,10 @@ LANGUAGE_TOGGLE_JS = r"""
     '缓存刷新': 'Cache Refreshes',
     '最近刷新': 'Last Refresh',
     '统计周期': 'Statistics Window',
-    '刷新频率': 'Refresh Frequency',
-    '每日 00:00（北京时间）': 'Daily 00:00 Beijing Time',
+    '采集频率': 'Collection Frequency',
+    '每 24 小时一次': 'Every 24 Hours',
+    '抓取时间': 'Collection Time',
+    '每日 00:00（北京时间，夜里 24:00）': 'Daily 00:00 Beijing Time (midnight)',
     '区块浏览器公开统计': 'Public explorer statistics',
     '区块浏览器公开报价': 'Public explorer quote',
     '官网口径：永不增发': 'Official rule: no additional issuance',
@@ -4730,7 +4734,8 @@ def build_mobile_html(payload: dict) -> str:
         [
             ("最近刷新", generated_at),
             ("统计周期", statistics_window_label),
-            ("刷新频率", "每日 00:00（北京时间）"),
+            ("采集频率", "每 24 小时一次"),
+            ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
             ("全网流通量", circulation),
             ("当前价格", current_price),
             ("累计销毁", total_burned),
@@ -4782,7 +4787,7 @@ def build_mobile_html(payload: dict) -> str:
   </header>
   <main>
     <section class="m-hero">
-      <span class="m-chip">数据已加载 · 每日 00:00（北京时间）刷新</span>
+      <span class="m-chip">数据已加载 · 北京时间 00:00 每日采集</span>
       <h1><span>MarsChain</span><span>算力榜</span></h1>
       <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
       <div class="m-hero-grid">
