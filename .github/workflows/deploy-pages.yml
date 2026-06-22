@@ -1,0 +1,121 @@
+name: Deploy GitHub Pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/deploy-pages.yml
+      - build_frontend_dashboard.py
+      - refresh_site.py
+      - requirements.txt
+  schedule:
+    - cron: '0 */5 * * *'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Build static site from current public data
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import urllib.request
+          from pathlib import Path
+
+          from build_frontend_dashboard import build_html, build_mobile_html
+          from refresh_site import build_metric_trends, normalize_metric_history
+
+          origin = 'https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com'
+          site_dir = Path('site')
+          data_dir = site_dir / 'data'
+          mobile_dir = site_dir / 'm'
+          output_latest_dir = Path('output/latest')
+          output_history_dir = Path('output/history')
+          data_dir.mkdir(parents=True, exist_ok=True)
+          mobile_dir.mkdir(parents=True, exist_ok=True)
+          output_latest_dir.mkdir(parents=True, exist_ok=True)
+          output_history_dir.mkdir(parents=True, exist_ok=True)
+
+          downloads_dir = site_dir / 'downloads'
+          if downloads_dir.exists():
+              shutil.rmtree(downloads_dir)
+
+          with urllib.request.urlopen(f'{origin}/data/latest.json', timeout=60) as resp:
+              payload = json.load(resp)
+
+          try:
+              with urllib.request.urlopen(f'{origin}/build-meta.json', timeout=60) as resp:
+                  build_meta = json.load(resp)
+          except Exception:
+              build_meta = payload.get('meta', {})
+
+          metric_history_path = data_dir / 'metric-history.json'
+          metric_history = []
+          try:
+              with urllib.request.urlopen(f'{origin}/data/metric-history.json?v=restore', timeout=30) as resp:
+                  restored = json.load(resp)
+              metric_history = normalize_metric_history(restored)
+          except Exception:
+              if metric_history_path.exists():
+                  try:
+                      metric_history = normalize_metric_history(json.loads(metric_history_path.read_text()))
+                  except Exception:
+                      metric_history = []
+
+          payload.setdefault('meta', {})['metric_trends'] = build_metric_trends(payload.get('meta', {}), metric_history)
+
+          html = build_html(payload).replace('href="/data/latest.json"', 'href="data/latest.json"')
+          mobile_html = build_mobile_html(payload)
+          mobile_html = mobile_html.replace('href="/?desktop=1"', 'href="../?desktop=1"')
+          mobile_html = mobile_html.replace('href="/data/latest.json"', 'href="../data/latest.json"')
+
+          (site_dir / 'index.html').write_text(html, encoding='utf-8')
+          (mobile_dir / 'index.html').write_text(mobile_html, encoding='utf-8')
+          (data_dir / 'latest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (data_dir / 'metric-history.json').write_text(json.dumps({'snapshots': metric_history}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (site_dir / 'build-meta.json').write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (site_dir / 'robots.txt').write_text('User-agent: *\nAllow: /\n', encoding='utf-8')
+          (output_latest_dir / 'latest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (output_latest_dir / 'build-meta.json').write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (output_history_dir / '.site-only').write_text('github-pages build\n', encoding='utf-8')
+          PY
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
