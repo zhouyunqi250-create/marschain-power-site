@@ -3,6 +3,15 @@ name: Update MarsChain Site
 
 on:
   workflow_dispatch:
+    inputs:
+      site_only:
+        description: "Rebuild and deploy the site shell from current public data"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   push:
     branches:
       - main
@@ -117,12 +126,12 @@ jobs:
           python backfill_metric_history.py --site-dir site --repo "$GITHUB_REPOSITORY" --max-runs 10
 
       - name: Refresh site with best-effort coverage
-        if: ${{ !(github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) }}
+        if: ${{ !((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
 
       - name: Rebuild site shell from current public data
-        if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]') }}
+        if: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
         run: |
           python - <<'PY'
           import json
