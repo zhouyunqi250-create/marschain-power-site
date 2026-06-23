@@ -2069,6 +2069,51 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     linear-gradient(180deg, rgba(22,38,68,.88), rgba(8,15,30,.92));
 }
 .equation-grid .fcard strong { font-size: 46px; margin: 36px 0 10px; }
+.burn-calculator {
+  margin-top: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, .95fr) minmax(0, 1.25fr);
+  gap: 18px;
+  padding: 24px;
+  border: 1px solid rgba(255,211,126,.22);
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255,211,126,.18), transparent 34%),
+    linear-gradient(135deg, rgba(26,34,54,.94), rgba(9,15,29,.94));
+  overflow: hidden;
+}
+.burn-copy h3 { margin: 10px 0 12px; font-size: 34px; letter-spacing: -.045em; }
+.burn-copy p { margin: 0; color: #92a4bf; line-height: 1.65; }
+.burn-form { display: grid; gap: 14px; }
+.burn-stats { display: grid; gap: 8px; }
+.burn-stats .line { padding: 10px 0; }
+.burn-stats .line b { font-size: 16px; text-align: right; overflow-wrap: anywhere; }
+.burn-input-row { display: grid; gap: 8px; }
+.burn-input-row label { color: #becbe0; font-weight: 950; font-size: 13px; }
+.burn-input-row input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,211,126,.26);
+  border-radius: 14px;
+  padding: 14px 16px;
+  color: #fff8e1;
+  background: rgba(255,255,255,.05);
+  font: 900 18px/1 var(--mono);
+  outline: none;
+}
+.burn-input-row input:focus {
+  border-color: rgba(255,211,126,.72);
+  box-shadow: 0 0 0 3px rgba(255,211,126,.12);
+}
+.burn-result {
+  border: 1px solid rgba(82,239,255,.18);
+  border-radius: 18px;
+  padding: 16px;
+  background: rgba(82,239,255,.07);
+}
+.burn-result span { display: block; color: #9fddec; font-size: 12px; font-weight: 950; }
+.burn-result b { display: block; margin-top: 8px; font-size: 30px; color: #fff; letter-spacing: -.04em; overflow-wrap: anywhere; }
+.burn-result small { display: block; margin-top: 8px; color: #89a0bb; line-height: 1.45; }
 .equation-note {
   margin: 18px 0 0;
   color: #8fa2bd;
@@ -2291,6 +2336,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .metrics { grid-template-columns: repeat(2, 1fr); }
   .rank-grid { grid-template-columns: 1fr; }
   .paid-download { grid-template-columns: 1fr; }
+  .burn-calculator { grid-template-columns: 1fr; }
   .funnel { grid-template-columns: 1fr; }
   .arrow { height: 36px; width: 2px; justify-self: center; background: linear-gradient(180deg, var(--cyan), transparent); }
   .arrow:after { right: -4px; top: auto; bottom: 0; transform: rotate(90deg); }
@@ -2310,7 +2356,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     opacity: .48;
   }
   .shell { width: min(calc(100vw - 28px), 360px); }
-  .shell, .topbar, .hero, .hero-copy, .hero-actions, .metrics, .funnel, .rank-grid, .telemetry {
+  .shell, .topbar, .hero, .hero-copy, .hero-actions, .metrics, .funnel, .rank-grid, .telemetry, .burn-calculator {
     max-width: 100%;
     min-width: 0;
   }
@@ -2753,6 +2799,63 @@ const setupPaidDownloadPanel = (panel) => {
   }
 };
 
+const setupBurnCalculator = (panel) => {
+  const rate = Number(panel.dataset.burnRate || 0);
+  const input = panel.querySelector('[data-burn-power]');
+  const result = panel.querySelector('[data-burn-result]');
+  const note = panel.querySelector('[data-burn-note]');
+  if (!input || !result) return;
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  const parsePower = (value) => {
+    let text = String(value || '').replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
+    let multiplier = 1;
+    if (text.includes('万亿')) {
+      multiplier = 1_0000_0000_0000;
+      text = text.replace(/万亿/g, '');
+    } else if (text.includes('亿')) {
+      multiplier = 1_0000_0000;
+      text = text.replace(/亿/g, '');
+    } else if (text.includes('万')) {
+      multiplier = 1_0000;
+      text = text.replace(/万/g, '');
+    } else if (text.endsWith('b')) {
+      multiplier = 1_000_000_000;
+      text = text.slice(0, -1);
+    } else if (text.endsWith('m')) {
+      multiplier = 1_000_000;
+      text = text.slice(0, -1);
+    } else if (text.endsWith('k')) {
+      multiplier = 1_000;
+      text = text.slice(0, -1);
+    }
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return NaN;
+    return Number(match[0]) * multiplier;
+  };
+  const formatChinese = (number, suffix = '') => {
+    if (!Number.isFinite(number)) return '待刷新';
+    const abs = Math.abs(number);
+    if (abs >= 1_0000_0000_0000) return `${trimZeros((number / 1_0000_0000_0000).toFixed(3))}万亿${suffix}`;
+    if (abs >= 1_0000_0000) return `${trimZeros((number / 1_0000_0000).toFixed(3))}亿${suffix}`;
+    if (abs >= 1_0000) return `${trimZeros((number / 1_0000).toFixed(3))}万${suffix}`;
+    return `${trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }))}${suffix}`;
+  };
+  const update = () => {
+    const power = parsePower(input.value);
+    if (!Number.isFinite(power) || power <= 0 || rate <= 0) {
+      result.textContent = '请输入有效算力';
+      if (note) note.textContent = '支持 1亿、5亿、1000万 或纯数字。';
+      return;
+    }
+    const burned = power * rate;
+    result.textContent = formatChinese(burned, '枚');
+    if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+  };
+  input.addEventListener('input', update);
+  update();
+};
+
+document.querySelectorAll('[data-burn-calculator]').forEach(setupBurnCalculator);
 document.querySelectorAll('[data-paid-panel]').forEach(setupPaidDownloadPanel);
 
 document.querySelectorAll('[data-track]').forEach((node) => {
@@ -2841,6 +2944,80 @@ def _fmt_one_yi_power_output(meta: dict) -> str:
     if power_required <= 0:
         return "待刷新"
     return _fmt_token_daily_output(100_000_000 / power_required)
+
+
+def _build_burn_estimate(meta: dict) -> dict[str, object]:
+    circulation_tokens = _as_float(meta.get("network_total_circulation_tokens")) / 1_000_000_000_000_000_000
+    network_power = _as_float(meta.get("network_total_power"))
+    burn_ratio = 0.35
+    burn_pool = circulation_tokens * burn_ratio if circulation_tokens > 0 else 0.0
+    burn_per_power = burn_pool / network_power if burn_pool > 0 and network_power > 0 else 0.0
+    sample_power = 100_000_000
+    sample_burn = sample_power * burn_per_power
+    return {
+        "burn_ratio_percent": "35%",
+        "burn_pool": burn_pool,
+        "burn_pool_display": f"{_fmt_chinese_number(burn_pool, digits=3)}枚" if burn_pool > 0 else "待刷新",
+        "burn_per_power": burn_per_power,
+        "burn_per_power_attr": f"{burn_per_power:.18f}",
+        "sample_power": sample_power,
+        "sample_burn": sample_burn,
+        "sample_burn_display": f"{_fmt_chinese_number(sample_burn, digits=3)}枚" if sample_burn > 0 else "待刷新",
+    }
+
+
+def _build_burn_calculator(estimate: dict[str, object], *, mobile: bool = False) -> str:
+    burn_rate = str(estimate.get("burn_per_power_attr") or "0")
+    sample_power = int(_as_float(estimate.get("sample_power"), 100_000_000))
+    sample_burn = str(estimate.get("sample_burn_display") or "待刷新")
+    burn_pool = str(estimate.get("burn_pool_display") or "待刷新")
+    ratio = str(estimate.get("burn_ratio_percent") or "35%")
+    if mobile:
+        return f"""
+      <article class="m-burn-calculator" data-burn-calculator data-burn-rate="{escape(burn_rate)}">
+        <div>
+          <span class="m-kicker">BURN CALC</span>
+          <h3>算力销毁测算</h3>
+          <p>按当前全网流通量 × {escape(ratio)} ÷ 全网总算力计算。</p>
+        </div>
+        <div class="m-burn-stats">
+          <div class="m-burn-stat"><span>35%流通量</span><b>{escape(burn_pool)}</b></div>
+          <div class="m-burn-stat"><span>1亿算力算例</span><b>{escape(sample_burn)}</b></div>
+        </div>
+        <div class="m-burn-input">
+          <label for="mBurnPowerInput">输入算力</label>
+          <input id="mBurnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万">
+        </div>
+        <div class="m-burn-result">
+          <span>需要销毁</span>
+          <b data-burn-result>{escape(sample_burn)}</b>
+          <small data-burn-note>按输入算力实时换算。</small>
+        </div>
+      </article>"""
+    return f"""
+    <div class="burn-calculator reveal" data-burn-calculator data-burn-rate="{escape(burn_rate)}">
+      <div class="burn-copy">
+        <span class="kicker">BURN CALC</span>
+        <h3>算力销毁测算</h3>
+        <p>按“全网流通量 × {escape(ratio)} ÷ 全网总算力”计算，得到每 1 算力对应的销毁数量；输入任意算力即可换算需要销毁多少 MARS。</p>
+      </div>
+      <div class="burn-form">
+        <div class="burn-stats">
+          <div class="line"><span>计算公式</span><b>流通量 × {escape(ratio)} ÷ 总算力</b></div>
+          <div class="line"><span>35%流通量</span><b>{escape(burn_pool)}</b></div>
+          <div class="line"><span>1亿算力算例</span><b>{escape(sample_burn)}</b></div>
+        </div>
+        <div class="burn-input-row">
+          <label for="burnPowerInput">输入算力</label>
+          <input id="burnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万">
+        </div>
+        <div class="burn-result">
+          <span>需要销毁</span>
+          <b data-burn-result>{escape(sample_burn)}</b>
+          <small data-burn-note>当前算例：{sample_power:,} 算力。</small>
+        </div>
+      </div>
+    </div>"""
 
 
 def _fmt_power(value: object) -> str:
@@ -3349,11 +3526,13 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       </article>
     """
     equation_cards = """
-      <article class="fcard reveal"><label>当前起始系数<span>算力倍增</span></label><strong>10x</strong><small>官方机制说明中的方程膨胀起始倍数。</small></article>
+      <article class="fcard reveal"><label>当前实际系数<span>算力倍增</span></label><strong>20x</strong><small>当前 04 方程采用的实际膨胀倍数。</small></article>
       <article class="fcard reveal"><label>最高膨胀系数<span>上限</span></label><strong>160x</strong><small>方程膨胀系数逐级放大时的公开说明上限。</small></article>
       <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>圣诞方程与预言机方程按 8 天窗口执行。</small></article>
       <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制说明中每轮方程触发的流通量销毁比例。</small></article>
     """
+    burn_estimate = _build_burn_estimate(meta)
+    burn_calculator = _build_burn_calculator(burn_estimate)
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -3478,7 +3657,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p>展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。</p>
     </div>
     <div class="equation-grid">{equation_cards}</div>
-    <p class="equation-note">系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。</p>
+    {burn_calculator}
+    <p class="equation-note">当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
   </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
@@ -3690,6 +3870,40 @@ a { color: inherit; }
 .m-flow-card label { display: flex; justify-content: space-between; gap: 10px; color: #b8c8df; font-size: 13px; font-weight: 950; }
 .m-flow-card strong { display: block; margin-top: 20px; font-size: 38px; line-height: 1; letter-spacing: -.06em; }
 .m-flow-card small { display: block; margin-top: 10px; color: #8798b2; font-size: 12px; line-height: 1.55; }
+.m-burn-calculator {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid rgba(255,211,126,.22);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,211,126,.18), transparent 40%),
+    linear-gradient(180deg, rgba(24,35,56,.94), rgba(8,15,29,.94));
+}
+.m-burn-calculator h3 { margin: 4px 0 6px; font-size: 23px; line-height: 1.05; letter-spacing: -.035em; }
+.m-burn-calculator p { margin: 0; color: #91a2ba; font-size: 12px; line-height: 1.55; }
+.m-burn-stats { display: grid; gap: 8px; }
+.m-burn-stat { display: flex; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid rgba(121,225,255,.10); font-size: 12px; }
+.m-burn-stat span { color: #91a2ba; font-weight: 900; }
+.m-burn-stat b { color: #f4f8ff; text-align: right; overflow-wrap: anywhere; }
+.m-burn-input { display: grid; gap: 8px; }
+.m-burn-input label { color: #c3d0e4; font-size: 12px; font-weight: 950; }
+.m-burn-input input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,211,126,.26);
+  border-radius: 14px;
+  padding: 13px 14px;
+  color: #fff8e1;
+  background: rgba(255,255,255,.06);
+  font: 900 16px/1 var(--mono);
+  outline: none;
+}
+.m-burn-result { border: 1px solid rgba(86,239,255,.18); border-radius: 16px; padding: 13px; background: rgba(86,239,255,.07); }
+.m-burn-result span { display: block; color: #9bddeb; font-size: 11px; font-weight: 950; }
+.m-burn-result b { display: block; margin-top: 7px; color: #fff; font-size: 24px; letter-spacing: -.035em; overflow-wrap: anywhere; }
+.m-burn-result small { display: block; margin-top: 7px; color: #8396b1; font-size: 11px; line-height: 1.45; }
 .m-rank-card.is-page-hidden { display: none; }
 .m-rank-card { border: 1px solid var(--line); border-radius: 21px; padding: 15px; background: linear-gradient(180deg, rgba(20,36,66,.88), rgba(8,16,32,.92)); }
 .m-rank-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -3934,6 +4148,63 @@ const setupMobilePaidDownloadPanel = (panel) => {
   }
 };
 
+const setupMobileBurnCalculator = (panel) => {
+  const rate = Number(panel.dataset.burnRate || 0);
+  const input = panel.querySelector('[data-burn-power]');
+  const result = panel.querySelector('[data-burn-result]');
+  const note = panel.querySelector('[data-burn-note]');
+  if (!input || !result) return;
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  const parsePower = (value) => {
+    let text = String(value || '').replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
+    let multiplier = 1;
+    if (text.includes('万亿')) {
+      multiplier = 1_0000_0000_0000;
+      text = text.replace(/万亿/g, '');
+    } else if (text.includes('亿')) {
+      multiplier = 1_0000_0000;
+      text = text.replace(/亿/g, '');
+    } else if (text.includes('万')) {
+      multiplier = 1_0000;
+      text = text.replace(/万/g, '');
+    } else if (text.endsWith('b')) {
+      multiplier = 1_000_000_000;
+      text = text.slice(0, -1);
+    } else if (text.endsWith('m')) {
+      multiplier = 1_000_000;
+      text = text.slice(0, -1);
+    } else if (text.endsWith('k')) {
+      multiplier = 1_000;
+      text = text.slice(0, -1);
+    }
+    const match = text.match(/-?\d+(?:\.\d+)?/);
+    if (!match) return NaN;
+    return Number(match[0]) * multiplier;
+  };
+  const formatChinese = (number, suffix = '') => {
+    if (!Number.isFinite(number)) return '待刷新';
+    const abs = Math.abs(number);
+    if (abs >= 1_0000_0000_0000) return `${trimZeros((number / 1_0000_0000_0000).toFixed(3))}万亿${suffix}`;
+    if (abs >= 1_0000_0000) return `${trimZeros((number / 1_0000_0000).toFixed(3))}亿${suffix}`;
+    if (abs >= 1_0000) return `${trimZeros((number / 1_0000).toFixed(3))}万${suffix}`;
+    return `${trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }))}${suffix}`;
+  };
+  const update = () => {
+    const power = parsePower(input.value);
+    if (!Number.isFinite(power) || power <= 0 || rate <= 0) {
+      result.textContent = '请输入有效算力';
+      if (note) note.textContent = '支持 1亿、5亿、1000万 或纯数字。';
+      return;
+    }
+    const burned = power * rate;
+    result.textContent = formatChinese(burned, '枚');
+    if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+  };
+  input.addEventListener('input', update);
+  update();
+};
+
+document.querySelectorAll('[data-burn-calculator]').forEach(setupMobileBurnCalculator);
 document.querySelectorAll('[data-paid-panel]').forEach(setupMobilePaidDownloadPanel);
 
 document.querySelectorAll('[data-track]').forEach((node) => {
@@ -4272,8 +4543,10 @@ LANGUAGE_TOGGLE_JS = r"""
     '方程膨胀系数': 'Equation Expansion Factor',
     '展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。': 'Shows public expansion parameters in the MarsChain dual-equation mechanism, including power multiplier, period, and burn ratio.',
     '当前起始系数': 'Starting Factor',
+    '当前实际系数': 'Current Actual Factor',
     '算力倍增': 'Power Multiplier',
     '官方机制说明中的方程膨胀起始倍数。': 'Starting expansion multiplier in the official mechanism notes.',
+    '当前 04 方程采用的实际膨胀倍数。': 'Actual expansion multiplier used by Equation 04.',
     '最高膨胀系数': 'Maximum Expansion Factor',
     '上限': 'Cap',
     '方程膨胀系数逐级放大时的公开说明上限。': 'Published cap for the stepped equation expansion factor.',
@@ -4283,7 +4556,20 @@ LANGUAGE_TOGGLE_JS = r"""
     '圣诞方程与预言机方程按 8 天窗口执行。': 'The Christmas Equation and Oracle Equation run in an 8-day window.',
     '销毁比例': 'Burn Ratio',
     '机制说明中每轮方程触发的流通量销毁比例。': 'Circulation burn ratio described for each equation round.',
-    '系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。': 'The factor starts at 10x and steps up to 160x. This is a mechanism note, not a real-time earnings promise.',
+    '当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。': 'The current actual factor for Equation 04 is 20x, with a mechanism cap that can step up to 160x. This is a mechanism note, not a real-time earnings promise.',
+    '算力销毁测算': 'Power Burn Calculator',
+    '按当前全网流通量 × 35% ÷ 全网总算力计算。': 'Calculated as current global circulation x 35% / total network power.',
+    '按“全网流通量 × 35% ÷ 全网总算力”计算，得到每 1 算力对应的销毁数量；输入任意算力即可换算需要销毁多少 MARS。': 'Calculated as global circulation x 35% / total network power to get burn amount per unit of power. Enter any power amount to estimate required MARS burn.',
+    '计算公式': 'Formula',
+    '流通量 × 35% ÷ 总算力': 'Circulation x 35% / Total Power',
+    '35%流通量': '35% Circulation',
+    '1亿算力算例': '100M Power Example',
+    '输入算力': 'Enter Power',
+    '需要销毁': 'Required Burn',
+    '按输入算力实时换算。': 'Recalculates from the entered power.',
+    '按当前比例估算。': 'Estimated at the current ratio.',
+    '请输入有效算力': 'Enter a valid power amount',
+    '支持 1亿、5亿、1000万 或纯数字。': 'Supports 100M, 500M, 10M, or plain numbers.',
     '总钱包数量': 'Total Wallets',
     '地址总量': 'Total Addresses',
     '公开接口返回的地址规模，不代表所有地址都参与挖矿或拥有算力。': 'Address scale returned by public APIs; not every address mines or has power.',
@@ -4704,12 +4990,14 @@ def build_mobile_html(payload: dict) -> str:
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
     equation_cards = _build_mobile_flow_cards(
         [
-            ("当前起始系数", "算力倍增", "10x", "官方机制说明中的方程膨胀起始倍数。"),
+            ("当前实际系数", "算力倍增", "20x", "当前 04 方程采用的实际膨胀倍数。"),
             ("最高膨胀系数", "上限", "160x", "方程膨胀系数逐级放大时的公开说明上限。"),
             ("执行周期", "单轮", "8 天", "圣诞方程与预言机方程按 8 天窗口执行。"),
             ("销毁比例", "流通量", "35%", "机制说明中每轮方程触发的流通量销毁比例。"),
         ]
     )
+    burn_estimate = _build_burn_estimate(meta)
+    burn_calculator = _build_burn_calculator(burn_estimate, mobile=True)
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -4811,7 +5099,8 @@ def build_mobile_html(payload: dict) -> str:
     <section id="equation" class="m-section">
       <div class="m-section-head"><div><span class="m-kicker">03 / EQUATION</span><h2>方程膨胀系数</h2></div><p>机制参数展示。</p></div>
       <div class="m-list">{equation_cards}</div>
-      <p class="m-note">系数从 10x 起并逐级放大至 160x，属于机制口径展示，不等同于当前实时收益承诺。</p>
+      {burn_calculator}
+      <p class="m-note">当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
     </section>
     <section id="risk" class="m-section">
       <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
