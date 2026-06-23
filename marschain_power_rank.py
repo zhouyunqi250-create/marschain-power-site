@@ -33,7 +33,7 @@ GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR = "0x1c1b5cdf"
 TOKENS_BURNED_EVENT_TOPIC = "0xccbea4088a3b7ae9ca2d15fab9a9742a4075b4d7247768a1eecea917565aba00"
 DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
 BEIJING_OFFSET_SECONDS = 8 * 60 * 60
-STATISTICS_DAY_START_HOUR = 8
+STATISTICS_DAY_START_HOUR = 0
 MARS_TOTAL_SUPPLY_CAP_TOKENS = 200_000_000_000
 MARS_INITIAL_CYCLE_OUTPUT_TOKENS = 100_000_000_000
 MARS_HALVING_PERIOD_DAYS = 448
@@ -232,8 +232,8 @@ def format_beijing_date(timestamp: int) -> str:
 
 
 def build_statistics_window_meta(reference_timestamp: int) -> dict[str, Any]:
-    # Beijing 08:00 is UTC 00:00. Use the latest completed window so the site never shows a future end time.
-    end_timestamp = (reference_timestamp // 86_400) * 86_400
+    # Beijing 00:00 is UTC 16:00 on the previous calendar day. Use the latest completed window.
+    end_timestamp = ((reference_timestamp + BEIJING_OFFSET_SECONDS) // 86_400) * 86_400 - BEIJING_OFFSET_SECONDS
     start_timestamp = max(0, end_timestamp - 86_400)
     start_local = format_beijing_datetime(start_timestamp)
     end_local = format_beijing_datetime(end_timestamp)
@@ -618,7 +618,7 @@ def collect_statistics_window_active_addresses(
     progress: bool,
 ) -> dict[str, Any]:
     meta: dict[str, Any] = {
-        "statistics_window_active_address_basis": "unique transaction sender/receiver wallet addresses in the latest completed Beijing 08:00 statistics day",
+        "statistics_window_active_address_basis": "unique transaction sender/receiver wallet addresses in the latest completed Beijing 00:00 statistics day",
         "statistics_window_active_wallet_address_count": None,
         "statistics_window_active_blocks_scanned": 0,
         "statistics_window_active_transactions_seen": 0,
@@ -943,7 +943,7 @@ def collect_rpc_log_candidates(
         )
     else:
         meta["statistics_window_new_candidate_address_count"] = None
-    meta["statistics_window_new_candidate_address_basis"] = "first POWER-contract log in the latest completed Beijing 08:00 statistics day"
+    meta["statistics_window_new_candidate_address_basis"] = "first POWER-contract log in the latest completed Beijing 00:00 statistics day"
     meta["today_new_wallet_count"] = meta["statistics_window_new_candidate_address_count"]
     meta["today_new_wallet_basis"] = meta["statistics_window_new_candidate_address_basis"]
     if statistics_window_start_block is not None and statistics_window_end_block is not None:
@@ -952,7 +952,7 @@ def collect_rpc_log_candidates(
     else:
         meta["statistics_window_burned_tokens"] = None
         meta["statistics_window_burned_display"] = None
-    meta["statistics_window_burned_basis"] = "sum TokensBurned event first uint256 amount in the latest completed Beijing 08:00 statistics day"
+    meta["statistics_window_burned_basis"] = "sum TokensBurned event first uint256 amount in the latest completed Beijing 00:00 statistics day"
     meta["today_burned_tokens"] = meta["statistics_window_burned_tokens"]
     meta["today_burned_display"] = meta["statistics_window_burned_display"]
     meta["today_burned_basis"] = meta["statistics_window_burned_basis"]
@@ -1742,8 +1742,8 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "today_burned_basis": rpc_log_meta.get("today_burned_basis"),
         "today_new_power": today_new_power,
         "statistics_window_new_power": today_new_power,
-        "today_new_power_basis": "completed Beijing 08:00 statistics day end totalPower minus start totalPower",
-        "statistics_window_new_power_basis": "completed Beijing 08:00 statistics day end totalPower minus start totalPower",
+        "today_new_power_basis": "completed Beijing 00:00 statistics day end totalPower minus start totalPower",
+        "statistics_window_new_power_basis": "completed Beijing 00:00 statistics day end totalPower minus start totalPower",
         "previous_day_total_power": statistics_window_start_total_power,
         "statistics_window_start_total_power": statistics_window_start_total_power,
         "statistics_window_end_total_power": statistics_window_end_total_power,

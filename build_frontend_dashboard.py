@@ -19,6 +19,46 @@ MARS_PAYMENT_ADDRESS_VERIFY = "0x0fD038365577215292B44F89C92695C7AC8C3363"
 MARS_PAID_DOWNLOAD_PRICE = "1000"
 MARS_PAID_DOWNLOAD_EXPIRES_SECONDS = 3600
 
+_OLD_STATISTICS_TIME = f"{8:02d}:00"
+_OLD_STATISTICS_TIME_SECONDS = f"{8:02d}:00:00"
+_NEW_STATISTICS_TIME = "00:00"
+_NEW_STATISTICS_TIME_SECONDS = "00:00:00"
+
+
+def _normalize_statistics_time_value(value):
+    if isinstance(value, str):
+        return value.replace(_OLD_STATISTICS_TIME_SECONDS, _NEW_STATISTICS_TIME_SECONDS).replace(
+            _OLD_STATISTICS_TIME,
+            _NEW_STATISTICS_TIME,
+        )
+    return value
+
+
+def _normalize_statistics_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return payload
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        return payload
+
+    normalized_meta = dict(meta)
+    for key, value in meta.items():
+        if key == "statistics_day_start_hour":
+            normalized_meta[key] = 0
+            continue
+        is_statistics_key = (
+            key.startswith("statistics_")
+            or key.startswith("rpc_log_statistics_")
+            or key in {"today_new_wallet_basis", "today_burned_basis", "today_new_power_basis"}
+            or (key.startswith("period_") and (key.endswith("_label") or key.endswith("_basis") or key.endswith("_local")))
+        )
+        if is_statistics_key:
+            normalized_meta[key] = _normalize_statistics_time_value(value)
+
+    normalized_payload = dict(payload)
+    normalized_payload["meta"] = normalized_meta
+    return normalized_payload
+
 
 def format_generated_at(ts: int) -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
@@ -88,6 +128,7 @@ def load_paid_download_config() -> dict[str, str]:
 
 
 def build_html(payload: dict) -> str:
+    payload = _normalize_statistics_payload(payload)
     meta = payload["meta"]
     rows = payload["rows"]
     title = "MarsChain 算力排行榜"
@@ -97,7 +138,7 @@ def build_html(payload: dict) -> str:
     rpc_blocks_scanned = int(meta.get("rpc_blocks_scanned", 0) or 0)
     rpc_log_blocks_scanned = int(meta.get("rpc_log_blocks_scanned", 0) or 0)
     rpc_logs_seen = int(meta.get("rpc_logs_seen", 0) or 0)
-    statistics_window_label = meta.get("statistics_window_label") or "北京时间 08:00:00 至次日 08:00:00"
+    statistics_window_label = meta.get("statistics_window_label") or "北京时间 00:00:00 至次日 00:00:00"
     subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
     generated_at = meta.get("generated_at_local") or format_generated_at(int(meta["generated_at"]))
@@ -1208,17 +1249,17 @@ def build_html(payload: dict) -> str:
         {{
           label: `统计日新增地址数量${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: meta.statistics_window_new_candidate_address_count === null || meta.statistics_window_new_candidate_address_count === undefined ? '—' : `${{formatCount(meta.statistics_window_new_candidate_address_count)}} 个`,
-          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：首次出现在 POWER 合约日志中的候选地址数量。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：首次出现在 POWER 合约日志中的候选地址数量。`
         }},
         {{
           label: `统计日活跃地址数量${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: meta.statistics_window_active_wallet_address_count === null || meta.statistics_window_active_wallet_address_count === undefined ? '—' : `${{formatCount(meta.statistics_window_active_wallet_address_count)}} 个`,
-          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：该窗口内在 POWER 合约日志中出现过的钱包地址数量。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：该窗口内在 POWER 合约日志中出现过的钱包地址数量。`
         }},
         {{
           label: `统计日新增总算力${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: formatMaybeUnits(meta.today_new_power),
-          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
         }},
         {{
           label: '前 100 名总算力',
@@ -1397,7 +1438,7 @@ def build_html(payload: dict) -> str:
 
       document.getElementById('footerText').textContent =
         `当前显示 ${{list.length}} / ${{rows.length}} 行。最近更新时间：${{formatGeneratedAt(meta.generated_at)}}。` +
-        `统计周期：${{meta.statistics_window_label || '北京时间 08:00 至次日 08:00'}}。` +
+        `统计周期：${{meta.statistics_window_label || '北京时间 00:00 至次日 00:00'}}。` +
         `本轮覆盖率 ${{formatCoverage(meta.discovered_power_coverage)}}，目标阈值 ${{formatCoverage(coverageTarget)}}，` +
         `${{targetMet ? '已达标' : '未达标'}}。说明：候选钱包 ${{formatCount(meta.candidate_count)}} 个，正算力钱包 ${{formatCount(meta.positive_power_count)}} 个；` +
         `这是一份基于公开 explorer API、官方 RPC 和合约日志生成的 best effort 榜单，不是官方后端直接导出的全量榜。`;
@@ -3341,6 +3382,7 @@ def _build_paid_download_panel(config: dict[str, str], *, mobile: bool = False) 
 
 def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     """Render the new continuous-scroll MarsChain site."""
+    payload = _normalize_statistics_payload(payload)
     meta = payload.get("meta", {})
     rows = payload.get("rows", [])
     title = "MarsChain 算力排行榜"
@@ -3349,7 +3391,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
-    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 00:00 至次日 00:00")
     coverage = _as_float(meta.get("discovered_power_coverage"))
     coverage_label = _fmt_percent(coverage)
     coverage_target = _as_float(meta.get("coverage_target"), 0.8)
@@ -3431,12 +3473,12 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             ),
         ),
         ("total_wallets", "总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_points(meta, "total_wallets", [explorer_total_addresses])),
-        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
+        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 00:00 至次日 00:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
         (
             "daily_new_addresses",
             "统计日新增地址数量",
             _fmt_count_unit(new_address_count),
-            "北京时间 08:00 至次日 08:00",
+            "北京时间 00:00 至次日 00:00",
             _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
         ),
         (
@@ -4632,8 +4674,8 @@ LANGUAGE_TOGGLE_JS = r"""
     'POWER 合约累计燃烧': 'Cumulative POWER contract burns',
     '公开地址规模': 'Public address scale',
     '算力大于 0': 'Power greater than 0',
-    '北京时间 08:00 至次日 08:00': 'Beijing time 08:00 to next-day 08:00',
-    '北京 08:00 至次日 08:00': 'Beijing 08:00 to next-day 08:00',
+    '北京时间 00:00 至次日 00:00': 'Beijing time 00:00 to next-day 00:00',
+    '北京 00:00 至次日 00:00': 'Beijing 00:00 to next-day 00:00',
     '同一统计日口径': 'Same statistics-day method',
     '北京时间统计日口径': 'Beijing-day method',
     '按矿工 75% 产量估算': 'Estimated with the 75% miner emission share',
@@ -4893,6 +4935,7 @@ def _build_mobile_rank_cards(rows: list[dict], limit: int = 100, page_size: int 
 
 def build_mobile_html(payload: dict) -> str:
     """Render the mobile-first MarsChain site at /m/."""
+    payload = _normalize_statistics_payload(payload)
     meta = payload.get("meta", {})
     rows = payload.get("rows", [])
     title = "MarsChain 算力排行榜 · 手机版"
@@ -4901,7 +4944,7 @@ def build_mobile_html(payload: dict) -> str:
     paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
-    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 00:00 至次日 00:00")
     coverage_label = _fmt_percent(meta.get("discovered_power_coverage"))
     network_total_power = meta.get("network_total_power")
     candidate_count = meta.get("candidate_count")
