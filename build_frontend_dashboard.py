@@ -4638,27 +4638,6 @@ SHARE_POSTER_JS = r"""
     const text = live ? live.textContent.trim() : '';
     return text || String(meta.network_current_price_display || meta.network_current_price || '待刷新');
   };
-  const formatRawPrice = (value) => {
-    if (value === null || value === undefined || value === '') return '待刷新';
-    const number = asNumber(value);
-    if (!Number.isFinite(number)) {
-      const text = String(value || '').trim();
-      return text || '待刷新';
-    }
-    return number < 1 ? number.toFixed(6) : number.toFixed(3);
-  };
-  const formatHighestPrice = (meta) => {
-    const live = document.querySelector('[data-live-highest-price]');
-    const text = live ? live.textContent.trim() : '';
-    return text || String(meta.network_highest_price_display || formatRawPrice(meta.network_highest_price));
-  };
-  const formatOracleTriggerPrice = (meta) => {
-    const live = document.querySelector('[data-live-oracle-trigger-price]');
-    const text = live ? live.textContent.trim() : '';
-    if (text) return text;
-    const highest = asNumber(meta.network_highest_price || meta.network_highest_price_display);
-    return Number.isFinite(highest) ? formatRawPrice(highest * 0.5) : '待刷新';
-  };
   const formatPercent = (value) => {
     let number = asNumber(value);
     if (!Number.isFinite(number)) return '待刷新';
@@ -4869,18 +4848,14 @@ SHARE_POSTER_JS = r"""
     const payload = rankPayload();
     const meta = payload.meta || {};
     const totalPower = meta.network_total_power;
-    const highestPrice = formatHighestPrice(meta);
-    const oracleTriggerPrice = formatOracleTriggerPrice(meta);
     const latestBlock = asNumber(meta.latest_block) || asNumber(meta.rpc_latest_block) || asNumber(meta.rpc_log_latest_block) || asNumber(meta.rpc_log_start_block) || asNumber(meta.rpc_log_end_block) || 0;
     const cards = [
       ['区块高度', '最新扫描区块', `${latestBlock.toLocaleString('zh-CN')}`, metricDelta('latest_block', latestBlock, compactNumber), '#63ee91'],
       ['当前价格', '区块浏览器公开报价', formatPrice(meta), metricDelta('network_current_price', meta.network_current_price, compactNumber), '#ffe86a'],
-      ['最高价格', '官网最高价格', highestPrice, '触发价计算基准', '#ffe86a'],
-      ['预言机触发价', '触发预言机价格', oracleTriggerPrice, '最高价的 50%', '#63ee91'],
       ['总地址数', '公开地址规模', formatCount(meta.explorer_total_addresses), metricDelta('total_wallets', meta.explorer_total_addresses, formatCount), '#56efff'],
       ['正算力地址', '进入排行榜统计', formatCount(meta.positive_power_count), metricDelta('positive_power_addresses', meta.positive_power_count, formatCount), '#7e8cff'],
       ['流通总量', '公开流通口径', String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)), metricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)), '#9df4c3'],
-      ['全网总销毁', 'POWER 合约累计', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
+      ['销毁总量', 'POWER 合约累计', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
       ['统计日活跃地址', '00:00 至次日 00:00', formatCount(meta.statistics_window_active_wallet_address_count), metricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatCount), '#56efff'],
       ['统计日新增算力', '同一统计日口径', compactNumber(meta.statistics_window_new_power), metricDelta('daily_new_power', meta.statistics_window_new_power, compactNumber), '#7e8cff'],
       ['1亿算力日产出', '矿工 75% 产量估算', String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '待刷新'), metricDelta('one_yi_power_output', null, (value) => `${compactNumber(value)}枚/日`), '#ffd37e'],
