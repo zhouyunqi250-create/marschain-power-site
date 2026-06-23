@@ -1892,6 +1892,26 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .metric > span { color: #aebbd2; font-size: 13px; }
 .metric b { display: block; font-size: 34px; margin-top: 20px; letter-spacing: -.055em; }
+.price-stack {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  color: #9eb0cb;
+  font-size: 12px;
+  line-height: 1.25;
+}
+.price-stack span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid rgba(125,225,255,.10);
+  padding-bottom: 5px;
+}
+.price-stack strong {
+  color: #f5fbff;
+  font-family: var(--mono);
+  font-size: 13px;
+}
 .metric small { display: block; color: #8292ad; font-size: 12px; margin-top: 12px; }
 .metric-trend {
   position: relative;
@@ -3097,6 +3117,38 @@ def _fmt_decimal(value: object, digits: int = 3) -> str:
     return f"{_as_float(value):,.{digits}f}"
 
 
+def _fmt_price_value(value: object, fallback: str = "待刷新") -> str:
+    if value is None or value == "":
+        return fallback
+    try:
+        number = float(str(value))
+    except (TypeError, ValueError):
+        text = str(value).strip()
+        return text or fallback
+    if number < 1:
+        return f"{number:.6f}"
+    return f"{number:.3f}"
+
+
+def _oracle_trigger_price_display(meta: dict) -> str:
+    highest = meta.get("network_highest_price")
+    if highest is None or highest == "":
+        highest = meta.get("network_highest_price_display")
+    try:
+        number = float(str(highest))
+    except (TypeError, ValueError):
+        return "待刷新"
+    return _fmt_price_value(number * 0.5)
+
+
+def _latest_block_value(meta: dict) -> int:
+    for key in ("latest_block", "rpc_latest_block", "rpc_log_latest_block", "rpc_log_start_block", "rpc_log_end_block"):
+        value = _as_int(meta.get(key))
+        if value > 0:
+            return value
+    return 0
+
+
 def _fmt_chinese_number(value: object, digits: int = 3, fallback: str = "待刷新") -> str:
     if value is None or value == "":
         return fallback
@@ -3410,16 +3462,29 @@ def _build_metric_cards(items: list[tuple]) -> str:
     for index, item in enumerate(items):
         if len(item) >= 5:
             metric_key, label, value, note, trend_points = item[:5]
+            extra = item[5] if len(item) > 5 and isinstance(item[5], dict) else {}
             trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
         else:
             metric_key = ""
             label, value, note = item[:3]
+            extra = {}
             trend_values = item[3] if len(item) > 3 else []
         live_price = str(metric_key) == "network_current_price"
+        value_html = f'<b{" data-live-price" if live_price else ""}>{escape(value)}</b>'
+        if live_price:
+            highest = str(extra.get("highest_price") or "待刷新")
+            trigger = str(extra.get("oracle_trigger_price") or "待刷新")
+            value_html = (
+                f'<b data-live-price>{escape(value)}</b>'
+                '<div class="price-stack">'
+                f'<span>最高价 <strong data-live-highest-price>{escape(highest)}</strong></span>'
+                f'<span>预言机触发价 <strong data-live-oracle-trigger-price>{escape(trigger)}</strong></span>'
+                '</div>'
+            )
         cards.append(
             '<article class="metric" style="--delay:%sms" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span><b%s>%s</b><small%s>%s</small>%s</article>"
+            "<span>%s</span>%s<small%s>%s</small>%s</article>"
             % (
                 index * 70,
                 'data-price-card ' if live_price else "",
@@ -3427,8 +3492,7 @@ def _build_metric_cards(items: list[tuple]) -> str:
                 escape(str(label), quote=True),
                 escape(str(label), quote=True),
                 escape(label),
-                ' data-live-price' if live_price else "",
-                escape(value),
+                value_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
@@ -3487,18 +3551,28 @@ def _build_rank_cards(rows: list[dict], limit: int = 100, page_size: int = 10) -
 
 
 def _build_timeline(items: list[tuple[str, str]]) -> str:
+    live_attrs = {
+        "当前价格": " data-live-price",
+        "最高价格": " data-live-highest-price",
+        "预言机触发价": " data-live-oracle-trigger-price",
+    }
     return "\n".join(
         '<div class="line"><span>%s</span><b%s>%s</b></div>'
-        % (escape(label), ' data-live-price' if label == "当前价格" else "", escape(value))
+        % (escape(label), live_attrs.get(label, ""), escape(value))
         for label, value in items
     )
 
 
 def _build_marquee(items: list[tuple[str, str]]) -> str:
+    live_attrs = {
+        "当前价格": " data-live-price",
+        "最高价格": " data-live-highest-price",
+        "预言机触发价": " data-live-oracle-trigger-price",
+    }
     doubled = items + items
     return "".join(
         "<span>%s<b%s>%s</b></span>"
-        % (escape(label), ' data-live-price' if label == "当前价格" else "", escape(value))
+        % (escape(label), live_attrs.get(label, ""), escape(value))
         for label, value in doubled
     )
 
@@ -3588,6 +3662,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         new_power = meta.get("today_new_power")
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
     current_price = str(meta.get("network_current_price_display") or "待刷新")
+    highest_price = str(meta.get("network_highest_price_display") or _fmt_price_value(meta.get("network_highest_price")))
+    oracle_trigger_price = _oracle_trigger_price_display(meta)
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
     daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
@@ -3630,7 +3706,14 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             ),
         ),
         ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
-        ("network_current_price", "当前价格", current_price, "区块浏览器公开报价", _trend_points(meta, "network_current_price", [meta.get("network_current_price")])),
+        (
+            "network_current_price",
+            "当前价格",
+            current_price,
+            "预言机触发价为最高价的 50%",
+            _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
+            {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
+        ),
         ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
         (
             "total_burned",
@@ -3674,13 +3757,16 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
         ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
+    latest_block_value = _latest_block_value(meta)
     marquee_items = [
         ("覆盖率", coverage_label),
         ("流通量", circulation),
         ("当前价格", current_price),
+        ("最高价格", highest_price),
+        ("预言机触发价", oracle_trigger_price),
         ("总产量", total_supply),
         ("每日产币量", daily_total),
-        ("最新区块", f"{_as_int(meta.get('latest_block')) or _as_int(meta.get('rpc_log_end_block')):,}"),
+        ("最新区块", f"{latest_block_value:,}"),
         ("算力日志", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
         ("候选地址", _fmt_chinese_number(candidate_count)),
         ("正算力地址", _fmt_chinese_number(positive_power_count)),
@@ -3705,6 +3791,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
         ("全网流通量", circulation),
         ("当前价格", current_price),
+        ("最高价格", highest_price),
+        ("预言机触发价", oracle_trigger_price),
         ("累计销毁", total_burned),
         ("全网总算力", _fmt_power(network_total_power)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
@@ -3987,6 +4075,8 @@ a { color: inherit; }
 .m-card { min-width: 0; border: 1px solid var(--line); border-radius: 20px; padding: 15px; background: linear-gradient(180deg, var(--panel2), rgba(8, 16, 32, .86)); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); display: flex; flex-direction: column; min-height: 182px; cursor: pointer; }
 .m-card:focus-visible { outline: 2px solid rgba(86,239,255,.72); outline-offset: 3px; }
 .m-card b { display: block; margin-top: 12px; font-size: 25px; line-height: 1; letter-spacing: -.055em; overflow-wrap: anywhere; }
+.m-price-stack { margin-top: 9px; font-size: 11px; }
+.m-price-stack strong { font-size: 11px; }
 .m-card small { display: block; margin-top: 8px; color: #8394ad; font-size: 11px; line-height: 1.45; }
 .m-card .metric-trend { margin-top: auto; padding-top: 12px; }
 .m-card .metric-trend svg { height: 38px; }
@@ -4454,12 +4544,27 @@ LIVE_PRICE_JS = r"""
   const applyPrice = (payload) => {
     if (!payload || typeof payload !== 'object') return;
     const price = String(payload.price_display || payload.price || '').trim();
-    if (!price) return;
-    targets().forEach((node) => {
-      node.textContent = price;
-      const checked = payload.changed_at || payload.checked_at;
-      if (checked) node.setAttribute('title', `价格变动时间：${checked}`);
-    });
+    const highest = String(payload.highest_price_display || payload.highest_price || '').trim();
+    const trigger = String(payload.oracle_trigger_price_display || payload.oracle_trigger_price || '').trim();
+    const checked = payload.changed_at || payload.checked_at;
+    if (price) {
+      targets().forEach((node) => {
+        node.textContent = price;
+        if (checked) node.setAttribute('title', `价格变动时间：${checked}`);
+      });
+    }
+    if (highest) {
+      document.querySelectorAll('[data-live-highest-price]').forEach((node) => {
+        node.textContent = highest;
+        if (checked) node.setAttribute('title', `最高价检查时间：${checked}`);
+      });
+    }
+    if (trigger) {
+      document.querySelectorAll('[data-live-oracle-trigger-price]').forEach((node) => {
+        node.textContent = trigger;
+        if (checked) node.setAttribute('title', `预言机触发价：最高价的50%`);
+      });
+    }
   };
   const refresh = async () => {
     if (document.hidden) return;
@@ -4484,8 +4589,8 @@ SHARE_POSTER_JS = r"""
   if (!buttons.length) return;
 
   const SITE_URL = 'https://www.marschainrank.com/';
-  const POSTER_WIDTH = 1080;
-  const POSTER_HEIGHT = 1720;
+  const POSTER_WIDTH = 1024;
+  const POSTER_HEIGHT = 1536;
   let modal = null;
   let canvas = null;
 
@@ -4533,6 +4638,27 @@ SHARE_POSTER_JS = r"""
     const text = live ? live.textContent.trim() : '';
     return text || String(meta.network_current_price_display || meta.network_current_price || '待刷新');
   };
+  const formatRawPrice = (value) => {
+    if (value === null || value === undefined || value === '') return '待刷新';
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) {
+      const text = String(value || '').trim();
+      return text || '待刷新';
+    }
+    return number < 1 ? number.toFixed(6) : number.toFixed(3);
+  };
+  const formatHighestPrice = (meta) => {
+    const live = document.querySelector('[data-live-highest-price]');
+    const text = live ? live.textContent.trim() : '';
+    return text || String(meta.network_highest_price_display || formatRawPrice(meta.network_highest_price));
+  };
+  const formatOracleTriggerPrice = (meta) => {
+    const live = document.querySelector('[data-live-oracle-trigger-price]');
+    const text = live ? live.textContent.trim() : '';
+    if (text) return text;
+    const highest = asNumber(meta.network_highest_price || meta.network_highest_price_display);
+    return Number.isFinite(highest) ? formatRawPrice(highest * 0.5) : '待刷新';
+  };
   const formatPercent = (value) => {
     let number = asNumber(value);
     if (!Number.isFinite(number)) return '待刷新';
@@ -4546,11 +4672,19 @@ SHARE_POSTER_JS = r"""
   };
   const metricDelta = (key, current, formatter) => {
     const series = metricSeries(key);
+    const currentNumber = asNumber(current);
     let delta = NaN;
-    if (series.length >= 2) {
+    if (Number.isFinite(currentNumber) && series.length) {
+      let previous = series[series.length - 1];
+      if (Math.abs(previous - currentNumber) <= Math.max(Math.abs(currentNumber), 1) * 1e-12 && series.length >= 2) {
+        previous = series[series.length - 2];
+      }
+      delta = currentNumber - previous;
+    } else if (series.length >= 2) {
       delta = series[series.length - 1] - series[series.length - 2];
     }
     if (!Number.isFinite(delta)) return '等待下一期';
+    if (Math.abs(delta) <= Math.max(Math.abs(currentNumber), 1) * 1e-12) return '较上一期 持平';
     const label = delta >= 0 ? '新增' : '减少';
     return `${label} ${formatter(Math.abs(delta))}`;
   };
@@ -4569,6 +4703,13 @@ SHARE_POSTER_JS = r"""
     return `距离圣诞方程 ${days} 天`;
   };
   const generatedLabel = (meta) => String(meta.generated_at_local || '').slice(0, 16) || new Date().toLocaleString('zh-CN', { hour12: false }).slice(0, 16);
+  const reportDateLabel = (meta) => {
+    const raw = String(meta.generated_at_local || meta.statistics_window_end_local || '').slice(0, 10);
+    const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) return `${match[1]}年${match[2]}月${match[3]}日`;
+    const now = new Date();
+    return `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
+  };
 
   const roundedRect = (ctx, x, y, w, h, r) => {
     const radius = Math.min(r, w / 2, h / 2);
@@ -4627,6 +4768,55 @@ SHARE_POSTER_JS = r"""
     ctx.fillStyle = '#f6fbff';
     fitText(ctx, value, x + 20, y + 78, w - 40, '950 34px "Microsoft YaHei", sans-serif', 20);
   };
+  const drawCompactStat = (ctx, x, y, w, h, label, sub, value, delta, accent = '#56efff') => {
+    fillRound(ctx, x, y, w, h, 18, 'rgba(13,28,55,.88)', 'rgba(122,225,255,.14)');
+    ctx.fillStyle = '#aebdd7';
+    ctx.font = '850 22px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x + 20, y + 32);
+    ctx.fillStyle = '#61728e';
+    ctx.font = '800 15px "Microsoft YaHei", sans-serif';
+    fitText(ctx, sub || '公开统计', x + 20, y + 57, w * 0.46, '800 15px "Microsoft YaHei", sans-serif', 12);
+    ctx.fillStyle = '#f6f8ff';
+    fitText(ctx, value, x + w - 18, y + 36, w * 0.48, '950 32px "Microsoft YaHei", sans-serif', 18, 'right');
+    const deltaText = delta || '等待下一期';
+    ctx.fillStyle = deltaText.startsWith('减少') ? '#ff687c' : (deltaText.includes('持平') ? '#7788a5' : accent);
+    fitText(ctx, deltaText, x + w - 18, y + 69, w * 0.5, '900 16px "Microsoft YaHei", sans-serif', 12, 'right');
+  };
+  const drawPeriodStat = (ctx, x, y, w, h, label, value, accent) => {
+    const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
+    gradient.addColorStop(0, 'rgba(82,242,255,.12)');
+    gradient.addColorStop(1, 'rgba(255,232,106,.07)');
+    fillRound(ctx, x, y, w, h, 16, gradient, 'rgba(255,255,255,.12)');
+    ctx.fillStyle = '#8fa6c7';
+    ctx.font = '850 18px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x + 18, y + 30);
+    ctx.fillStyle = accent;
+    fitText(ctx, value, x + 18, y + 70, w - 36, '950 29px "Microsoft YaHei", sans-serif', 18);
+  };
+  const drawSparkline = (ctx, x, y, w, h, values) => {
+    const clean = Array.isArray(values) ? values.map(asNumber).filter(Number.isFinite).slice(-10) : [];
+    const points = clean.length >= 2 ? clean : [0, 0, 1, 1];
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const span = Math.max(max - min, Math.max(Math.abs(max), 1) * 0.08);
+    ctx.beginPath();
+    points.forEach((value, index) => {
+      const px = x + (w * index) / Math.max(1, points.length - 1);
+      const py = y + h - ((value - min) / span) * h;
+      if (index === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.strokeStyle = '#58f2ff';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.strokeStyle = '#aaff81';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  };
 
   const QR_ROWS = [
     '11111110000001001011001111111',
@@ -4679,26 +4869,33 @@ SHARE_POSTER_JS = r"""
     const payload = rankPayload();
     const meta = payload.meta || {};
     const totalPower = meta.network_total_power;
+    const highestPrice = formatHighestPrice(meta);
+    const oracleTriggerPrice = formatOracleTriggerPrice(meta);
+    const latestBlock = asNumber(meta.latest_block) || asNumber(meta.rpc_latest_block) || asNumber(meta.rpc_log_latest_block) || asNumber(meta.rpc_log_start_block) || asNumber(meta.rpc_log_end_block) || 0;
     const cards = [
-      ['区块高度', `${(asNumber(meta.latest_block) || asNumber(meta.rpc_log_end_block) || 0).toLocaleString('zh-CN')}`, metricDelta('latest_block', meta.latest_block, compactNumber), '#9df4c3'],
-      ['当前价格', formatPrice(meta), metricDelta('network_current_price', meta.network_current_price, compactNumber), '#ffd37e'],
-      ['总地址数', formatCount(meta.explorer_total_addresses), metricDelta('total_wallets', meta.explorer_total_addresses, formatCount), '#56efff'],
-      ['正算力地址', formatCount(meta.positive_power_count), metricDelta('positive_power_addresses', meta.positive_power_count, formatCount), '#7e8cff'],
-      ['流通总量', String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)), metricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)), '#9df4c3'],
-      ['全网总销毁', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
-      ['统计日活跃地址', formatCount(meta.statistics_window_active_wallet_address_count), metricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatCount), '#56efff'],
-      ['统计日新增算力', compactNumber(meta.statistics_window_new_power), metricDelta('daily_new_power', meta.statistics_window_new_power, compactNumber), '#7e8cff'],
-      ['1亿算力日产出', String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '待刷新'), metricDelta('one_yi_power_output', null, (value) => `${compactNumber(value)}枚/日`), '#ffd37e'],
-      ['产1币需算力', String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)), metricDelta('power_per_coin', meta.power_required_per_mars_daily, compactNumber), '#9df4c3'],
+      ['区块高度', '最新扫描区块', `${latestBlock.toLocaleString('zh-CN')}`, metricDelta('latest_block', latestBlock, compactNumber), '#63ee91'],
+      ['当前价格', '区块浏览器公开报价', formatPrice(meta), metricDelta('network_current_price', meta.network_current_price, compactNumber), '#ffe86a'],
+      ['最高价格', '官网最高价格', highestPrice, '触发价计算基准', '#ffe86a'],
+      ['预言机触发价', '触发预言机价格', oracleTriggerPrice, '最高价的 50%', '#63ee91'],
+      ['总地址数', '公开地址规模', formatCount(meta.explorer_total_addresses), metricDelta('total_wallets', meta.explorer_total_addresses, formatCount), '#56efff'],
+      ['正算力地址', '进入排行榜统计', formatCount(meta.positive_power_count), metricDelta('positive_power_addresses', meta.positive_power_count, formatCount), '#7e8cff'],
+      ['流通总量', '公开流通口径', String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)), metricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)), '#9df4c3'],
+      ['全网总销毁', 'POWER 合约累计', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
+      ['统计日活跃地址', '00:00 至次日 00:00', formatCount(meta.statistics_window_active_wallet_address_count), metricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatCount), '#56efff'],
+      ['统计日新增算力', '同一统计日口径', compactNumber(meta.statistics_window_new_power), metricDelta('daily_new_power', meta.statistics_window_new_power, compactNumber), '#7e8cff'],
+      ['1亿算力日产出', '矿工 75% 产量估算', String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '待刷新'), metricDelta('one_yi_power_output', null, (value) => `${compactNumber(value)}枚/日`), '#ffd37e'],
+      ['产1币需算力', '每日产币模型估算', String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)), metricDelta('power_per_coin', meta.power_required_per_mars_daily, compactNumber), '#9df4c3'],
     ];
     return {
       meta,
       generatedAt: generatedLabel(meta),
+      reportDate: reportDateLabel(meta),
       daysOnline: daysOnline(meta),
       countdown: christmasCountdown(),
       coverage: formatPercent(meta.discovered_power_coverage),
       totalPower: compactNumber(totalPower),
       totalPowerDelta: metricDelta('network_total_power', totalPower, compactNumber),
+      totalPowerTrend: metricSeries('network_total_power'),
       cards,
       period7: [
         ['7天新增地址', formatCount(meta.period_7d_new_candidate_address_count)],
@@ -4718,104 +4915,144 @@ SHARE_POSTER_JS = r"""
     const ctx = canvas.getContext('2d');
     canvas.width = POSTER_WIDTH;
     canvas.height = POSTER_HEIGHT;
+    ctx.clearRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
     const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
-    bg.addColorStop(0, '#071124');
-    bg.addColorStop(.52, '#0a1830');
-    bg.addColorStop(1, '#030712');
+    bg.addColorStop(0, '#061022');
+    bg.addColorStop(.54, '#071225');
+    bg.addColorStop(1, '#030714');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
-    ctx.strokeStyle = 'rgba(86,239,255,.08)';
+    ctx.strokeStyle = 'rgba(92,218,255,.055)';
     ctx.lineWidth = 1;
-    for (let x = 40; x < POSTER_WIDTH; x += 56) {
+    for (let x = -120; x < POSTER_WIDTH + 160; x += 54) {
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x - 160, POSTER_HEIGHT);
+      ctx.moveTo(x + 160, 0);
+      ctx.lineTo(x - 120, POSTER_HEIGHT);
       ctx.stroke();
     }
-    for (let y = 38; y < POSTER_HEIGHT; y += 56) {
+    for (let y = 40; y < POSTER_HEIGHT; y += 54) {
       ctx.beginPath();
       ctx.moveTo(0, y);
       ctx.lineTo(POSTER_WIDTH, y);
       ctx.stroke();
     }
-    const glow = ctx.createRadialGradient(870, 110, 20, 870, 110, 420);
-    glow.addColorStop(0, 'rgba(86,239,255,.28)');
-    glow.addColorStop(1, 'rgba(86,239,255,0)');
+    const glow = ctx.createRadialGradient(690, 350, 12, 690, 350, 260);
+    glow.addColorStop(0, 'rgba(82,242,255,.18)');
+    glow.addColorStop(1, 'rgba(82,242,255,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
-    ctx.fillStyle = '#9df4c3';
-    ctx.font = '900 25px "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'left';
-    ctx.fillText('MARSCHAIN RANK', 66, 74);
-    ctx.fillStyle = '#f7fbff';
-    ctx.font = '950 72px "Microsoft YaHei", sans-serif';
-    ctx.fillText('全网算力战报', 64, 150);
-    ctx.fillStyle = '#9fb0c9';
-    ctx.font = '800 26px "Microsoft YaHei", sans-serif';
-    ctx.fillText(`最近刷新：${data.generatedAt}`, 68, 194);
+    ctx.fillStyle = 'rgba(255,255,255,.035)';
+    ctx.font = '950 90px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('M', POSTER_WIDTH / 2, 98);
 
-    const chips = [[data.daysOnline, '#56efff'], [data.countdown, '#ffd37e'], [`覆盖率 ${data.coverage}`, '#9df4c3']];
-    let chipX = 64;
-    chips.forEach(([label, color]) => {
-      ctx.font = '900 25px "Microsoft YaHei", sans-serif';
-      const width = ctx.measureText(label).width + 42;
-      fillRound(ctx, chipX, 224, width, 52, 26, 'rgba(255,255,255,.065)', 'rgba(122,225,255,.18)');
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#a7b8d8';
+    ctx.font = '850 25px "Microsoft YaHei", sans-serif';
+    ctx.fillText(data.daysOnline, 54, 71);
+
+    const chips = [[data.countdown, '#ffe86a'], [`覆盖率 ${data.coverage}`, '#71f4ff']];
+    let chipX = 506;
+    chips.forEach(([label, color], index) => {
+      ctx.font = '900 23px "Microsoft YaHei", sans-serif';
+      const width = ctx.measureText(label).width + 38;
+      fillRound(ctx, chipX, 38, width, 50, 25, index === 0 ? 'rgba(255,232,106,.10)' : 'rgba(11,31,57,.72)', index === 0 ? 'rgba(255,232,106,.34)' : 'rgba(92,242,255,.35)');
       ctx.fillStyle = color;
-      ctx.fillText(label, chipX + 21, 258);
+      ctx.fillText(label, chipX + 19, 71);
       chipX += width + 12;
     });
 
-    const mainGradient = ctx.createLinearGradient(64, 310, 1016, 548);
-    mainGradient.addColorStop(0, 'rgba(86,239,255,.24)');
-    mainGradient.addColorStop(1, 'rgba(126,140,255,.18)');
-    fillRound(ctx, 64, 314, 952, 244, 34, mainGradient, 'rgba(122,225,255,.28)');
-    ctx.fillStyle = '#bff9ff';
-    ctx.font = '900 30px "Microsoft YaHei", sans-serif';
-    ctx.fillText('全网总算力', 106, 374);
-    ctx.fillStyle = '#ffffff';
-    fitText(ctx, data.totalPower, 104, 476, 630, '950 94px "Microsoft YaHei", sans-serif', 54);
-    ctx.fillStyle = data.totalPowerDelta.startsWith('减少') ? '#ffb7b7' : '#9df4c3';
-    ctx.font = '900 28px "Microsoft YaHei", sans-serif';
-    ctx.fillText(`较上一期${data.totalPowerDelta}`, 108, 520);
-    drawQr(ctx, 800, 344, 164);
-    ctx.fillStyle = '#d8e8ff';
-    ctx.font = '900 23px "Microsoft YaHei", sans-serif';
+    ctx.fillStyle = '#ffe86a';
+    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('扫码查看实时榜单', 882, 538);
+    ctx.fillText('MarsChain 今日算力战报', POSTER_WIDTH / 2, 132);
+    ctx.fillStyle = '#f5fbff';
+    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
+    ctx.fillText('全网排行榜实时公开', POSTER_WIDTH / 2, 192);
+    ctx.fillStyle = '#9fb0ce';
+    ctx.font = '800 25px "Microsoft YaHei", sans-serif';
+    ctx.fillText(`${data.reportDate} · 00:00 至次日 00:00 · 北京时间`, POSTER_WIDTH / 2, 234);
     ctx.textAlign = 'left';
 
-    const cardW = 302;
-    const cardH = 142;
-    const startX = 64;
-    const gap = 22;
+    const rule = ctx.createLinearGradient(58, 266, 966, 266);
+    rule.addColorStop(0, 'rgba(82,220,255,0)');
+    rule.addColorStop(.35, 'rgba(82,220,255,.68)');
+    rule.addColorStop(.5, 'rgba(255,232,106,.78)');
+    rule.addColorStop(.65, 'rgba(82,220,255,.68)');
+    rule.addColorStop(1, 'rgba(82,220,255,0)');
+    ctx.fillStyle = rule;
+    ctx.fillRect(58, 266, 908, 3);
+
+    const heroY = 300;
+    const heroH = 230;
+    const bigW = 620;
+    const mainGradient = ctx.createLinearGradient(54, heroY, 54 + bigW, heroY + heroH);
+    mainGradient.addColorStop(0, 'rgba(15,32,62,.97)');
+    mainGradient.addColorStop(1, 'rgba(7,13,29,.95)');
+    fillRound(ctx, 54, heroY, bigW, heroH, 24, mainGradient, 'rgba(94,211,255,.20)');
+    const heroGlow = ctx.createRadialGradient(600, heroY + 34, 10, 600, heroY + 34, 160);
+    heroGlow.addColorStop(0, 'rgba(82,242,255,.20)');
+    heroGlow.addColorStop(1, 'rgba(82,242,255,0)');
+    ctx.fillStyle = heroGlow;
+    ctx.fillRect(54, heroY, bigW, heroH);
+    ctx.fillStyle = '#7cecff';
+    ctx.font = '950 22px "Microsoft YaHei", sans-serif';
+    ctx.fillText('NETWORK POWER', 84, heroY + 42);
+    ctx.fillStyle = '#c2d0e9';
+    ctx.font = '900 29px "Microsoft YaHei", sans-serif';
+    ctx.fillText('全网总算力', 84, heroY + 88);
+    ctx.fillStyle = '#ffffff';
+    fitText(ctx, data.totalPower, 84, heroY + 162, 520, '950 74px "Microsoft YaHei", sans-serif', 46);
+    ctx.fillStyle = data.totalPowerDelta.startsWith('减少') ? '#ff687c' : '#80f2a1';
+    fitText(ctx, `较上一期 ${data.totalPowerDelta}`, 84, heroY + 202, 390, '900 24px "Microsoft YaHei", sans-serif', 18);
+    drawSparkline(ctx, 370, heroY + 142, 250, 58, data.totalPowerTrend);
+
+    fillRound(ctx, 704, heroY, 266, heroH, 24, 'rgba(255,232,106,.08)', 'rgba(255,232,106,.25)');
+    drawQr(ctx, 748, heroY + 24, 178);
+    ctx.fillStyle = '#ffe86a';
+    ctx.font = '950 24px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('扫码看实时榜', 837, heroY + 216);
+    ctx.textAlign = 'left';
+
+    const cardW = 450;
+    const cardH = 86;
+    const startX = 54;
+    const gapX = 16;
+    const gapY = 12;
     data.cards.forEach((card, index) => {
-      const row = Math.floor(index / 3);
-      const col = index % 3;
-      const y = 594 + row * (cardH + 16);
-      const x = startX + col * (cardW + gap);
-      const width = index === 9 ? cardW : cardW;
-      drawMetric(ctx, x, y, width, cardH, card[0], card[1], card[2], card[3]);
+      const row = Math.floor(index / 2);
+      const col = index % 2;
+      const y = 552 + row * (cardH + gapY);
+      const x = startX + col * (cardW + gapX);
+      drawCompactStat(ctx, x, y, cardW, cardH, card[0], card[1], card[2], card[3], card[4]);
     });
 
-    const periodY = 1240;
-    fillRound(ctx, 64, periodY, 952, 344, 30, 'rgba(255,255,255,.055)', 'rgba(122,225,255,.18)');
-    ctx.fillStyle = '#9cf7ff';
-    ctx.font = '950 28px "Microsoft YaHei", sans-serif';
-    ctx.fillText('周期新增概览', 102, periodY + 50);
-    data.period7.forEach((item, index) => drawSmallStat(ctx, 104 + index * 296, periodY + 78, 270, item[0], item[1], '#9df4c3'));
-    data.period30.forEach((item, index) => drawSmallStat(ctx, 104 + index * 296, periodY + 202, 270, item[0], item[1], '#ffd37e'));
+    const periodY = 1160;
+    const periodW = 298;
+    const periodH = 78;
+    data.period7.forEach((item, index) => drawPeriodStat(ctx, 54 + index * (periodW + 10), periodY, periodW, periodH, item[0], item[1], index === 1 ? '#80f2a1' : '#f6fbff'));
+    data.period30.forEach((item, index) => drawPeriodStat(ctx, 54 + index * (periodW + 10), periodY + 90, periodW, periodH, item[0], item[1], index === 1 ? '#80f2a1' : '#f6fbff'));
 
-    ctx.fillStyle = '#f5fbff';
-    ctx.font = '950 34px "Microsoft YaHei", sans-serif';
-    ctx.fillText('MarsChain 算力排行榜', 68, 1630);
-    ctx.fillStyle = '#9fb0c9';
-    ctx.font = '800 24px "Microsoft YaHei", sans-serif';
-    ctx.fillText('公开 API、RPC 与 POWER 合约日志生成的 best effort 榜单', 68, 1670);
-    ctx.fillStyle = '#56efff';
-    ctx.font = '950 28px "Microsoft YaHei", sans-serif';
-    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 68, 1710);
+    ctx.fillStyle = '#7f90ad';
+    ctx.font = '800 18px "Microsoft YaHei", sans-serif';
+    ctx.fillText('数据来源：MarsChain Rank / explorer.marschain.net', 54, 1390);
+    ctx.fillText(`最近刷新：${data.generatedAt}`, 54, 1422);
+    ctx.fillStyle = '#dce9ff';
+    ctx.font = '950 25px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 860, 1422);
+    ctx.textAlign = 'left';
+    const logo = ctx.createConicGradient(3.8, 894, 1378);
+    logo.addColorStop(0, '#7bffcb');
+    logo.addColorStop(.26, '#52f2ff');
+    logo.addColorStop(.55, '#f58aff');
+    logo.addColorStop(.78, '#ffe86a');
+    logo.addColorStop(1, '#7bffcb');
+    fillRound(ctx, 892, 1344, 78, 78, 22, logo);
   };
 
   const setStatus = (text, mode = '') => {
@@ -4863,7 +5100,7 @@ SHARE_POSTER_JS = r"""
             <div><span>SHARE POSTER</span><h3 id="posterTitle">生成战报图片</h3></div>
             <button class="poster-close" type="button" data-poster-close aria-label="关闭">×</button>
           </div>
-          <p>图片会读取当前页面数据，在本地生成 1080×1720 战报图，适合朋友圈、社群和私聊转发。</p>
+          <p>图片会读取当前页面数据，在本地生成 1024×1536 战报图，适合朋友圈、社群和私聊转发。</p>
           <ul class="poster-meta">
             <li><span>二维码</span><b>官网榜单</b></li>
             <li><span>价格</span><b>读取实时小文件</b></li>
@@ -5538,24 +5775,36 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
     for index, item in enumerate(items):
         if len(item) >= 5:
             metric_key, label, value, note, trend_points = item[:5]
+            extra = item[5] if len(item) > 5 and isinstance(item[5], dict) else {}
             trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
         else:
             metric_key = ""
             label, value, note = item[:3]
+            extra = {}
             trend_values = item[3] if len(item) > 3 else []
         live_price = str(metric_key) == "network_current_price"
+        value_html = f'<b{" data-live-price" if live_price else ""}>{escape(value)}</b>'
+        if live_price:
+            highest = str(extra.get("highest_price") or "待刷新")
+            trigger = str(extra.get("oracle_trigger_price") or "待刷新")
+            value_html = (
+                f'<b data-live-price>{escape(value)}</b>'
+                '<div class="price-stack m-price-stack">'
+                f'<span>最高价 <strong data-live-highest-price>{escape(highest)}</strong></span>'
+                f'<span>预言机触发价 <strong data-live-oracle-trigger-price>{escape(trigger)}</strong></span>'
+                '</div>'
+            )
         cards.append(
             '<article class="m-card m-reveal" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span><b%s>%s</b><small%s>%s</small>%s</article>"
+            "<span>%s</span>%s<small%s>%s</small>%s</article>"
             % (
                 'data-price-card ' if live_price else "",
                 index,
                 escape(str(label), quote=True),
                 escape(str(label), quote=True),
                 escape(label),
-                ' data-live-price' if live_price else "",
-                escape(value),
+                value_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
@@ -5617,6 +5866,8 @@ def build_mobile_html(payload: dict) -> str:
         new_power = meta.get("today_new_power")
     circulation = str(meta.get("network_total_circulation_display") or "待刷新")
     current_price = str(meta.get("network_current_price_display") or "待刷新")
+    highest_price = str(meta.get("network_highest_price_display") or _fmt_price_value(meta.get("network_highest_price")))
+    oracle_trigger_price = _oracle_trigger_price_display(meta)
     total_burned = str(meta.get("network_total_burned_display") or "待刷新")
     daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
@@ -5656,7 +5907,14 @@ def build_mobile_html(payload: dict) -> str:
             ),
         ),
         ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
-        ("network_current_price", "当前价格", current_price, "区块浏览器公开报价", _trend_points(meta, "network_current_price", [meta.get("network_current_price")])),
+        (
+            "network_current_price",
+            "当前价格",
+            current_price,
+            "预言机触发价为最高价的 50%",
+            _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
+            {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
+        ),
         ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
         (
             "total_burned",
@@ -5727,6 +5985,8 @@ def build_mobile_html(payload: dict) -> str:
             ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
             ("全网流通量", circulation),
             ("当前价格", current_price),
+            ("最高价格", highest_price),
+            ("预言机触发价", oracle_trigger_price),
             ("累计销毁", total_burned),
             ("日销毁币量", daily_burned),
             ("7 天新增算力", _fmt_power(period_7d_new_power)),

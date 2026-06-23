@@ -42,23 +42,53 @@ def display_price(value: object) -> str:
     return format_price(value) or normalize_price_text(value) or "待刷新"
 
 
+def half_price(value: object) -> str:
+    text = normalize_price_text(value)
+    if not text:
+        return ""
+    try:
+        number = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return ""
+    if not number.is_finite():
+        return ""
+    return format(number * Decimal("0.5"), "f")
+
+
 def comparable_price(payload: object) -> str:
     if not isinstance(payload, dict):
         return ""
-    value = payload.get("price_display") or payload.get("price")
-    return str(value or "").strip()
+    values = [
+        payload.get("price_display") or payload.get("price"),
+        payload.get("highest_price_display") or payload.get("highest_price"),
+        payload.get("oracle_trigger_price_display") or payload.get("oracle_trigger_price"),
+    ]
+    return "|".join(str(value or "").strip() for value in values)
 
 
 def price_is_unchanged(existing: object, next_payload: object) -> bool:
     return bool(comparable_price(existing)) and comparable_price(existing) == comparable_price(next_payload)
 
 
-def build_price_payload(price: object, existing: dict[str, Any] | None = None, checked_at: str | None = None) -> dict[str, str]:
+def build_price_payload(
+    price: object,
+    highest_price: object = None,
+    existing: dict[str, Any] | None = None,
+    checked_at: str | None = None,
+) -> dict[str, str]:
     checked_at = checked_at or utc_now_iso()
     display = display_price(price)
+    highest_display = display_price(highest_price)
+    oracle_trigger = half_price(highest_price)
+    oracle_display = display_price(oracle_trigger)
     payload = {
         "price": normalize_price_text(price) or display,
         "price_display": display,
+        "highest_price": normalize_price_text(highest_price) or highest_display,
+        "highest_price_display": highest_display,
+        "oracle_trigger_price": oracle_trigger or oracle_display,
+        "oracle_trigger_price_display": oracle_display,
+        "oracle_trigger_formula": "highest_price * 50%",
         "checked_at": checked_at,
         "changed_at": checked_at,
         "source": "explorer",
@@ -73,7 +103,10 @@ def build_price_payload_from_meta(meta: dict[str, Any], existing: dict[str, Any]
     price = meta.get("network_current_price")
     if price is None or price == "":
         price = meta.get("network_current_price_display")
-    return build_price_payload(price, existing)
+    highest_price = meta.get("network_highest_price")
+    if highest_price is None or highest_price == "":
+        highest_price = meta.get("network_highest_price_display")
+    return build_price_payload(price, highest_price, existing)
 
 
 def fetch_explorer_price_payload(existing: dict[str, Any] | None = None) -> tuple[dict[str, str], dict[str, Any]]:
@@ -82,7 +115,7 @@ def fetch_explorer_price_payload(existing: dict[str, Any] | None = None) -> tupl
         raise RuntimeError("Explorer /stats did not return a JSON object.")
     if "currentPrice" not in stats:
         raise RuntimeError("Explorer /stats response did not include currentPrice.")
-    return build_price_payload(stats.get("currentPrice"), existing), stats
+    return build_price_payload(stats.get("currentPrice"), stats.get("highestPrice"), existing), stats
 
 
 def load_price_file(path: Path) -> dict[str, Any]:
@@ -106,4 +139,3 @@ def load_price_url(base_url: str, timeout: int = 30) -> dict[str, Any]:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
-

@@ -24,6 +24,20 @@ PRICE_HEADERS = {
 }
 
 
+def price_log_fields(payload: object) -> dict[str, object]:
+    if not isinstance(payload, dict):
+        return {
+            "price": None,
+            "highest_price": None,
+            "oracle_trigger_price": None,
+        }
+    return {
+        "price": payload.get("price_display") or payload.get("price"),
+        "highest_price": payload.get("highest_price_display") or payload.get("highest_price"),
+        "oracle_trigger_price": payload.get("oracle_trigger_price_display") or payload.get("oracle_trigger_price"),
+    }
+
+
 def upload_price_json(path: Path, bucket_name: str, endpoint: str, prefix: str, dry_run: bool) -> str:
     remote_key = build_remote_key(prefix, PRICE_REL_PATH)
     if dry_run:
@@ -98,7 +112,7 @@ def main() -> int:
             json.dumps(
                 {
                     "status": "unchanged",
-                    "price": comparable_price(next_payload),
+                    **price_log_fields(next_payload),
                     "public_checked_at": existing.get("checked_at") if isinstance(existing, dict) else None,
                 },
                 ensure_ascii=False,
@@ -123,8 +137,9 @@ def main() -> int:
         json.dumps(
             {
                 "status": "updated",
-                "price": comparable_price(next_payload),
-                "previous_price": comparable_price(existing),
+                **price_log_fields(next_payload),
+                "previous": price_log_fields(existing),
+                "comparison": comparable_price(next_payload),
                 "uploaded": remote_key,
                 "refreshed": refreshed,
                 "dry_run": args.dry_run,
