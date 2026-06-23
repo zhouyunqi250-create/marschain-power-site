@@ -12,6 +12,7 @@ from pathlib import Path
 
 from build_frontend_dashboard import build_html, build_mobile_html
 from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
+from price_data import build_price_payload_from_meta, load_price_file
 
 PUBLIC_RANK_LIMIT = 100
 METRIC_HISTORY_LIMIT = 90
@@ -365,9 +366,14 @@ def write_site_bundle(site_dir: Path, payload: dict, metric_history: list[dict] 
     if downloads_dir.exists():
         shutil.rmtree(downloads_dir)
 
+    existing_price = load_price_file(data_dir / "price.json")
     (site_dir / "index.html").write_text(build_html(payload))
     (mobile_dir / "index.html").write_text(build_mobile_html(payload))
     (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    (data_dir / "price.json").write_text(
+        json.dumps(build_price_payload_from_meta(payload.get("meta", {}), existing_price), ensure_ascii=False, indent=2)
+        + "\n"
+    )
     if metric_history is not None:
         (data_dir / "metric-history.json").write_text(
             json.dumps({"snapshots": normalize_metric_history(metric_history)}, ensure_ascii=False, indent=2) + "\n"

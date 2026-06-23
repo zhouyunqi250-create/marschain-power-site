@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/deploy-pages.yml
       - build_frontend_dashboard.py
+      - price_data.py
       - refresh_site.py
       - requirements.txt
   schedule:
@@ -51,6 +52,7 @@ jobs:
           from pathlib import Path
 
           from build_frontend_dashboard import build_html, build_mobile_html
+          from price_data import build_price_payload_from_meta
           from refresh_site import build_metric_trends, normalize_metric_history
 
           origin = 'https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com'
@@ -76,6 +78,11 @@ jobs:
                   build_meta = json.load(resp)
           except Exception:
               build_meta = payload.get('meta', {})
+          try:
+              with urllib.request.urlopen(f'{origin}/data/price.json?v=restore', timeout=30) as resp:
+                  price_payload = json.load(resp)
+          except Exception:
+              price_payload = build_price_payload_from_meta(payload.get('meta', {}))
 
           metric_history_path = data_dir / 'metric-history.json'
           metric_history = []
@@ -101,6 +108,7 @@ jobs:
           (mobile_dir / 'index.html').write_text(mobile_html, encoding='utf-8')
           (data_dir / 'latest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           (data_dir / 'metric-history.json').write_text(json.dumps({'snapshots': metric_history}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          (data_dir / 'price.json').write_text(json.dumps(price_payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           (site_dir / 'build-meta.json').write_text(json.dumps(build_meta, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
           (site_dir / 'robots.txt').write_text('User-agent: *\nAllow: /\n', encoding='utf-8')
           (output_latest_dir / 'latest.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')

@@ -1,0 +1,50 @@
+name: Update MarsChain Price
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/10 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-price
+  cancel-in-progress: true
+
+jobs:
+  update-price:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+      ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+      ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+      ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
+      ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "requirements.txt"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Update price when changed
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python update_price.py \
+            --site-base-url "$SITE_BASE_URL" \
+            --bucket "$ALIYUN_OSS_BUCKET" \
+            --endpoint "$ALIYUN_OSS_ENDPOINT" \
+            --prefix "${ALIYUN_OSS_PREFIX:-}" \
+            --allow-bucket-root

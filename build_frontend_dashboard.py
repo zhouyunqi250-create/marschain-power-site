@@ -1592,7 +1592,7 @@ body:after {
 }
 .top-actions { display: flex; align-items: center; gap: 8px; }
 .nav { display: flex; gap: 8px; }
-.nav a, .lang-toggle {
+.nav a, .lang-toggle, .share-trigger {
   text-decoration: none;
   color: #adbad1;
   border: 1px solid transparent;
@@ -1611,7 +1611,13 @@ body:after {
   background: rgba(82,239,255,.075);
   border-color: rgba(82,239,255,.20);
 }
-.nav a:hover, .lang-toggle:hover {
+.share-trigger {
+  cursor: pointer;
+  color: #03121b;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+}
+.nav a:hover, .lang-toggle:hover, .share-trigger:hover {
   color: white;
   border-color: var(--line2);
   background: rgba(82,239,255,.08);
@@ -1684,6 +1690,8 @@ h1 {
   font-weight: 950;
   color: #eef7ff;
   text-decoration: none;
+  font-family: inherit;
+  cursor: pointer;
 }
 .btn.hot {
   border: 0;
@@ -2434,7 +2442,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     background: rgba(255,255,255,.045);
     border-color: rgba(125,225,255,.12);
   }
-  .lang-toggle {
+  .lang-toggle, .share-trigger {
     flex: 0 0 auto;
     min-width: 48px;
     padding: 8px 10px;
@@ -2649,6 +2657,164 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 @media (prefers-reduced-motion: reduce) {
   *, *:before, *:after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+}
+"""
+
+
+SHARE_POSTER_CSS = r"""
+.poster-modal[hidden] { display: none; }
+.poster-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(1, 6, 16, .78);
+  backdrop-filter: blur(18px);
+}
+.poster-panel {
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  gap: 18px;
+  border: 1px solid rgba(86,239,255,.28);
+  border-radius: 24px;
+  padding: 18px;
+  background:
+    radial-gradient(circle at 88% 0%, rgba(86,239,255,.16), transparent 34%),
+    linear-gradient(180deg, rgba(15,27,50,.98), rgba(5,12,26,.99));
+  box-shadow: 0 34px 120px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.08);
+}
+.poster-preview {
+  display: grid;
+  place-items: center;
+  min-height: 430px;
+  border: 1px solid rgba(86,239,255,.18);
+  border-radius: 18px;
+  background:
+    linear-gradient(rgba(86,239,255,.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(86,239,255,.045) 1px, transparent 1px),
+    rgba(4, 12, 27, .72);
+  background-size: 22px 22px;
+  overflow: hidden;
+}
+.poster-preview canvas {
+  display: block;
+  width: min(100%, 320px);
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 20px 70px rgba(0,0,0,.42);
+}
+.poster-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 14px;
+}
+.poster-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: flex-start;
+}
+.poster-head span {
+  color: var(--amber, #ffd37e);
+  font-size: 12px;
+  font-weight: 950;
+  letter-spacing: .12em;
+}
+.poster-head h3 {
+  margin: 8px 0 0;
+  font-size: 34px;
+  line-height: 1;
+  letter-spacing: -.045em;
+}
+.poster-close {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(86,239,255,.25);
+  border-radius: 999px;
+  color: #ddf8ff;
+  background: rgba(255,255,255,.055);
+  cursor: pointer;
+  font: 900 22px/1 var(--font, sans-serif);
+}
+.poster-copy p {
+  margin: 0;
+  color: #aabbd3;
+  line-height: 1.75;
+}
+.poster-meta {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.poster-meta li {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(86,239,255,.12);
+  color: #aebbd1;
+}
+.poster-meta b {
+  color: #f5fbff;
+  font-family: var(--mono, monospace);
+  text-align: right;
+}
+.poster-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: auto;
+}
+.poster-actions button {
+  min-height: 44px;
+  border: 1px solid rgba(86,239,255,.28);
+  border-radius: 14px;
+  padding: 0 16px;
+  color: #dff8ff;
+  background: rgba(255,255,255,.06);
+  cursor: pointer;
+  font: 900 13px var(--font, sans-serif);
+}
+.poster-actions [data-poster-download],
+.poster-actions [data-poster-share] {
+  color: #03121b;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--cyan, #56efff), var(--blue, #7e8cff));
+}
+.poster-status {
+  min-height: 20px;
+  color: #91a4bf;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.poster-status.is-error { color: #ffb7b7; }
+.poster-status.is-ok { color: #9df4c3; }
+@media (max-width: 720px) {
+  .poster-modal { padding: 12px; place-items: end center; }
+  .poster-panel {
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 14px;
+    border-radius: 22px;
+  }
+  .poster-preview { min-height: 0; padding: 12px; }
+  .poster-preview canvas { width: min(100%, 250px); }
+  .poster-head h3 { font-size: 26px; }
+  .poster-copy p { font-size: 13px; line-height: 1.65; }
+  .poster-meta li { font-size: 12px; }
+  .poster-actions { display: grid; grid-template-columns: 1fr 1fr; }
+  .poster-actions button { width: 100%; padding: 0 10px; }
 }
 """
 
@@ -3243,22 +3409,27 @@ def _build_metric_cards(items: list[tuple]) -> str:
     cards = []
     for index, item in enumerate(items):
         if len(item) >= 5:
-            _, label, value, note, trend_points = item[:5]
+            metric_key, label, value, note, trend_points = item[:5]
             trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
         else:
+            metric_key = ""
             label, value, note = item[:3]
             trend_values = item[3] if len(item) > 3 else []
+        live_price = str(metric_key) == "network_current_price"
         cards.append(
-            '<article class="metric" style="--delay:%sms" role="button" tabindex="0" '
+            '<article class="metric" style="--delay:%sms" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span><b>%s</b><small>%s</small>%s</article>"
+            "<span>%s</span><b%s>%s</b><small%s>%s</small>%s</article>"
             % (
                 index * 70,
+                'data-price-card ' if live_price else "",
                 index,
                 escape(str(label), quote=True),
                 escape(str(label), quote=True),
                 escape(label),
+                ' data-live-price' if live_price else "",
                 escape(value),
+                ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
             )
@@ -3317,14 +3488,19 @@ def _build_rank_cards(rows: list[dict], limit: int = 100, page_size: int = 10) -
 
 def _build_timeline(items: list[tuple[str, str]]) -> str:
     return "\n".join(
-        '<div class="line"><span>%s</span><b>%s</b></div>' % (escape(label), escape(value))
+        '<div class="line"><span>%s</span><b%s>%s</b></div>'
+        % (escape(label), ' data-live-price' if label == "当前价格" else "", escape(value))
         for label, value in items
     )
 
 
 def _build_marquee(items: list[tuple[str, str]]) -> str:
     doubled = items + items
-    return "".join("<span>%s<b>%s</b></span>" % (escape(label), escape(value)) for label, value in doubled)
+    return "".join(
+        "<span>%s<b%s>%s</b></span>"
+        % (escape(label), ' data-live-price' if label == "当前价格" else "", escape(value))
+        for label, value in doubled
+    )
 
 
 def _build_warning(meta: dict, threshold_label: str) -> str:
@@ -3627,7 +3803,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       }}
     }})();
   </script>
-  <style>{SCROLL_DASHBOARD_CSS}</style>
+  <style>{SCROLL_DASHBOARD_CSS}
+{SHARE_POSTER_CSS}</style>
 </head>
 <body>
 <div class="scroll-progress" aria-hidden="true"></div>
@@ -3642,6 +3819,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <a href="#equation">方程系数</a>
         <a href="#risk">数据说明</a>
       </nav>
+      <button class="share-trigger" type="button" data-share-poster data-track="share_poster" data-label="topbar">生成战报</button>
       <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
     </div>
   </header>
@@ -3652,6 +3830,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
+        <button class="btn" type="button" data-share-poster data-track="share_poster" data-label="hero">生成战报</button>
         <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
       </div>
       {warning_html}
@@ -3720,6 +3899,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 <script id="rankData" type="application/json">{embedded_payload}</script>
 <script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{SCROLL_DASHBOARD_JS}
+{LIVE_PRICE_JS}
+{SHARE_POSTER_JS}
 {METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
 </body>
@@ -3786,8 +3967,9 @@ a { color: inherit; }
 .m-brand-main { display: flex; align-items: center; gap: 10px; min-width: 0; font-weight: 950; }
 .m-mark { width: 30px; height: 30px; border-radius: 12px; background: conic-gradient(from 210deg, var(--cyan), var(--blue), #ff7ac6, var(--cyan)); box-shadow: 0 0 30px rgba(86,239,255,.35); }
 .m-brand-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
-.m-desktop-link, .m-lang-toggle { color: #bfefff; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; font-family: inherit; line-height: 1; background: rgba(255,255,255,.045); }
+.m-desktop-link, .m-lang-toggle, .m-share-button { color: #bfefff; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 900; font-family: inherit; line-height: 1; background: rgba(255,255,255,.045); }
 .m-lang-toggle { min-width: 42px; cursor: pointer; color: #d9faff; background: rgba(86,239,255,.075); }
+.m-share-button { cursor: pointer; color: #03121b; border-color: transparent; background: linear-gradient(135deg, var(--cyan), var(--blue)); }
 .m-nav { display: flex; gap: 8px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
 .m-nav::-webkit-scrollbar { display: none; }
 .m-nav a { flex: 0 0 auto; text-decoration: none; border: 1px solid rgba(121,225,255,.14); border-radius: 999px; padding: 8px 11px; color: #bfcee4; background: rgba(255,255,255,.045); font-size: 12px; font-weight: 900; }
@@ -4256,6 +4438,477 @@ document.querySelectorAll('[data-track]').forEach((node) => {
     if (window.clarity) window.clarity('event', 'mobile_' + (node.dataset.track || 'click'));
   });
 });
+"""
+
+
+LIVE_PRICE_JS = r"""
+(() => {
+  const targets = () => Array.from(document.querySelectorAll('[data-live-price]'));
+  if (!targets().length) return;
+  const intervalMs = 10 * 60 * 1000;
+  const pricePath = () => {
+    const path = window.location.pathname || '';
+    const prefix = /\/m(?:\/|\/index\.html)?$/.test(path) || path.includes('/m/') ? '../' : '';
+    return `${prefix}data/price.json?v=${Date.now()}`;
+  };
+  const applyPrice = (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    const price = String(payload.price_display || payload.price || '').trim();
+    if (!price) return;
+    targets().forEach((node) => {
+      node.textContent = price;
+      const checked = payload.changed_at || payload.checked_at;
+      if (checked) node.setAttribute('title', `价格变动时间：${checked}`);
+    });
+  };
+  const refresh = async () => {
+    if (document.hidden) return;
+    try {
+      const response = await fetch(pricePath(), { cache: 'no-store' });
+      if (!response.ok) return;
+      applyPrice(await response.json());
+    } catch (error) {}
+  };
+  refresh();
+  window.setInterval(refresh, intervalMs);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) refresh();
+  });
+})();
+"""
+
+
+SHARE_POSTER_JS = r"""
+(() => {
+  const buttons = Array.from(document.querySelectorAll('[data-share-poster]'));
+  if (!buttons.length) return;
+
+  const SITE_URL = 'https://www.marschainrank.com/';
+  const POSTER_WIDTH = 1080;
+  const POSTER_HEIGHT = 1720;
+  let modal = null;
+  let canvas = null;
+
+  const readJson = (id, fallback) => {
+    const node = document.getElementById(id);
+    if (!node) return fallback;
+    try {
+      return JSON.parse(node.textContent || '');
+    } catch (error) {
+      return fallback;
+    }
+  };
+  const rankPayload = () => readJson('rankData', { meta: {}, rows: [] }) || { meta: {}, rows: [] };
+  const trendPayload = () => readJson('metricTrendData', []) || [];
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  const asNumber = (value) => {
+    if (value === null || value === undefined || value === '') return NaN;
+    const number = Number(String(value).replace(/,/g, ''));
+    return Number.isFinite(number) ? number : NaN;
+  };
+  const compactNumber = (value, digits = 3) => {
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    const sign = number < 0 ? '-' : '';
+    const abs = Math.abs(number);
+    if (abs >= 1_0000_0000_0000) return `${sign}${trimZeros((abs / 1_0000_0000_0000).toFixed(digits))}万亿`;
+    if (abs >= 1_0000_0000) return `${sign}${trimZeros((abs / 1_0000_0000).toFixed(digits))}亿`;
+    if (abs >= 1_0000) return `${sign}${trimZeros((abs / 1_0000).toFixed(digits))}万`;
+    if (abs > 0 && abs < 1) return `${sign}${trimZeros(abs.toFixed(6))}`;
+    return `${sign}${trimZeros(abs.toLocaleString('zh-CN', { maximumFractionDigits: digits }))}`;
+  };
+  const formatCount = (value) => {
+    const text = compactNumber(value);
+    return text === '待刷新' ? text : `${text}个`;
+  };
+  const formatToken = (value, display) => {
+    if (display) return String(display);
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    const scaled = Math.abs(number) > 1e12 ? number / 1e18 : number;
+    return `${compactNumber(scaled)}枚`;
+  };
+  const formatPrice = (meta) => {
+    const live = document.querySelector('[data-live-price]');
+    const text = live ? live.textContent.trim() : '';
+    return text || String(meta.network_current_price_display || meta.network_current_price || '待刷新');
+  };
+  const formatPercent = (value) => {
+    let number = asNumber(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    if (Math.abs(number) <= 1) number *= 100;
+    return `${number.toFixed(2)}%`;
+  };
+  const metricSeries = (key) => {
+    const item = trendPayload().find((entry) => entry && entry.key === key);
+    const points = item && Array.isArray(item.points) ? item.points : [];
+    return points.map((point) => asNumber(point && point.value)).filter(Number.isFinite);
+  };
+  const metricDelta = (key, current, formatter) => {
+    const series = metricSeries(key);
+    let delta = NaN;
+    if (series.length >= 2) {
+      delta = series[series.length - 1] - series[series.length - 2];
+    }
+    if (!Number.isFinite(delta)) return '等待下一期';
+    const label = delta >= 0 ? '新增' : '减少';
+    return `${label} ${formatter(Math.abs(delta))}`;
+  };
+  const daysOnline = (meta) => {
+    const generated = asNumber(meta.generated_at) || Math.floor(Date.now() / 1000);
+    const genesis = asNumber(meta.emission_genesis_timestamp);
+    if (!Number.isFinite(genesis) || genesis <= 0) return '上线天数待刷新';
+    return `上线第 ${Math.max(1, Math.floor((generated - genesis) / 86400) + 1)} 天`;
+  };
+  const christmasCountdown = () => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    let target = new Date(now.getFullYear(), 11, 25);
+    if (today > target) target = new Date(now.getFullYear() + 1, 11, 25);
+    const days = Math.max(0, Math.ceil((target - today) / 86400000));
+    return `距离圣诞方程 ${days} 天`;
+  };
+  const generatedLabel = (meta) => String(meta.generated_at_local || '').slice(0, 16) || new Date().toLocaleString('zh-CN', { hour12: false }).slice(0, 16);
+
+  const roundedRect = (ctx, x, y, w, h, r) => {
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + w, y, x + w, y + h, radius);
+    ctx.arcTo(x + w, y + h, x, y + h, radius);
+    ctx.arcTo(x, y + h, x, y, radius);
+    ctx.arcTo(x, y, x + w, y, radius);
+    ctx.closePath();
+  };
+  const fillRound = (ctx, x, y, w, h, r, fill, stroke) => {
+    roundedRect(ctx, x, y, w, h, r);
+    if (fill) {
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  };
+  const fitText = (ctx, text, x, y, maxWidth, font, minSize = 22, align = 'left') => {
+    const match = String(font).match(/(\d+)px/);
+    const startSize = match ? Number(match[1]) : 32;
+    let size = startSize;
+    do {
+      ctx.font = font.replace(/\d+px/, `${size}px`);
+      if (ctx.measureText(text).width <= maxWidth || size <= minSize) break;
+      size -= 2;
+    } while (size > minSize);
+    ctx.textAlign = align;
+    ctx.fillText(text, x, y);
+  };
+  const drawMetric = (ctx, x, y, w, h, label, value, delta, accent = '#56efff') => {
+    const gradient = ctx.createLinearGradient(x, y, x, y + h);
+    gradient.addColorStop(0, 'rgba(27, 42, 74, .94)');
+    gradient.addColorStop(1, 'rgba(7, 15, 32, .94)');
+    fillRound(ctx, x, y, w, h, 24, gradient, 'rgba(122, 225, 255, .18)');
+    ctx.fillStyle = accent;
+    ctx.font = '900 25px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x + 24, y + 38);
+    ctx.fillStyle = '#f7fbff';
+    fitText(ctx, value, x + 24, y + 92, w - 48, '950 42px "Microsoft YaHei", sans-serif', 24);
+    ctx.fillStyle = delta && delta.startsWith('减少') ? '#ffb7b7' : '#9df4c3';
+    fitText(ctx, delta || '等待下一期', x + 24, y + 132, w - 48, '850 24px "Microsoft YaHei", sans-serif', 18);
+  };
+  const drawSmallStat = (ctx, x, y, w, label, value, accent) => {
+    fillRound(ctx, x, y, w, 112, 20, 'rgba(255,255,255,.055)', 'rgba(122,225,255,.16)');
+    ctx.fillStyle = accent;
+    ctx.font = '900 24px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, x + 20, y + 34);
+    ctx.fillStyle = '#f6fbff';
+    fitText(ctx, value, x + 20, y + 78, w - 40, '950 34px "Microsoft YaHei", sans-serif', 20);
+  };
+
+  const QR_ROWS = [
+    '11111110000001001011001111111',
+    '10000010100010111101001000001',
+    '10111010010111101001101011101',
+    '10111010001101110011101011101',
+    '10111010101100100111001011101',
+    '10000010011001000011001000001',
+    '11111110101010101010101111111',
+    '00000000000111101100100000000',
+    '10101010011000110101100010010',
+    '11100000110110110000111001001',
+    '10110110100001000110010000111',
+    '11101100001000010111000010010',
+    '01001011110110001111111001011',
+    '11000001111001011000111101001',
+    '01110111110110111100001101011',
+    '11001000000111101101000001010',
+    '01101011010110110100111101011',
+    '00100101110010110100101001101',
+    '10000011110001000110101100011',
+    '01111001001010010111011001010',
+    '10011011001010001101111110000',
+    '00000000110111011001100010111',
+    '11111110010100111101101011011',
+    '10000010001101101110100011011',
+    '10111010100100111100111110010',
+    '10111010001001110000100010100',
+    '10111010101000100000110111001',
+    '10000010011001001111110010010',
+    '11111110111100011111110111011',
+  ];
+  const drawQr = (ctx, x, y, sizePx) => {
+    const matrix = QR_ROWS.map((row) => row.split('').map((bit) => bit === '1'));
+    const moduleCount = matrix.length;
+    const quiet = 4;
+    const step = sizePx / (moduleCount + quiet * 2);
+    ctx.fillStyle = '#ffffff';
+    fillRound(ctx, x, y, sizePx, sizePx, 18, '#ffffff');
+    ctx.fillStyle = '#071124';
+    matrix.forEach((row, r) => {
+      row.forEach((dark, c) => {
+        if (!dark) return;
+        ctx.fillRect(x + (c + quiet) * step, y + (r + quiet) * step, Math.ceil(step), Math.ceil(step));
+      });
+    });
+  };
+
+  const collectPosterData = () => {
+    const payload = rankPayload();
+    const meta = payload.meta || {};
+    const totalPower = meta.network_total_power;
+    const cards = [
+      ['区块高度', `${(asNumber(meta.latest_block) || asNumber(meta.rpc_log_end_block) || 0).toLocaleString('zh-CN')}`, metricDelta('latest_block', meta.latest_block, compactNumber), '#9df4c3'],
+      ['当前价格', formatPrice(meta), metricDelta('network_current_price', meta.network_current_price, compactNumber), '#ffd37e'],
+      ['总地址数', formatCount(meta.explorer_total_addresses), metricDelta('total_wallets', meta.explorer_total_addresses, formatCount), '#56efff'],
+      ['正算力地址', formatCount(meta.positive_power_count), metricDelta('positive_power_addresses', meta.positive_power_count, formatCount), '#7e8cff'],
+      ['流通总量', String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)), metricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)), '#9df4c3'],
+      ['全网总销毁', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
+      ['统计日活跃地址', formatCount(meta.statistics_window_active_wallet_address_count), metricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatCount), '#56efff'],
+      ['统计日新增算力', compactNumber(meta.statistics_window_new_power), metricDelta('daily_new_power', meta.statistics_window_new_power, compactNumber), '#7e8cff'],
+      ['1亿算力日产出', String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '待刷新'), metricDelta('one_yi_power_output', null, (value) => `${compactNumber(value)}枚/日`), '#ffd37e'],
+      ['产1币需算力', String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)), metricDelta('power_per_coin', meta.power_required_per_mars_daily, compactNumber), '#9df4c3'],
+    ];
+    return {
+      meta,
+      generatedAt: generatedLabel(meta),
+      daysOnline: daysOnline(meta),
+      countdown: christmasCountdown(),
+      coverage: formatPercent(meta.discovered_power_coverage),
+      totalPower: compactNumber(totalPower),
+      totalPowerDelta: metricDelta('network_total_power', totalPower, compactNumber),
+      cards,
+      period7: [
+        ['7天新增地址', formatCount(meta.period_7d_new_candidate_address_count)],
+        ['7天新增算力', compactNumber(meta.period_7d_new_power)],
+        ['7天销毁', String(meta.period_7d_burned_display || formatToken(meta.period_7d_burned_tokens))],
+      ],
+      period30: [
+        ['30天新增地址', formatCount(meta.period_30d_new_candidate_address_count)],
+        ['30天新增算力', compactNumber(meta.period_30d_new_power)],
+        ['30天销毁', String(meta.period_30d_burned_display || formatToken(meta.period_30d_burned_tokens))],
+      ],
+    };
+  };
+
+  const renderPoster = () => {
+    const data = collectPosterData();
+    const ctx = canvas.getContext('2d');
+    canvas.width = POSTER_WIDTH;
+    canvas.height = POSTER_HEIGHT;
+    const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
+    bg.addColorStop(0, '#071124');
+    bg.addColorStop(.52, '#0a1830');
+    bg.addColorStop(1, '#030712');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+    ctx.strokeStyle = 'rgba(86,239,255,.08)';
+    ctx.lineWidth = 1;
+    for (let x = 40; x < POSTER_WIDTH; x += 56) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x - 160, POSTER_HEIGHT);
+      ctx.stroke();
+    }
+    for (let y = 38; y < POSTER_HEIGHT; y += 56) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(POSTER_WIDTH, y);
+      ctx.stroke();
+    }
+    const glow = ctx.createRadialGradient(870, 110, 20, 870, 110, 420);
+    glow.addColorStop(0, 'rgba(86,239,255,.28)');
+    glow.addColorStop(1, 'rgba(86,239,255,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+
+    ctx.fillStyle = '#9df4c3';
+    ctx.font = '900 25px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('MARSCHAIN RANK', 66, 74);
+    ctx.fillStyle = '#f7fbff';
+    ctx.font = '950 72px "Microsoft YaHei", sans-serif';
+    ctx.fillText('全网算力战报', 64, 150);
+    ctx.fillStyle = '#9fb0c9';
+    ctx.font = '800 26px "Microsoft YaHei", sans-serif';
+    ctx.fillText(`最近刷新：${data.generatedAt}`, 68, 194);
+
+    const chips = [[data.daysOnline, '#56efff'], [data.countdown, '#ffd37e'], [`覆盖率 ${data.coverage}`, '#9df4c3']];
+    let chipX = 64;
+    chips.forEach(([label, color]) => {
+      ctx.font = '900 25px "Microsoft YaHei", sans-serif';
+      const width = ctx.measureText(label).width + 42;
+      fillRound(ctx, chipX, 224, width, 52, 26, 'rgba(255,255,255,.065)', 'rgba(122,225,255,.18)');
+      ctx.fillStyle = color;
+      ctx.fillText(label, chipX + 21, 258);
+      chipX += width + 12;
+    });
+
+    const mainGradient = ctx.createLinearGradient(64, 310, 1016, 548);
+    mainGradient.addColorStop(0, 'rgba(86,239,255,.24)');
+    mainGradient.addColorStop(1, 'rgba(126,140,255,.18)');
+    fillRound(ctx, 64, 314, 952, 244, 34, mainGradient, 'rgba(122,225,255,.28)');
+    ctx.fillStyle = '#bff9ff';
+    ctx.font = '900 30px "Microsoft YaHei", sans-serif';
+    ctx.fillText('全网总算力', 106, 374);
+    ctx.fillStyle = '#ffffff';
+    fitText(ctx, data.totalPower, 104, 476, 630, '950 94px "Microsoft YaHei", sans-serif', 54);
+    ctx.fillStyle = data.totalPowerDelta.startsWith('减少') ? '#ffb7b7' : '#9df4c3';
+    ctx.font = '900 28px "Microsoft YaHei", sans-serif';
+    ctx.fillText(`较上一期${data.totalPowerDelta}`, 108, 520);
+    drawQr(ctx, 800, 344, 164);
+    ctx.fillStyle = '#d8e8ff';
+    ctx.font = '900 23px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('扫码查看实时榜单', 882, 538);
+    ctx.textAlign = 'left';
+
+    const cardW = 302;
+    const cardH = 142;
+    const startX = 64;
+    const gap = 22;
+    data.cards.forEach((card, index) => {
+      const row = Math.floor(index / 3);
+      const col = index % 3;
+      const y = 594 + row * (cardH + 16);
+      const x = startX + col * (cardW + gap);
+      const width = index === 9 ? cardW : cardW;
+      drawMetric(ctx, x, y, width, cardH, card[0], card[1], card[2], card[3]);
+    });
+
+    const periodY = 1240;
+    fillRound(ctx, 64, periodY, 952, 344, 30, 'rgba(255,255,255,.055)', 'rgba(122,225,255,.18)');
+    ctx.fillStyle = '#9cf7ff';
+    ctx.font = '950 28px "Microsoft YaHei", sans-serif';
+    ctx.fillText('周期新增概览', 102, periodY + 50);
+    data.period7.forEach((item, index) => drawSmallStat(ctx, 104 + index * 296, periodY + 78, 270, item[0], item[1], '#9df4c3'));
+    data.period30.forEach((item, index) => drawSmallStat(ctx, 104 + index * 296, periodY + 202, 270, item[0], item[1], '#ffd37e'));
+
+    ctx.fillStyle = '#f5fbff';
+    ctx.font = '950 34px "Microsoft YaHei", sans-serif';
+    ctx.fillText('MarsChain 算力排行榜', 68, 1630);
+    ctx.fillStyle = '#9fb0c9';
+    ctx.font = '800 24px "Microsoft YaHei", sans-serif';
+    ctx.fillText('公开 API、RPC 与 POWER 合约日志生成的 best effort 榜单', 68, 1670);
+    ctx.fillStyle = '#56efff';
+    ctx.font = '950 28px "Microsoft YaHei", sans-serif';
+    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 68, 1710);
+  };
+
+  const setStatus = (text, mode = '') => {
+    const status = modal && modal.querySelector('[data-poster-status]');
+    if (!status) return;
+    status.textContent = text;
+    status.classList.toggle('is-error', mode === 'error');
+    status.classList.toggle('is-ok', mode === 'ok');
+  };
+  const canvasBlob = () => new Promise((resolve) => canvas.toBlob(resolve, 'image/png', 0.96));
+  const downloadPoster = () => {
+    const link = document.createElement('a');
+    link.download = `marschain-rank-${new Date().toISOString().slice(0, 10)}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    setStatus('图片已生成，可以直接转发。', 'ok');
+  };
+  const sharePoster = async () => {
+    try {
+      const blob = await canvasBlob();
+      if (!blob) throw new Error('图片生成失败');
+      const file = new File([blob], 'marschain-rank-report.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
+        await navigator.share({ files: [file], title: 'MarsChain 算力战报', text: 'MarsChain 算力排行榜战报' });
+        setStatus('已打开系统分享面板。', 'ok');
+      } else {
+        downloadPoster();
+        setStatus('当前浏览器不支持直接分享文件，已改为下载图片。', 'ok');
+      }
+    } catch (error) {
+      setStatus(error.message || '分享失败，请下载图片后转发。', 'error');
+    }
+  };
+
+  const ensureModal = () => {
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.className = 'poster-modal';
+    modal.hidden = true;
+    modal.innerHTML = `
+      <section class="poster-panel" role="dialog" aria-modal="true" aria-labelledby="posterTitle">
+        <div class="poster-preview"><canvas data-poster-canvas aria-label="MarsChain 战报预览"></canvas></div>
+        <div class="poster-copy">
+          <div class="poster-head">
+            <div><span>SHARE POSTER</span><h3 id="posterTitle">生成战报图片</h3></div>
+            <button class="poster-close" type="button" data-poster-close aria-label="关闭">×</button>
+          </div>
+          <p>图片会读取当前页面数据，在本地生成 1080×1720 战报图，适合朋友圈、社群和私聊转发。</p>
+          <ul class="poster-meta">
+            <li><span>二维码</span><b>官网榜单</b></li>
+            <li><span>价格</span><b>读取实时小文件</b></li>
+            <li><span>周期数据</span><b>7天 / 30天两行</b></li>
+          </ul>
+          <div class="poster-actions">
+            <button type="button" data-poster-download>下载图片</button>
+            <button type="button" data-poster-share>分享图片</button>
+            <button type="button" data-poster-refresh>重新生成</button>
+          </div>
+          <div class="poster-status" data-poster-status>点击下载或分享即可转发。</div>
+        </div>
+      </section>
+    `;
+    document.body.appendChild(modal);
+    canvas = modal.querySelector('[data-poster-canvas]');
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal || event.target.closest('[data-poster-close]')) {
+        modal.hidden = true;
+        document.body.style.overflow = '';
+      }
+      if (event.target.closest('[data-poster-download]')) downloadPoster();
+      if (event.target.closest('[data-poster-share]')) sharePoster();
+      if (event.target.closest('[data-poster-refresh]')) {
+        renderPoster();
+        setStatus('已按当前页面数据重新生成。', 'ok');
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (!modal.hidden && event.key === 'Escape') {
+        modal.hidden = true;
+        document.body.style.overflow = '';
+      }
+    });
+    return modal;
+  };
+  const openPoster = () => {
+    ensureModal();
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    renderPoster();
+    setStatus('战报已生成。', 'ok');
+  };
+  buttons.forEach((button) => button.addEventListener('click', openPoster));
+})();
 """
 
 
@@ -4884,21 +5537,26 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
     cards: list[str] = []
     for index, item in enumerate(items):
         if len(item) >= 5:
-            _, label, value, note, trend_points = item[:5]
+            metric_key, label, value, note, trend_points = item[:5]
             trend_values = [point.get("value") for point in trend_points if isinstance(point, dict)]
         else:
+            metric_key = ""
             label, value, note = item[:3]
             trend_values = item[3] if len(item) > 3 else []
+        live_price = str(metric_key) == "network_current_price"
         cards.append(
-            '<article class="m-card m-reveal" role="button" tabindex="0" '
+            '<article class="m-card m-reveal" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span><b>%s</b><small>%s</small>%s</article>"
+            "<span>%s</span><b%s>%s</b><small%s>%s</small>%s</article>"
             % (
+                'data-price-card ' if live_price else "",
                 index,
                 escape(str(label), quote=True),
                 escape(str(label), quote=True),
                 escape(label),
+                ' data-live-price' if live_price else "",
                 escape(value),
+                ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
             )
@@ -5097,7 +5755,8 @@ def build_mobile_html(payload: dict) -> str:
   <meta name="theme-color" content="#030712">
   <link rel="preload" href="/data/latest.json" as="fetch" crossorigin>
 {analytics_head}
-  <style>{MOBILE_DASHBOARD_CSS}</style>
+  <style>{MOBILE_DASHBOARD_CSS}
+{SHARE_POSTER_CSS}</style>
 </head>
 <body>
 <div class="m-shell">
@@ -5106,6 +5765,7 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-brand-main"><span class="m-mark"></span><span>MarsChain Rank</span></div>
       <div class="m-brand-actions">
         <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
+        <button class="m-share-button" type="button" data-share-poster data-track="share_poster" data-label="mobile">战报</button>
         <button class="m-lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
       </div>
     </div>
@@ -5156,6 +5816,8 @@ def build_mobile_html(payload: dict) -> str:
 <script id="rankData" type="application/json">{embedded_payload}</script>
 <script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{MOBILE_DASHBOARD_JS}
+{LIVE_PRICE_JS}
+{SHARE_POSTER_JS}
 {METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
 </body>
