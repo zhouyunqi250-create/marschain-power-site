@@ -629,6 +629,8 @@ def collect_statistics_window_active_addresses(
         "statistics_window_active_wallet_address_count": None,
         "statistics_window_active_blocks_scanned": 0,
         "statistics_window_active_transactions_seen": 0,
+        "statistics_window_transaction_volume_wei": None,
+        "statistics_window_transaction_volume_display": None,
         "statistics_window_active_error_count": 0,
     }
     if not rpc_url:
@@ -674,7 +676,7 @@ def collect_statistics_window_active_addresses(
         batches.append(list(range(current, end - 1, -1)))
         current = end - 1
 
-    def fetch_batch(numbers: list[int]) -> tuple[set[str], int, int]:
+    def fetch_batch(numbers: list[int]) -> tuple[set[str], int, int, int]:
         payload = [
             {
                 "jsonrpc": "2.0",
@@ -691,6 +693,7 @@ def collect_statistics_window_active_addresses(
         local_addresses: set[str] = set()
         scanned = 0
         tx_seen = 0
+        tx_volume_wei = 0
         for item in parsed:
             if not isinstance(item, dict) or item.get("error"):
                 continue
@@ -702,21 +705,25 @@ def collect_statistics_window_active_addresses(
                 if not isinstance(tx, dict):
                     continue
                 tx_seen += 1
+                value_wei = hex_to_int(tx.get("value"))
+                if value_wei and value_wei > 0:
+                    tx_volume_wei += value_wei
                 sender = normalize_address(tx.get("from"))
                 if is_probably_user_address(sender):
                     local_addresses.add(sender)
                 receiver = normalize_address(tx.get("to"))
                 if is_probably_user_address(receiver):
                     local_addresses.add(receiver)
-        return local_addresses, scanned, tx_seen
+        return local_addresses, scanned, tx_seen, tx_volume_wei
 
     active_addresses: set[str] = set()
+    total_transaction_volume_wei = 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_workers, 12))) as pool:
         future_map = {pool.submit(fetch_batch, batch): batch for batch in batches}
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
             block_range = future_map[future]
             try:
-                batch_addresses, scanned, tx_seen = future.result()
+                batch_addresses, scanned, tx_seen, tx_volume_wei = future.result()
             except Exception as exc:
                 meta["statistics_window_active_error_count"] += 1
                 if meta["statistics_window_active_error_count"] <= 10:
@@ -728,6 +735,7 @@ def collect_statistics_window_active_addresses(
             active_addresses.update(batch_addresses)
             meta["statistics_window_active_blocks_scanned"] += scanned
             meta["statistics_window_active_transactions_seen"] += tx_seen
+            total_transaction_volume_wei += tx_volume_wei
             if progress and idx % 50 == 0:
                 print(
                     f"[info] statistics window active scan: {idx}/{len(batches)} batches, "
@@ -736,6 +744,9 @@ def collect_statistics_window_active_addresses(
                 )
 
     meta["statistics_window_active_wallet_address_count"] = len(active_addresses)
+    meta["statistics_window_transaction_volume_wei"] = total_transaction_volume_wei
+    meta["statistics_window_transaction_volume_display"] = format_token_chinese(total_transaction_volume_wei)
+    meta["statistics_window_transaction_volume_basis"] = f"sum native MARS transaction value in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window"
     return meta
 
 

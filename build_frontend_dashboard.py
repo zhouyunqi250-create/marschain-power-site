@@ -1805,10 +1805,8 @@ h1 {
 .mini span { display: block; color: #8e9db7; font-size: 12px; }
 .mini b { font-size: 24px; letter-spacing: -.03em; }
 .marquee {
-  position: sticky;
-  top: 76px;
-  z-index: 15;
-  margin-top: -52px;
+  position: relative;
+  z-index: 5;
   height: 54px;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1819,6 +1817,7 @@ h1 {
   align-items: center;
   box-shadow: 0 18px 48px rgba(0,0,0,.24);
 }
+.footer-marquee { margin: 20px 0 0; }
 .track { display: flex; gap: 14px; white-space: nowrap; animation: slide 34s linear infinite; }
 .marquee:hover .track { animation-play-state: paused; }
 .track span {
@@ -2355,6 +2354,8 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   line-height: 1.65;
 }
 .footer { padding: 70px 0 54px; color: #6f7e96; text-align: center; font-size: 13px; }
+.footer-marquee + .footer { padding-top: 28px; }
+.footer strong { display: block; margin-top: 12px; color: #dce9ff; font: 950 18px var(--mono); letter-spacing: 0; }
 .metric, .growth-card, .fcard, .rank-card, .panel, .command {
   position: relative;
   transition: transform .34s cubic-bezier(.2,.85,.2,1), box-shadow .34s ease, border-color .34s ease, background .34s ease;
@@ -3170,6 +3171,17 @@ def _fmt_count_unit(value: object, unit: str = "个") -> str:
     return f"{formatted}{unit}"
 
 
+def _fmt_token_amount(value: object) -> str:
+    if value is None or value == "":
+        return "待刷新"
+    number = _as_float(value)
+    if number <= 0:
+        return "0枚"
+    if number > 1e15:
+        number = number / 1e18
+    return f"{_fmt_chinese_number(number, digits=3)}枚"
+
+
 def _fmt_token_daily_output(value: object) -> str:
     number = _as_float(value)
     if number <= 0:
@@ -3653,6 +3665,9 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     positive_power_count = meta.get("positive_power_count")
     explorer_total_addresses = meta.get("explorer_total_addresses")
     active_wallet_count = meta.get("statistics_window_active_wallet_address_count")
+    daily_transaction_count = meta.get("statistics_window_active_transactions_seen")
+    daily_transaction_volume = meta.get("statistics_window_transaction_volume_wei")
+    daily_transaction_volume_display = str(meta.get("statistics_window_transaction_volume_display") or _fmt_token_amount(daily_transaction_volume))
     new_address_count = meta.get("statistics_window_new_candidate_address_count")
     if new_address_count is None:
         new_address_count = meta.get("today_new_wallet_count")
@@ -3753,6 +3768,20 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             "北京时间统计日口径",
             _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens"))),
         ),
+        (
+            "daily_transaction_volume",
+            "每日交易币量",
+            daily_transaction_volume_display,
+            "08:00统计窗口内交易 value 汇总",
+            _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume]),
+        ),
+        (
+            "daily_transaction_count",
+            "每日交易笔数",
+            _fmt_count_unit(daily_transaction_count, "笔"),
+            "08:00统计窗口内交易数量",
+            _trend_points(meta, "daily_transaction_count", [daily_transaction_count]),
+        ),
         ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
         ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
@@ -3773,6 +3802,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
         ("统计日新增算力", _fmt_power(new_power)),
         ("日销毁币量", daily_burned),
+        ("每日交易币量", daily_transaction_volume_display),
+        ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
         ("7天新增算力", _fmt_power(period_7d_new_power)),
         ("7天新增地址", _fmt_count_unit(period_7d_new_address_count)),
         ("7天销毁", period_7d_burned),
@@ -3797,6 +3828,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
         ("日销毁币量", daily_burned),
+        ("每日交易币量", daily_transaction_volume_display),
+        ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
         ("7 天新增算力", _fmt_power(period_7d_new_power)),
         ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
         ("7 天销毁", period_7d_burned),
@@ -3944,7 +3977,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     {rank_controls_html}
     {paid_download_panel}
   </section>
-  <div class="marquee"><div class="track">{marquee_html}</div></div>
   <section id="pulse" class="section">
     <div class="section-head reveal">
       <div><span class="kicker">02 / 核心数据</span><h2>当前算力概览</h2></div>
@@ -3981,7 +4013,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       </article>
     </div>
   </section>
-  <footer class="footer">基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}</footer>
+  <div class="footer-marquee"><div class="marquee"><div class="track">{marquee_html}</div></div></div>
+  <footer class="footer">基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：{escape(generated_at)} · 统计周期：{escape(statistics_window_label)}<strong>www.marschainrank.com</strong></footer>
 </div>
 <script id="rankData" type="application/json">{embedded_payload}</script>
 <script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
@@ -5280,6 +5313,7 @@ METRIC_TREND_JS = r"""
     'network_total_circulation',
     'total_burned',
     'daily_burned',
+    'daily_transaction_volume',
     'period_7d_burned',
     'period_30d_burned',
   ]);
@@ -5627,6 +5661,8 @@ LANGUAGE_TOGGLE_JS = r"""
     '统计日新增地址数量': 'Daily New Addresses',
     '统计日新增总算力': 'Daily New Power',
     '日销毁币量': 'Daily Burned',
+    '每日交易币量': 'Daily Transaction Volume',
+    '每日交易笔数': 'Daily Transaction Count',
     '单币日需算力': 'Daily Power per Coin',
     '1亿算力产出': 'Output per 100M Power',
     '统计日活跃地址': 'Daily Active Addresses',
@@ -5671,6 +5707,8 @@ LANGUAGE_TOGGLE_JS = r"""
     '北京 08:00 至次日 08:00': 'Beijing 08:00 to next-day 08:00',
     '同一统计日口径': 'Same statistics-day method',
     '北京时间统计日口径': 'Beijing-day method',
+    '08:00统计窗口内交易 value 汇总': 'Transaction value total in the 08:00 statistics window',
+    '08:00统计窗口内交易数量': 'Transaction count in the 08:00 statistics window',
     '按矿工 75% 产量估算': 'Estimated with the 75% miner emission share',
     '按矿工 75% 日产币口径估算': 'Estimated with the 75% miner daily-emission method',
     '按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。': 'Estimated as 100M power divided by daily power per coin, using the 75% miner-emission method.',
@@ -5961,6 +5999,9 @@ def build_mobile_html(payload: dict) -> str:
     positive_power_count = meta.get("positive_power_count")
     explorer_total_addresses = meta.get("explorer_total_addresses")
     active_wallet_count = meta.get("statistics_window_active_wallet_address_count")
+    daily_transaction_count = meta.get("statistics_window_active_transactions_seen")
+    daily_transaction_volume = meta.get("statistics_window_transaction_volume_wei")
+    daily_transaction_volume_display = str(meta.get("statistics_window_transaction_volume_display") or _fmt_token_amount(daily_transaction_volume))
     new_address_count = meta.get("statistics_window_new_candidate_address_count")
     if new_address_count is None:
         new_address_count = meta.get("today_new_wallet_count")
@@ -6039,6 +6080,8 @@ def build_mobile_html(payload: dict) -> str:
         ("daily_new_addresses", "统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志", _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))),
         ("daily_new_power", "统计日新增算力", _fmt_power(new_power), "北京时间统计日口径", _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))),
         ("daily_burned", "日销毁币量", daily_burned, "北京时间统计日口径", _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))),
+        ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume])),
+        ("daily_transaction_count", "每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔"), "08:00统计窗口内交易数量", _trend_points(meta, "daily_transaction_count", [daily_transaction_count])),
         ("period_7d_new_power", "7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_points(meta, "period_7d_new_power", [period_7d_new_power])),
         ("period_7d_new_addresses", "7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
         ("period_7d_burned", "7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
@@ -6092,6 +6135,8 @@ def build_mobile_html(payload: dict) -> str:
             ("预言机触发价", oracle_trigger_price),
             ("累计销毁", total_burned),
             ("日销毁币量", daily_burned),
+            ("每日交易币量", daily_transaction_volume_display),
+            ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
             ("7 天新增算力", _fmt_power(period_7d_new_power)),
             ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
             ("7 天销毁", period_7d_burned),
