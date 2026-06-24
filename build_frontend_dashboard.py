@@ -1861,18 +1861,21 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   backdrop-filter: blur(20px);
   box-shadow: 0 24px 70px rgba(0,0,0,.28);
 }
-.metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .metric {
-  min-height: 214px;
-  padding: 20px;
+  min-height: 248px;
+  padding: 21px;
   border: 1px solid var(--line);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(30,46,76,.9), rgba(8,15,30,.92));
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(32, 50, 82, .90), rgba(7, 15, 30, .94)),
+    radial-gradient(circle at 100% 0%, rgba(82,239,255,.16), transparent 36%);
   position: relative;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 18px 54px rgba(0,0,0,.20);
 }
 .metric:focus-visible {
   outline: 2px solid rgba(82,239,255,.72);
@@ -1881,36 +1884,99 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 .metric:after {
   content: "";
   position: absolute;
-  right: -32px;
-  top: -32px;
-  width: 102px;
-  height: 102px;
-  border-radius: 50%;
-  background: rgba(82,239,255,.11);
+  right: 18px;
+  top: 18px;
+  width: 42px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--cyan), rgba(129,245,178,.72));
+  box-shadow: 0 0 22px rgba(82,239,255,.36);
 }
-.metric > span { color: #aebbd2; font-size: 13px; }
-.metric b { display: block; font-size: 34px; margin-top: 20px; letter-spacing: -.055em; }
-.price-stack {
+.metric > span {
+  position: relative;
+  z-index: 1;
+  width: fit-content;
+  max-width: calc(100% - 62px);
+  padding: 6px 10px;
+  border: 1px solid rgba(82,239,255,.16);
+  border-radius: 999px;
+  color: #d8f8ff;
+  background: rgba(82,239,255,.065);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.1;
+}
+.metric b {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 22px;
+  font-size: clamp(28px, 2.45vw, 39px);
+  line-height: .98;
+  letter-spacing: -.055em;
+}
+.metric-secondary {
+  position: relative;
+  z-index: 1;
   display: grid;
-  gap: 6px;
-  margin-top: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px 10px;
+  align-items: center;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid rgba(129,245,178,.18);
+  border-radius: 14px;
+  background: rgba(129,245,178,.055);
+}
+.metric-secondary span { color: #9fb0c9; font-size: 12px; font-weight: 900; }
+.metric-secondary strong { color: var(--green); font-family: var(--mono); font-size: 16px; letter-spacing: -.025em; }
+.metric-secondary em { grid-column: 1 / -1; color: #72849d; font-size: 11px; font-style: normal; line-height: 1.3; }
+.metric-secondary-list {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+.metric-secondary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(129,245,178,.15);
+  border-radius: 13px;
+  background: rgba(255,255,255,.035);
+}
+.metric-secondary-row span { color: #9fb0c9; font-size: 12px; font-weight: 900; }
+.metric-secondary-row strong { color: var(--green); font-family: var(--mono); font-size: 16px; letter-spacing: -.025em; }
+.metric-secondary-row em { grid-column: 1 / -1; color: #72849d; font-size: 11px; font-style: normal; line-height: 1.3; }
+.price-stack {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
   color: #9eb0cb;
   font-size: 12px;
   line-height: 1.25;
 }
 .price-stack span {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: 10px;
-  border-bottom: 1px solid rgba(125,225,255,.10);
-  padding-bottom: 5px;
+  padding: 10px 12px;
+  border: 1px solid rgba(129,245,178,.15);
+  border-radius: 13px;
+  background: rgba(255,255,255,.035);
 }
 .price-stack strong {
   color: #f5fbff;
   font-family: var(--mono);
   font-size: 13px;
 }
-.metric small { display: block; color: #8292ad; font-size: 12px; margin-top: 12px; }
+.metric small { position: relative; z-index: 1; display: block; color: #8292ad; font-size: 12px; margin-top: 12px; line-height: 1.45; }
 .metric-trend {
   position: relative;
   z-index: 1;
@@ -2049,6 +2115,30 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   stroke-linejoin: round;
   filter: drop-shadow(0 0 14px rgba(82,239,255,.38));
 }
+.trend-chart .line.series-secondary {
+  stroke: var(--green);
+  filter: drop-shadow(0 0 14px rgba(129,245,178,.34));
+}
+.trend-chart .area.series-secondary { fill: rgba(129,245,178,.10); }
+.trend-chart .line.series-tertiary {
+  stroke: var(--amber);
+  filter: drop-shadow(0 0 14px rgba(255,211,126,.30));
+}
+.trend-chart .area.series-tertiary { fill: rgba(255,211,126,.08); }
+.trend-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 0 24px 12px;
+  color: #aebbd2;
+  font-size: 12px;
+  font-weight: 900;
+}
+.trend-legend:empty { display: none; }
+.trend-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.trend-legend i { width: 9px; height: 9px; border-radius: 999px; background: var(--cyan); box-shadow: 0 0 12px rgba(82,239,255,.45); }
+.trend-legend span:nth-child(2) i { background: var(--green); box-shadow: 0 0 12px rgba(129,245,178,.45); }
+.trend-legend span:nth-child(3) i { background: var(--amber); box-shadow: 0 0 12px rgba(255,211,126,.40); }
 .trend-chart .cursor-line { stroke: rgba(255,255,255,.66); stroke-width: 1.5; stroke-dasharray: 5 6; }
 .trend-chart .cursor-dot { fill: var(--green); filter: drop-shadow(0 0 12px rgba(129,245,178,.64)); }
 .trend-chart .axis-line { stroke: rgba(255,255,255,.12); stroke-width: 1; }
@@ -3294,6 +3384,17 @@ def _fmt_power(value: object) -> str:
     return _fmt_chinese_number(value, digits=3)
 
 
+def _fmt_signed_power(value: object) -> str:
+    if value is None or value == "":
+        return "待刷新"
+    number = _as_float(value)
+    if number > 0:
+        return f"+{_fmt_power(number)}"
+    if number < 0:
+        return f"-{_fmt_power(abs(number))}"
+    return _fmt_power(0)
+
+
 def _fmt_percent(value: object) -> str:
     number = _as_float(value)
     if abs(number) <= 1:
@@ -3482,6 +3583,38 @@ def _build_metric_cards(items: list[tuple]) -> str:
             trend_values = item[3] if len(item) > 3 else []
         live_price = str(metric_key) == "network_current_price"
         value_html = f'<b{" data-live-price" if live_price else ""}>{escape(value)}</b>'
+        secondary_label = str(extra.get("secondary_label") or "")
+        secondary_value = str(extra.get("secondary_value") or "")
+        secondary_note = str(extra.get("secondary_note") or "")
+        secondary_html = ""
+        secondary_items = extra.get("secondary_items")
+        if isinstance(secondary_items, list) and secondary_items:
+            rows = []
+            for secondary_item in secondary_items:
+                if not isinstance(secondary_item, dict):
+                    continue
+                item_label = str(secondary_item.get("label") or "")
+                item_value = str(secondary_item.get("value") or "")
+                item_note = str(secondary_item.get("note") or "")
+                if not item_label and not item_value:
+                    continue
+                note_html = f"<em>{escape(item_note)}</em>" if item_note else ""
+                rows.append(
+                    '<div class="metric-secondary-row">'
+                    f"<span>{escape(item_label)}</span>"
+                    f"<strong>{escape(item_value)}</strong>"
+                    f"{note_html}</div>"
+                )
+            if rows:
+                secondary_html = f'<div class="metric-secondary-list">{"".join(rows)}</div>'
+        elif secondary_label or secondary_value:
+            note_html = f"<em>{escape(secondary_note)}</em>" if secondary_note else ""
+            secondary_html = (
+                '<div class="metric-secondary">'
+                f"<span>{escape(secondary_label)}</span>"
+                f"<strong>{escape(secondary_value)}</strong>"
+                f"{note_html}</div>"
+            )
         if live_price:
             highest = str(extra.get("highest_price") or "待刷新")
             trigger = str(extra.get("oracle_trigger_price") or "待刷新")
@@ -3495,7 +3628,7 @@ def _build_metric_cards(items: list[tuple]) -> str:
         cards.append(
             '<article class="metric" style="--delay:%sms" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span>%s<small%s>%s</small>%s</article>"
+            "<span>%s</span>%s%s<small%s>%s</small>%s</article>"
             % (
                 index * 70,
                 'data-price-card ' if live_price else "",
@@ -3504,6 +3637,7 @@ def _build_metric_cards(items: list[tuple]) -> str:
                 escape(str(label), quote=True),
                 escape(label),
                 value_html,
+                secondary_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
@@ -3517,20 +3651,39 @@ def _build_metric_trend_payload(items: list[tuple]) -> list[dict[str, object]]:
     for index, item in enumerate(items):
         if len(item) >= 5:
             key, label, value, note, points = item[:5]
+            extra = item[5] if len(item) > 5 and isinstance(item[5], dict) else {}
             clean_points = _clean_trend_points(points, limit=120)
         else:
             key = f"metric_{index}"
             label, value, note = item[:3]
+            extra = {}
             clean_points = _clean_trend_points(item[3] if len(item) > 3 else [], limit=120)
-        payload.append(
-            {
-                "key": str(key),
-                "label": str(label),
-                "value": str(value),
-                "note": str(note),
-                "points": clean_points,
-            }
-        )
+        entry = {
+            "key": str(key),
+            "label": str(extra.get("trend_label") or label),
+            "value": str(value),
+            "note": str(extra.get("trend_note") or note),
+            "points": clean_points,
+        }
+        series = extra.get("series")
+        if isinstance(series, list):
+            clean_series = []
+            for series_item in series:
+                if not isinstance(series_item, dict):
+                    continue
+                series_points = _clean_trend_points(series_item.get("points"), limit=120)
+                if not series_points:
+                    continue
+                clean_series.append(
+                    {
+                        "key": str(series_item.get("key") or key),
+                        "label": str(series_item.get("label") or label),
+                        "points": series_points,
+                    }
+                )
+            if clean_series:
+                entry["series"] = clean_series
+        payload.append(entry)
     return payload
 
 
@@ -3701,25 +3854,108 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     total_burned_tokens = meta.get("network_total_burned_tokens")
     total_circulation_tokens = meta.get("network_total_circulation_tokens")
     daily_total_tokens = meta.get("emission_daily_total_tokens")
-
+    network_total_power_points = _trend_points(
+        meta,
+        "network_total_power",
+        [
+            meta.get("period_30d_start_total_power"),
+            meta.get("period_7d_start_total_power"),
+            meta.get("statistics_window_start_total_power"),
+            network_total_power,
+        ],
+    )
+    daily_new_power_points = _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))
+    total_wallet_points = _trend_points(meta, "total_wallets", [explorer_total_addresses])
+    daily_active_address_points = _trend_points(meta, "daily_active_addresses", [active_wallet_count])
+    daily_new_address_points = _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))
+    circulation_points = _trend_points(meta, "network_total_circulation", [total_circulation_tokens])
+    total_burned_points = _trend_points(
+        meta,
+        "total_burned",
+        _trend_from_cumulative(
+            total_burned_tokens,
+            meta.get("period_30d_burned_tokens"),
+            meta.get("period_7d_burned_tokens"),
+            meta.get("statistics_window_burned_tokens"),
+        ),
+    )
+    daily_burned_points = _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))
+    daily_emission_points = _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])
+    power_per_coin_points = _trend_points(meta, "power_per_coin", [power_required_value])
+    one_yi_power_output_points = _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])
+    daily_transaction_volume_points = _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume])
+    daily_transaction_count_points = _trend_points(meta, "daily_transaction_count", [daily_transaction_count])
+    merged_power_extra = {
+        "secondary_label": "每日新增算力",
+        "secondary_value": _fmt_signed_power(new_power),
+        "secondary_note": "北京时间 08:00 统计日新增",
+        "trend_label": "算力趋势",
+        "trend_note": "全网总算力与每日新增算力合并查看。",
+        "series": [
+            {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
+            {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
+        ],
+    }
+    merged_address_extra = {
+        "secondary_items": [
+            {"label": "新增地址", "value": _fmt_count_unit(new_address_count), "note": "08:00 统计日新增"},
+            {"label": "活跃地址", "value": _fmt_count_unit(active_wallet_count), "note": "同一统计窗口内活跃"},
+        ],
+        "trend_label": "地址趋势",
+        "trend_note": "总钱包、新增地址、活跃地址合并查看。",
+        "series": [
+            {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
+            {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
+            {"key": "daily_active_addresses", "label": "活跃地址", "points": daily_active_address_points},
+        ],
+    }
+    merged_supply_extra = {
+        "secondary_items": [
+            {"label": "累计销毁", "value": total_burned, "note": "POWER 合约累计燃烧"},
+            {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
+        ],
+        "trend_label": "币量趋势",
+        "trend_note": "流通量、累计销毁、日销毁币量合并查看。",
+        "series": [
+            {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
+            {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
+            {"key": "daily_burned", "label": "日销毁币量", "points": daily_burned_points},
+        ],
+    }
+    merged_output_extra = {
+        "secondary_items": [
+            {"label": "单币日需算力", "value": power_per_coin, "note": "矿工 75% 产量口径"},
+            {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
+        ],
+        "trend_label": "产出趋势",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出合并查看。",
+        "series": [
+            {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
+            {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
+            {"key": "one_yi_power_output", "label": "1亿算力产出", "points": one_yi_power_output_points},
+        ],
+    }
+    merged_transaction_extra = {
+        "secondary_items": [
+            {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
+        ],
+        "trend_label": "交易趋势",
+        "trend_note": "每日交易币量与每日交易笔数合并查看。",
+        "series": [
+            {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
+            {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
+        ],
+    }
     metric_items = [
         (
             "network_total_power",
             "全网总算力",
             _fmt_power(network_total_power),
             "区块浏览器公开统计",
-            _trend_points(
-                meta,
-                "network_total_power",
-                [
-                    meta.get("period_30d_start_total_power"),
-                    meta.get("period_7d_start_total_power"),
-                    meta.get("statistics_window_start_total_power"),
-                    network_total_power,
-                ],
-            ),
+            network_total_power_points,
+            merged_power_extra,
         ),
-        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
+        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", circulation_points, merged_supply_extra),
         (
             "network_current_price",
             "当前价格",
@@ -3728,62 +3964,16 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
             {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
         ),
-        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
-        (
-            "total_burned",
-            "累计销毁",
-            total_burned,
-            "POWER 合约累计燃烧",
-            _trend_points(
-                meta,
-                "total_burned",
-                _trend_from_cumulative(
-                    total_burned_tokens,
-                    meta.get("period_30d_burned_tokens"),
-                    meta.get("period_7d_burned_tokens"),
-                    meta.get("statistics_window_burned_tokens"),
-                ),
-            ),
-        ),
-        ("total_wallets", "总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_points(meta, "total_wallets", [explorer_total_addresses])),
-        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
-        (
-            "daily_new_addresses",
-            "统计日新增地址数量",
-            _fmt_count_unit(new_address_count),
-            "北京时间 08:00 至次日 08:00",
-            _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
-        ),
-        (
-            "daily_new_power",
-            "统计日新增总算力",
-            _fmt_power(new_power),
-            "同一统计日口径",
-            _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power)),
-        ),
-        (
-            "daily_burned",
-            "日销毁币量",
-            daily_burned,
-            "北京时间统计日口径",
-            _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens"))),
-        ),
+        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", daily_emission_points, merged_output_extra),
+        ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
         (
             "daily_transaction_volume",
             "每日交易币量",
             daily_transaction_volume_display,
             "08:00统计窗口内交易 value 汇总",
-            _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume]),
+            daily_transaction_volume_points,
+            merged_transaction_extra,
         ),
-        (
-            "daily_transaction_count",
-            "每日交易笔数",
-            _fmt_count_unit(daily_transaction_count, "笔"),
-            "08:00统计窗口内交易数量",
-            _trend_points(meta, "daily_transaction_count", [daily_transaction_count]),
-        ),
-        ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
-        ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算：1亿算力 ÷ 单币日需算力。", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
     latest_block_value = _latest_block_value(meta)
     marquee_items = [
@@ -5346,10 +5536,31 @@ METRIC_TREND_JS = r"""
         value: Number(point && point.value),
       })).filter((point) => Number.isFinite(point.value))
     : [];
-  const periodPoints = () => {
-    const all = cleanPoints(activeMetric ? activeMetric.points : []);
+  const periodLimit = () => {
     const period = periods.find((item) => item[0] === activePeriod) || periods[1];
-    return Number.isFinite(period[2]) ? all.slice(-period[2]) : all;
+    return period[2];
+  };
+  const slicePeriod = (points) => {
+    const all = cleanPoints(points);
+    const limit = periodLimit();
+    return Number.isFinite(limit) ? all.slice(-limit) : all;
+  };
+  const periodPoints = () => slicePeriod(activeMetric ? activeMetric.points : []);
+  const metricSeries = () => {
+    if (activeMetric && Array.isArray(activeMetric.series) && activeMetric.series.length) {
+      return activeMetric.series
+        .map((series, index) => ({
+          key: String(series.key || `${activeMetric.key || 'metric'}_${index}`),
+          label: String(series.label || activeMetric.label || `趋势 ${index + 1}`),
+          points: slicePeriod(series.points),
+        }))
+        .filter((series) => series.points.length);
+    }
+    return activeMetric ? [{
+      key: String(activeMetric.key || 'metric'),
+      label: String(activeMetric.label || '数据趋势'),
+      points: periodPoints(),
+    }] : [];
   };
   const escapeHtml = (value) => String(value || '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -5386,6 +5597,7 @@ METRIC_TREND_JS = r"""
           <button class="trend-close" type="button" data-trend-close aria-label="关闭">×</button>
         </div>
         <div class="trend-controls" data-trend-periods></div>
+        <div class="trend-legend" data-trend-legend></div>
         <div class="trend-chart" data-trend-chart></div>
         <div class="trend-stats">
           <div class="trend-stat"><span>光标日期</span><b data-trend-focus-value>待刷新</b><small data-trend-focus-label></small></div>
@@ -5415,19 +5627,47 @@ METRIC_TREND_JS = r"""
   const setFocus = (index) => {
     if (!activePoints.length || !modal) return;
     focusIndex = Math.max(0, Math.min(activePoints.length - 1, index));
-    const point = activePoints[focusIndex];
-    const values = activePoints.map((item) => item.value);
-    const minPoint = activePoints.reduce((best, item) => item.value < best.value ? item : best, activePoints[0]);
-    const maxPoint = activePoints.reduce((best, item) => item.value > best.value ? item : best, activePoints[0]);
-    const latest = activePoints[activePoints.length - 1];
-    modal.querySelector('[data-trend-focus-value]').textContent = formatTrendValue(point.value);
-    modal.querySelector('[data-trend-focus-label]').textContent = point.label;
-    modal.querySelector('[data-trend-latest]').textContent = formatTrendValue(latest.value);
-    modal.querySelector('[data-trend-latest-label]').textContent = latest.label;
-    modal.querySelector('[data-trend-min]').textContent = formatTrendValue(Math.min(...values));
-    modal.querySelector('[data-trend-min-label]').textContent = minPoint.label;
-    modal.querySelector('[data-trend-max]').textContent = formatTrendValue(Math.max(...values));
-    modal.querySelector('[data-trend-max-label]').textContent = maxPoint.label;
+    const seriesList = metricSeries();
+    if (seriesList.length > 1) {
+      const focusRows = seriesList.map((series) => {
+        const point = series.points[Math.min(focusIndex, series.points.length - 1)];
+        return `${series.label} ${formatTrendValue(point && point.value)}`;
+      });
+      const latestRows = seriesList.map((series) => {
+        const point = series.points[series.points.length - 1];
+        return `${series.label} ${formatTrendValue(point && point.value)}`;
+      });
+      const focusPoint = seriesList[0].points[Math.min(focusIndex, seriesList[0].points.length - 1)];
+      const latestPoint = seriesList[0].points[seriesList[0].points.length - 1];
+      modal.querySelector('[data-trend-focus-value]').textContent = focusRows.join(' / ');
+      modal.querySelector('[data-trend-focus-label]').textContent = focusPoint ? focusPoint.label : '';
+      modal.querySelector('[data-trend-latest]').textContent = latestRows.join(' / ');
+      modal.querySelector('[data-trend-latest-label]').textContent = latestPoint ? latestPoint.label : '';
+      modal.querySelector('[data-trend-min]').textContent = seriesList.map((series) => {
+        const minPoint = series.points.reduce((best, item) => item.value < best.value ? item : best, series.points[0]);
+        return `${series.label} ${formatTrendValue(minPoint.value)}`;
+      }).join(' / ');
+      modal.querySelector('[data-trend-min-label]').textContent = '各自区间最低';
+      modal.querySelector('[data-trend-max]').textContent = seriesList.map((series) => {
+        const maxPoint = series.points.reduce((best, item) => item.value > best.value ? item : best, series.points[0]);
+        return `${series.label} ${formatTrendValue(maxPoint.value)}`;
+      }).join(' / ');
+      modal.querySelector('[data-trend-max-label]').textContent = '各自区间最高';
+    } else {
+      const point = activePoints[focusIndex];
+      const values = activePoints.map((item) => item.value);
+      const minPoint = activePoints.reduce((best, item) => item.value < best.value ? item : best, activePoints[0]);
+      const maxPoint = activePoints.reduce((best, item) => item.value > best.value ? item : best, activePoints[0]);
+      const latest = activePoints[activePoints.length - 1];
+      modal.querySelector('[data-trend-focus-value]').textContent = formatTrendValue(point.value);
+      modal.querySelector('[data-trend-focus-label]').textContent = point.label;
+      modal.querySelector('[data-trend-latest]').textContent = formatTrendValue(latest.value);
+      modal.querySelector('[data-trend-latest-label]').textContent = latest.label;
+      modal.querySelector('[data-trend-min]').textContent = formatTrendValue(Math.min(...values));
+      modal.querySelector('[data-trend-min-label]').textContent = minPoint.label;
+      modal.querySelector('[data-trend-max]').textContent = formatTrendValue(Math.max(...values));
+      modal.querySelector('[data-trend-max-label]').textContent = maxPoint.label;
+    }
     modal.querySelectorAll('[data-cursor-index]').forEach((node) => {
       node.style.opacity = Number(node.dataset.cursorIndex) === focusIndex ? '1' : '0';
     });
@@ -5439,6 +5679,7 @@ METRIC_TREND_JS = r"""
     focusIndex = Math.max(0, activePoints.length - 1);
     const chart = modal.querySelector('[data-trend-chart]');
     const controls = modal.querySelector('[data-trend-periods]');
+    const legend = modal.querySelector('[data-trend-legend]');
     controls.innerHTML = periods.map(([key, label]) => (
       `<button type="button" data-trend-period="${key}" class="${key === activePeriod ? 'is-active' : ''}">${label}</button>`
     )).join('');
@@ -5449,6 +5690,12 @@ METRIC_TREND_JS = r"""
         if (window.applyMarsLanguage) window.applyMarsLanguage();
       });
     });
+    const seriesList = metricSeries();
+    if (legend) {
+      legend.innerHTML = seriesList.length > 1
+        ? seriesList.map((series) => `<span><i></i>${escapeHtml(series.label)}</span>`).join('')
+        : '';
+    }
 
     if (!activePoints.length) {
       chart.innerHTML = '<div class="trend-empty">趋势采样中，等待下次刷新。</div>';
@@ -5474,6 +5721,21 @@ METRIC_TREND_JS = r"""
     const coords = activePoints.map(xy);
     const linePath = coords.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
     const areaPath = `${linePath} L ${coords[coords.length - 1][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} L ${coords[0][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} Z`;
+    const seriesMarkup = seriesList.length > 1 ? seriesList.map((series, seriesIndex) => {
+      const seriesValues = series.points.map((point) => point.value);
+      const seriesMin = Math.min(...seriesValues);
+      const seriesMax = Math.max(...seriesValues);
+      const seriesSpan = Math.max(seriesMax - seriesMin, Math.max(Math.abs(seriesMax), 1) * 0.08);
+      const seriesCoords = series.points.map((point, index) => {
+        const x = pad.left + plotWidth * (index / Math.max(1, series.points.length - 1));
+        const y = pad.top + plotHeight - ((point.value - seriesMin) / seriesSpan) * plotHeight;
+        return [x, y];
+      });
+      const path = seriesCoords.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
+      const area = `${path} L ${seriesCoords[seriesCoords.length - 1][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} L ${seriesCoords[0][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} Z`;
+      const className = seriesIndex === 1 ? 'series-secondary' : seriesIndex === 2 ? 'series-tertiary' : '';
+      return `<path class="area ${className}" d="${area}"></path><path class="line ${className}" d="${path}"></path>`;
+    }).join('') : '';
     const barWidth = Math.max(2, Math.min(20, plotWidth / Math.max(1, activePoints.length) * 0.58));
     const bars = coords.map(([x, y]) => {
       const base = height - pad.bottom;
@@ -5499,9 +5761,8 @@ METRIC_TREND_JS = r"""
     chart.innerHTML = `
       <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(activeMetric.label)}趋势图">
         <line class="axis-line" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
-        ${bars}
-        <path class="area" d="${areaPath}"></path>
-        <path class="line" d="${linePath}"></path>
+        ${seriesList.length > 1 ? '' : bars}
+        ${seriesList.length > 1 ? seriesMarkup : `<path class="area" d="${areaPath}"></path><path class="line" d="${linePath}"></path>`}
         ${topLabels}
         ${dateLabels}
         ${cursors}
@@ -5925,6 +6186,38 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
             trend_values = item[3] if len(item) > 3 else []
         live_price = str(metric_key) == "network_current_price"
         value_html = f'<b{" data-live-price" if live_price else ""}>{escape(value)}</b>'
+        secondary_label = str(extra.get("secondary_label") or "")
+        secondary_value = str(extra.get("secondary_value") or "")
+        secondary_note = str(extra.get("secondary_note") or "")
+        secondary_html = ""
+        secondary_items = extra.get("secondary_items")
+        if isinstance(secondary_items, list) and secondary_items:
+            rows = []
+            for secondary_item in secondary_items:
+                if not isinstance(secondary_item, dict):
+                    continue
+                item_label = str(secondary_item.get("label") or "")
+                item_value = str(secondary_item.get("value") or "")
+                item_note = str(secondary_item.get("note") or "")
+                if not item_label and not item_value:
+                    continue
+                note_html = f"<em>{escape(item_note)}</em>" if item_note else ""
+                rows.append(
+                    '<div class="metric-secondary-row">'
+                    f"<span>{escape(item_label)}</span>"
+                    f"<strong>{escape(item_value)}</strong>"
+                    f"{note_html}</div>"
+                )
+            if rows:
+                secondary_html = f'<div class="metric-secondary-list">{"".join(rows)}</div>'
+        elif secondary_label or secondary_value:
+            note_html = f"<em>{escape(secondary_note)}</em>" if secondary_note else ""
+            secondary_html = (
+                '<div class="metric-secondary">'
+                f"<span>{escape(secondary_label)}</span>"
+                f"<strong>{escape(secondary_value)}</strong>"
+                f"{note_html}</div>"
+            )
         if live_price:
             highest = str(extra.get("highest_price") or "待刷新")
             trigger = str(extra.get("oracle_trigger_price") or "待刷新")
@@ -5938,7 +6231,7 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
         cards.append(
             '<article class="m-card m-reveal" role="button" tabindex="0" %s'
             'data-trend-index="%d" data-track="metric_trend" data-label="%s" aria-label="查看%s趋势">'
-            "<span>%s</span>%s<small%s>%s</small>%s</article>"
+            "<span>%s</span>%s%s<small%s>%s</small>%s</article>"
             % (
                 'data-price-card ' if live_price else "",
                 index,
@@ -5946,6 +6239,7 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
                 escape(str(label), quote=True),
                 escape(label),
                 value_html,
+                secondary_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
                 _build_sparkline(_clean_trend_values(trend_values)),
@@ -6032,6 +6326,98 @@ def build_mobile_html(payload: dict) -> str:
     total_burned_tokens = meta.get("network_total_burned_tokens")
     total_circulation_tokens = meta.get("network_total_circulation_tokens")
     daily_total_tokens = meta.get("emission_daily_total_tokens")
+    network_total_power_points = _trend_points(
+        meta,
+        "network_total_power",
+        [
+            meta.get("period_30d_start_total_power"),
+            meta.get("period_7d_start_total_power"),
+            meta.get("statistics_window_start_total_power"),
+            network_total_power,
+        ],
+    )
+    daily_new_power_points = _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))
+    total_wallet_points = _trend_points(meta, "total_wallets", [explorer_total_addresses])
+    daily_active_address_points = _trend_points(meta, "daily_active_addresses", [active_wallet_count])
+    daily_new_address_points = _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))
+    circulation_points = _trend_points(meta, "network_total_circulation", [total_circulation_tokens])
+    total_burned_points = _trend_points(
+        meta,
+        "total_burned",
+        _trend_from_cumulative(
+            total_burned_tokens,
+            meta.get("period_30d_burned_tokens"),
+            meta.get("period_7d_burned_tokens"),
+            meta.get("statistics_window_burned_tokens"),
+        ),
+    )
+    daily_burned_points = _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))
+    daily_emission_points = _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])
+    power_per_coin_points = _trend_points(meta, "power_per_coin", [power_required_value])
+    one_yi_power_output_points = _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])
+    daily_transaction_volume_points = _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume])
+    daily_transaction_count_points = _trend_points(meta, "daily_transaction_count", [daily_transaction_count])
+    merged_power_extra = {
+        "secondary_label": "每日新增算力",
+        "secondary_value": _fmt_signed_power(new_power),
+        "secondary_note": "北京时间 08:00 统计日新增",
+        "trend_label": "算力趋势",
+        "trend_note": "全网总算力与每日新增算力合并查看。",
+        "series": [
+            {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
+            {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
+        ],
+    }
+    merged_address_extra = {
+        "secondary_items": [
+            {"label": "新增地址", "value": _fmt_count_unit(new_address_count), "note": "08:00 统计日新增"},
+            {"label": "活跃地址", "value": _fmt_count_unit(active_wallet_count), "note": "同一统计窗口内活跃"},
+        ],
+        "trend_label": "地址趋势",
+        "trend_note": "总钱包、新增地址、活跃地址合并查看。",
+        "series": [
+            {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
+            {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
+            {"key": "daily_active_addresses", "label": "活跃地址", "points": daily_active_address_points},
+        ],
+    }
+    merged_supply_extra = {
+        "secondary_items": [
+            {"label": "累计销毁", "value": total_burned, "note": "POWER 合约累计燃烧"},
+            {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
+        ],
+        "trend_label": "币量趋势",
+        "trend_note": "流通量、累计销毁、日销毁币量合并查看。",
+        "series": [
+            {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
+            {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
+            {"key": "daily_burned", "label": "日销毁币量", "points": daily_burned_points},
+        ],
+    }
+    merged_output_extra = {
+        "secondary_items": [
+            {"label": "单币日需算力", "value": power_per_coin, "note": "矿工 75% 产量口径"},
+            {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
+        ],
+        "trend_label": "产出趋势",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出合并查看。",
+        "series": [
+            {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
+            {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
+            {"key": "one_yi_power_output", "label": "1亿算力产出", "points": one_yi_power_output_points},
+        ],
+    }
+    merged_transaction_extra = {
+        "secondary_items": [
+            {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
+        ],
+        "trend_label": "交易趋势",
+        "trend_note": "每日交易币量与每日交易笔数合并查看。",
+        "series": [
+            {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
+            {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
+        ],
+    }
 
     mobile_metric_items = [
         (
@@ -6039,18 +6425,10 @@ def build_mobile_html(payload: dict) -> str:
             "全网总算力",
             _fmt_power(network_total_power),
             "公开接口统计",
-            _trend_points(
-                meta,
-                "network_total_power",
-                [
-                    meta.get("period_30d_start_total_power"),
-                    meta.get("period_7d_start_total_power"),
-                    meta.get("statistics_window_start_total_power"),
-                    network_total_power,
-                ],
-            ),
+            network_total_power_points,
+            merged_power_extra,
         ),
-        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", _trend_points(meta, "network_total_circulation", [total_circulation_tokens])),
+        ("network_total_circulation", "全网流通量", circulation, "区块浏览器公开统计", circulation_points, merged_supply_extra),
         (
             "network_current_price",
             "当前价格",
@@ -6059,37 +6437,15 @@ def build_mobile_html(payload: dict) -> str:
             _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
             {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
         ),
-        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", _trend_points(meta, "daily_emission", [daily_total_tokens, daily_total_tokens])),
-        (
-            "total_burned",
-            "累计销毁",
-            total_burned,
-            "POWER 合约累计燃烧",
-            _trend_points(
-                meta,
-                "total_burned",
-                _trend_from_cumulative(
-                    total_burned_tokens,
-                    meta.get("period_30d_burned_tokens"),
-                    meta.get("period_7d_burned_tokens"),
-                    meta.get("statistics_window_burned_tokens"),
-                ),
-            ),
-        ),
-        ("daily_active_addresses", "统计日活跃地址", _fmt_count_unit(active_wallet_count), "同一统计窗口内活跃", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
-        ("daily_new_addresses", "统计日新增地址", _fmt_count_unit(new_address_count), "首次出现在合约日志", _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))),
-        ("daily_new_power", "统计日新增算力", _fmt_power(new_power), "北京时间统计日口径", _trend_points(meta, "daily_new_power", _trend_average_points(new_power, period_7d_new_power, period_30d_new_power))),
-        ("daily_burned", "日销毁币量", daily_burned, "北京时间统计日口径", _trend_points(meta, "daily_burned", _trend_average_points(meta.get("statistics_window_burned_tokens"), meta.get("period_7d_burned_tokens"), meta.get("period_30d_burned_tokens")))),
-        ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", _trend_points(meta, "daily_transaction_volume", [daily_transaction_volume])),
-        ("daily_transaction_count", "每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔"), "08:00统计窗口内交易数量", _trend_points(meta, "daily_transaction_count", [daily_transaction_count])),
+        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", daily_emission_points, merged_output_extra),
+        ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
+        ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", daily_transaction_volume_points, merged_transaction_extra),
         ("period_7d_new_power", "7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_points(meta, "period_7d_new_power", [period_7d_new_power])),
         ("period_7d_new_addresses", "7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
         ("period_7d_burned", "7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
         ("period_30d_new_power", "30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_points(meta, "period_30d_new_power", [period_30d_new_power])),
         ("period_30d_new_addresses", "30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
         ("period_30d_burned", "30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
-        ("power_per_coin", "单币日需算力", power_per_coin, "按矿工 75% 产量估算", _trend_points(meta, "power_per_coin", [power_required_value])),
-        ("one_yi_power_output", "1亿算力产出", one_yi_power_output, "按矿工 75% 日产币口径估算", _trend_points(meta, "one_yi_power_output", [one_yi_power_output_value])),
     ]
     hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[:8])
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
@@ -6244,9 +6600,9 @@ def main() -> int:
     args = parse_args()
     input_path = Path(args.input)
     output_path = Path(args.output)
-    payload = json.loads(input_path.read_text())
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(build_html(payload))
+    output_path.write_text(build_html(payload), encoding="utf-8")
     print(output_path)
     return 0
 
