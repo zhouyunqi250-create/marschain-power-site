@@ -242,10 +242,13 @@ jobs:
               "火星快报",
               "官方浏览器快报",
               "日交易数量",
+              "每日交易币量",
+              "每日交易笔数",
+              "footer-marquee",
               "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
           ]
           missing = [marker for marker in required_markers if marker not in desktop_html]
-          forbidden = [marker for marker in ("MarsChain 今日算力战报", "数据来源：MarsChain Rank / explorer.marschain.net", "日交易笔数") if marker in desktop_html]
+          forbidden = [marker for marker in ("MarsChain 今日算力战报", "数据来源：MarsChain Rank / explorer.marschain.net") if marker in desktop_html]
           if missing or forbidden:
               raise SystemExit(f"frontend shell verification failed: missing={missing}, forbidden={forbidden}")
 
