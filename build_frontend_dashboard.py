@@ -2693,11 +2693,11 @@ SHARE_POSTER_CSS = r"""
   backdrop-filter: blur(18px);
 }
 .poster-panel {
-  width: min(980px, calc(100vw - 32px));
+  width: min(1040px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
   display: grid;
-  grid-template-columns: minmax(0, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
   gap: 18px;
   border: 1px solid rgba(86,239,255,.28);
   border-radius: 24px;
@@ -2710,7 +2710,7 @@ SHARE_POSTER_CSS = r"""
 .poster-preview {
   display: grid;
   place-items: center;
-  min-height: 430px;
+  min-height: 600px;
   border: 1px solid rgba(86,239,255,.18);
   border-radius: 18px;
   background:
@@ -2722,7 +2722,7 @@ SHARE_POSTER_CSS = r"""
 }
 .poster-preview canvas {
   display: block;
-  width: min(100%, 320px);
+  width: min(100%, 360px);
   height: auto;
   border-radius: 10px;
   box-shadow: 0 20px 70px rgba(0,0,0,.42);
@@ -3906,7 +3906,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <a href="#equation">方程系数</a>
         <a href="#risk">数据说明</a>
       </nav>
-      <button class="share-trigger" type="button" data-share-poster data-track="share_poster" data-label="topbar">生成战报</button>
+      <button class="share-trigger" type="button" data-share-poster data-track="share_poster" data-label="topbar">生成快报</button>
       <button class="lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
     </div>
   </header>
@@ -3917,7 +3917,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
         <span class="btn hot">覆盖率 {escape(coverage_label)}</span>
-        <button class="btn" type="button" data-share-poster data-track="share_poster" data-label="hero">生成战报</button>
+        <button class="btn" type="button" data-share-poster data-track="share_poster" data-label="hero">生成快报</button>
         <span class="hero-note">下方优先展示前 100 名算力地址，默认先看前 10。</span>
       </div>
       {warning_html}
@@ -4728,6 +4728,59 @@ SHARE_POSTER_JS = r"""
     const now = new Date();
     return `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
   };
+  const parseBeijingLocalMs = (value) => {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+    if (!match) return NaN;
+    return Date.UTC(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+      Number(match[4] || 0),
+      Number(match[5] || 0),
+      Number(match[6] || 0),
+    );
+  };
+  const todayBeijingEightMs = () => {
+    const beijingNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+    return Date.UTC(beijingNow.getUTCFullYear(), beijingNow.getUTCMonth(), beijingNow.getUTCDate(), 8, 0, 0);
+  };
+  const isPosterDataReady = () => {
+    const meta = rankPayload().meta || {};
+    const beijingNowMs = Date.now() + 8 * 60 * 60 * 1000;
+    const todayEight = todayBeijingEightMs();
+    if (beijingNowMs < todayEight) return true;
+    const endMs = parseBeijingLocalMs(meta.statistics_window_end_local);
+    return Number.isFinite(endMs) && endMs >= todayEight;
+  };
+  const showPosterGateNotice = () => {
+    let notice = document.querySelector('[data-poster-gate-notice]');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.dataset.posterGateNotice = 'true';
+      notice.setAttribute('role', 'status');
+      notice.style.cssText = [
+        'position:fixed',
+        'left:50%',
+        'bottom:28px',
+        'transform:translateX(-50%)',
+        'z-index:120',
+        'max-width:min(420px,calc(100vw - 32px))',
+        'padding:14px 18px',
+        'border-radius:14px',
+        'border:1px solid rgba(255,232,106,.45)',
+        'background:rgba(7,17,36,.94)',
+        'color:#ffe86a',
+        'font:900 14px/1.6 "Microsoft YaHei", sans-serif',
+        'box-shadow:0 18px 42px rgba(0,0,0,.36)',
+        'text-align:center',
+      ].join(';');
+      document.body.appendChild(notice);
+    }
+    notice.textContent = '数据统计中，今日 08:00 数据更新完成后可生成快报。';
+    notice.style.opacity = '1';
+    window.clearTimeout(notice._hideTimer);
+    notice._hideTimer = window.setTimeout(() => { notice.style.opacity = '0'; }, 3200);
+  };
 
   const roundedRect = (ctx, x, y, w, h, r) => {
     const radius = Math.min(r, w / 2, h / 2);
@@ -4791,25 +4844,33 @@ SHARE_POSTER_JS = r"""
     ctx.fillStyle = accent;
     ctx.fillRect(x, y + 18, 5, h - 36);
     ctx.fillStyle = '#c7d5eb';
-    ctx.font = '900 23px "Microsoft YaHei", sans-serif';
+    ctx.font = options.labelFont || '900 21px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(label, x + 22, y + 35);
+    ctx.fillText(label, x + 22, y + (options.labelY || 32));
     ctx.fillStyle = '#f6fbff';
-    const valueY = options.valueY || y + 70;
+    const valueY = options.valueY || y + (h <= 108 ? 62 : h <= 116 ? 66 : 72);
     const valueWidth = options.valueWidth || w - 44;
     const align = options.align || 'right';
     const valueX = align === 'right' ? x + w - 22 : x + 22;
-    fitText(ctx, value, valueX, valueY, valueWidth, options.font || '950 32px "Microsoft YaHei", sans-serif', options.minSize || 18, align);
+    fitText(ctx, value, valueX, valueY, valueWidth, options.font || '950 29px "Microsoft YaHei", sans-serif', options.minSize || 18, align);
     if (subline) {
       ctx.fillStyle = accent;
-      fitText(ctx, subline, x + 22, y + h - 22, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
+      fitText(ctx, subline, x + 22, y + h - 15, w - 44, options.subFont || '900 14px "Microsoft YaHei", sans-serif', 10);
     }
   };
   const drawPriceSnapshotCard = (ctx, x, y, w, h, data) => {
-    drawSnapshotCard(ctx, x, y, w, h, '当前价格', data.price, '', '#ffe86a', { valueY: y + 58, valueWidth: 230, font: '950 31px "Microsoft YaHei", sans-serif' });
+    fillRound(ctx, x, y, w, h, 18, 'rgba(8,20,42,.88)', 'rgba(86,239,255,.30)');
     ctx.fillStyle = '#ffe86a';
-    fitText(ctx, `最高价格 ${data.highestPrice}`, x + 22, y + h - 47, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
-    fitText(ctx, `触发预言机 ${data.oraclePrice}`, x + 22, y + h - 23, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
+    ctx.fillRect(x, y + 18, 5, h - 36);
+    ctx.fillStyle = '#c7d5eb';
+    ctx.font = '900 22px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('当前价格', x + 22, y + 32);
+    ctx.fillStyle = '#f6fbff';
+    fitText(ctx, data.price, x + w - 22, y + 64, 220, '950 30px "Microsoft YaHei", sans-serif', 18, 'right');
+    ctx.fillStyle = '#ffe86a';
+    fitText(ctx, `最高价格 ${data.highestPrice}`, x + 22, y + 88, w - 44, '900 15px "Microsoft YaHei", sans-serif', 11);
+    fitText(ctx, `触发预言机 ${data.oraclePrice}`, x + 22, y + 108, w - 44, '900 15px "Microsoft YaHei", sans-serif', 11);
   };
   const drawPeriodStat = (ctx, x, y, w, h, label, value, accent) => {
     const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
@@ -5034,11 +5095,11 @@ SHARE_POSTER_JS = r"""
     ctx.fillText('扫码看实时榜', 852, 536);
     ctx.textAlign = 'left';
 
-    drawSnapshotCard(ctx, 54, 592, 450, 124, '产1币所需算力', data.powerPerCoin, '官网数据 · 矿工75%日产币口径', '#56efff', { align: 'left', valueY: 680, valueWidth: 270, font: '950 34px "Microsoft YaHei", sans-serif', minSize: 22 });
-    drawSnapshotCard(ctx, 520, 592, 450, 124, '1亿算力产出', data.oneYiOutput, '官网数据 · 按08:00产出口径', '#ffe86a', { align: 'left', valueY: 680, valueWidth: 300, font: '950 34px "Microsoft YaHei", sans-serif', minSize: 22 });
+    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, '官网数据 · 矿工75%日产币口径', '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, '官网数据 · 按08:00产出口径', '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
 
-    drawSnapshotCard(ctx, 54, 742, 450, 104, '日活跃地址', data.dailyActiveAddresses, '08:00统计窗口', '#75f3a9', { valueY: 806, valueWidth: 250, font: '950 30px "Microsoft YaHei", sans-serif' });
-    drawSnapshotCard(ctx, 520, 742, 450, 104, '日交易数量', data.dailyTransactions, '08:00统计窗口 · 非每日产量', '#7e8cff', { valueY: 806, valueWidth: 250, font: '950 30px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, '08:00统计窗口', '#75f3a9', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易数量', data.dailyTransactions, '08:00统计窗口 · 非每日产量', '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
 
     const cards = [
       ['最新区块', data.latestBlock, data.latestBlockDelta, '#63ee91'],
@@ -5052,11 +5113,11 @@ SHARE_POSTER_JS = r"""
       const row = Math.floor(index / 2);
       const col = index % 2;
       const x = 54 + col * 466;
-      const y = 876 + row * 132;
+      const y = 878 + row * 124;
       if (card[4] === 'price') {
-        drawPriceSnapshotCard(ctx, x, y, 450, 112, data);
+        drawPriceSnapshotCard(ctx, x, y, 450, 116, data);
       } else {
-        drawSnapshotCard(ctx, x, y, 450, 112, card[0], card[1], card[2], card[3], { valueY: y + 70, valueWidth: 250, font: '950 31px "Microsoft YaHei", sans-serif' });
+        drawSnapshotCard(ctx, x, y, 450, 116, card[0], card[1], card[2], card[3], { valueY: y + 66, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
       }
     });
 
@@ -5108,7 +5169,7 @@ SHARE_POSTER_JS = r"""
       if (!blob) throw new Error('图片生成失败');
       const file = new File([blob], 'marschain-rank-report.png', { type: 'image/png' });
       if (navigator.canShare && navigator.canShare({ files: [file] }) && navigator.share) {
-        await navigator.share({ files: [file], title: 'MarsChain 算力战报', text: 'MarsChain 算力排行榜战报' });
+        await navigator.share({ files: [file], title: 'MarsChain 火星快报', text: 'MarsChain Rank 火星快报' });
         setStatus('已打开系统分享面板。', 'ok');
       } else {
         downloadPoster();
@@ -5126,13 +5187,13 @@ SHARE_POSTER_JS = r"""
     modal.hidden = true;
     modal.innerHTML = `
       <section class="poster-panel" role="dialog" aria-modal="true" aria-labelledby="posterTitle">
-        <div class="poster-preview"><canvas data-poster-canvas aria-label="MarsChain 战报预览"></canvas></div>
+        <div class="poster-preview"><canvas data-poster-canvas aria-label="MarsChain 快报预览"></canvas></div>
         <div class="poster-copy">
           <div class="poster-head">
-            <div><span>SHARE POSTER</span><h3 id="posterTitle">生成战报图片</h3></div>
+            <div><span>SHARE POSTER</span><h3 id="posterTitle">生成快报图片</h3></div>
             <button class="poster-close" type="button" data-poster-close aria-label="关闭">×</button>
           </div>
-          <p>图片会读取当前页面数据，在本地生成 1024×1536 战报图，适合朋友圈、社群和私聊转发。</p>
+          <p>图片会读取当前页面数据，在本地生成 1024×1536 快报图，适合朋友圈、社群和私聊转发。</p>
           <ul class="poster-meta">
             <li><span>二维码</span><b>官网榜单</b></li>
             <li><span>价格</span><b>读取实时小文件</b></li>
@@ -5157,6 +5218,12 @@ SHARE_POSTER_JS = r"""
       if (event.target.closest('[data-poster-download]')) downloadPoster();
       if (event.target.closest('[data-poster-share]')) sharePoster();
       if (event.target.closest('[data-poster-refresh]')) {
+        if (!isPosterDataReady()) {
+          modal.hidden = true;
+          document.body.style.overflow = '';
+          showPosterGateNotice();
+          return;
+        }
         renderPoster();
         setStatus('已按当前页面数据重新生成。', 'ok');
       }
@@ -5170,11 +5237,15 @@ SHARE_POSTER_JS = r"""
     return modal;
   };
   const openPoster = () => {
+    if (!isPosterDataReady()) {
+      showPosterGateNotice();
+      return;
+    }
     ensureModal();
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     renderPoster();
-    setStatus('战报已生成。', 'ok');
+    setStatus('快报已生成。', 'ok');
   };
   buttons.forEach((button) => button.addEventListener('click', openPoster));
 })();
@@ -6057,7 +6128,7 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-brand-main"><span class="m-mark"></span><span>MarsChain Rank</span></div>
       <div class="m-brand-actions">
         <a class="m-desktop-link" href="/?desktop=1" data-track="desktop_link" data-label="desktop">电脑版</a>
-        <button class="m-share-button" type="button" data-share-poster data-track="share_poster" data-label="mobile">战报</button>
+        <button class="m-share-button" type="button" data-share-poster data-track="share_poster" data-label="mobile">快报</button>
         <button class="m-lang-toggle" type="button" data-lang-toggle aria-label="Switch language">EN</button>
       </div>
     </div>
