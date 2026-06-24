@@ -189,6 +189,72 @@ jobs:
           (output_history_dir / ".site-only").write_text("site-only build\n")
           PY
 
+      - name: Rebuild and verify frontend shell
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          from pathlib import Path
+
+          from build_frontend_dashboard import build_html, build_mobile_html
+          from price_data import build_price_payload_from_meta, load_price_file
+          from refresh_site import build_metric_trends, normalize_metric_history
+
+          site_dir = Path("site")
+          data_dir = site_dir / "data"
+          mobile_dir = site_dir / "m"
+          output_latest_dir = Path("output/latest")
+          output_history_dir = Path("output/history")
+          payload_path = data_dir / "latest.json"
+          if not payload_path.exists():
+              payload_path = output_latest_dir / "latest.json"
+          payload = json.loads(payload_path.read_text(encoding="utf-8"))
+
+          metric_history = []
+          metric_history_path = data_dir / "metric-history.json"
+          if metric_history_path.exists():
+              try:
+                  metric_history = normalize_metric_history(json.loads(metric_history_path.read_text(encoding="utf-8")))
+              except Exception:
+                  metric_history = []
+          payload.setdefault("meta", {})["metric_trends"] = build_metric_trends(payload.get("meta", {}), metric_history)
+
+          price_payload = load_price_file(data_dir / "price.json")
+          if not price_payload:
+              price_payload = build_price_payload_from_meta(payload.get("meta", {}))
+
+          site_dir.mkdir(parents=True, exist_ok=True)
+          data_dir.mkdir(parents=True, exist_ok=True)
+          mobile_dir.mkdir(parents=True, exist_ok=True)
+          output_latest_dir.mkdir(parents=True, exist_ok=True)
+          output_history_dir.mkdir(parents=True, exist_ok=True)
+          downloads_dir = site_dir / "downloads"
+          if downloads_dir.exists():
+              shutil.rmtree(downloads_dir)
+
+          desktop_html = build_html(payload)
+          mobile_html = build_mobile_html(payload)
+          required_markers = [
+              "data-share-poster",
+              "data-live-highest-price",
+              "data-live-oracle-trigger-price",
+              "SHARE POSTER",
+              "['销毁总量'",
+          ]
+          missing = [marker for marker in required_markers if marker not in desktop_html]
+          forbidden = [marker for marker in ("['全网总销毁'", "['最高价格'", "['预言机触发价'") if marker in desktop_html]
+          if missing or forbidden:
+              raise SystemExit(f"frontend shell verification failed: missing={missing}, forbidden={forbidden}")
+
+          (site_dir / "index.html").write_text(desktop_html, encoding="utf-8")
+          (mobile_dir / "index.html").write_text(mobile_html, encoding="utf-8")
+          (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          (data_dir / "metric-history.json").write_text(json.dumps({"snapshots": metric_history}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          (data_dir / "price.json").write_text(json.dumps(price_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
+          (output_latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Upload build artifacts
         continue-on-error: true
         uses: actions/upload-artifact@v4
