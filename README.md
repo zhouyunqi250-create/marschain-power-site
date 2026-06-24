@@ -4,7 +4,7 @@
 
 当前方案：
 
-- 使用 GitHub Actions 每 24 小时自动抓取一次数据，抓取时间为每日 00:00（北京时间，夜里 24:00）
+- 使用 GitHub Actions 每 24 小时自动抓取一次数据，抓取时间为每日 08:00（北京时间）
 - 基于公开 RPC 扫描 POWER 合约日志，扫描窗口设为 1000 万块以覆盖当前全链，尽量提高覆盖率
 - 算力缓存默认 3 小时过期，短于 24 小时定时周期，避免定时刷新继续使用旧算力
 - 首页明确展示全链地址、算力候选钱包、正算力钱包、链上今日新增钱包和链上今日新增总算力
@@ -24,7 +24,7 @@
 - [paid_download_service.py](paid_download_service.py)：核销 1000 MARS 转账并返回 1 小时有效的私有下载链接
 - [scripts/deploy_paid_download_backend.py](scripts/deploy_paid_download_backend.py)：创建私有下载桶并部署付费核销函数
 - [ALIYUN_DEPLOY.md](ALIYUN_DEPLOY.md)：阿里云上线步骤和 GitHub Secrets 配置说明
-- [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：每日 00:00（北京时间，夜里 24:00）自动更新的 GitHub Actions 工作流
+- [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：每日 08:00（北京时间）自动更新的 GitHub Actions 工作流
 - [deploy-paid-download.yml](.github/workflows/deploy-paid-download.yml)：付费下载后端部署工作流
 
 ## 本地运行

@@ -1,4 +1,4 @@
-# Runs at Beijing 00:00 (UTC 16:00).
+# Runs at Beijing 08:00 (UTC 00:00).
 name: Update MarsChain Site
 
 on:
@@ -26,7 +26,7 @@ on:
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
-    - cron: "0 16 * * *"
+    - cron: "0 0 * * *"
 
 permissions:
   contents: read
@@ -239,10 +239,13 @@ jobs:
               "data-live-highest-price",
               "data-live-oracle-trigger-price",
               "SHARE POSTER",
-              "['销毁总量'",
+              "火星快报",
+              "官方浏览器快报",
+              "日交易数量",
+              "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
           ]
           missing = [marker for marker in required_markers if marker not in desktop_html]
-          forbidden = [marker for marker in ("['全网总销毁'", "['最高价格'", "['预言机触发价'") if marker in desktop_html]
+          forbidden = [marker for marker in ("MarsChain 今日算力战报", "数据来源：MarsChain Rank / explorer.marschain.net", "日交易笔数") if marker in desktop_html]
           if missing or forbidden:
               raise SystemExit(f"frontend shell verification failed: missing={missing}, forbidden={forbidden}")
 

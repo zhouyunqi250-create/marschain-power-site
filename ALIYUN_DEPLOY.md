@@ -4,7 +4,7 @@
 
 如果 CDN 和域名还没接好，也可以先走“只发 OSS”的过渡形态：
 
-- GitHub Actions 继续每 24 小时构建和上传，抓取时间为每日 00:00（北京时间，夜里 24:00）
+- GitHub Actions 继续每 24 小时构建和上传，抓取时间为每日 08:00（北京时间）
 - `ALIYUN_SITE_BASE_URL` 先留空
 - 工作流会跳过 CDN 刷新
 - 等 CDN 和域名准备好后，再补上 `ALIYUN_SITE_BASE_URL`
@@ -76,7 +76,7 @@
 
 - `.github/workflows/update-marschain-site.yml`
 
-它会每 24 小时执行一次，抓取时间为每日 00:00（北京时间，夜里 24:00）：
+它会每 24 小时执行一次，抓取时间为每日 08:00（北京时间）：
 
 1. 跑 `refresh_site.py`
 2. 按分层扫描规则冲到 `80%` 覆盖率

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import time
 from html import escape
 from pathlib import Path
@@ -19,18 +20,16 @@ MARS_PAYMENT_ADDRESS_VERIFY = "0x0fD038365577215292B44F89C92695C7AC8C3363"
 MARS_PAID_DOWNLOAD_PRICE = "1000"
 MARS_PAID_DOWNLOAD_EXPIRES_SECONDS = 3600
 
-_OLD_STATISTICS_TIME = f"{8:02d}:00"
-_OLD_STATISTICS_TIME_SECONDS = f"{8:02d}:00:00"
-_NEW_STATISTICS_TIME = "00:00"
-_NEW_STATISTICS_TIME_SECONDS = "00:00:00"
+_OLD_STATISTICS_TIME = "00:00"
+_OLD_STATISTICS_TIME_SECONDS = "00:00:00"
+_NEW_STATISTICS_TIME = "08:00"
+_NEW_STATISTICS_TIME_SECONDS = "08:00:00"
 
 
 def _normalize_statistics_time_value(value):
     if isinstance(value, str):
-        return value.replace(_OLD_STATISTICS_TIME_SECONDS, _NEW_STATISTICS_TIME_SECONDS).replace(
-            _OLD_STATISTICS_TIME,
-            _NEW_STATISTICS_TIME,
-        )
+        normalized = re.sub(r"(?<![\d:+-])00:00:00(?![\d:])", _NEW_STATISTICS_TIME_SECONDS, value)
+        return re.sub(r"(?<![\d:+-])00:00(?![\d:])", _NEW_STATISTICS_TIME, normalized)
     return value
 
 
@@ -44,7 +43,7 @@ def _normalize_statistics_payload(payload: dict) -> dict:
     normalized_meta = dict(meta)
     for key, value in meta.items():
         if key == "statistics_day_start_hour":
-            normalized_meta[key] = 0
+            normalized_meta[key] = 8
             continue
         is_statistics_key = (
             key.startswith("statistics_")
@@ -138,7 +137,7 @@ def build_html(payload: dict) -> str:
     rpc_blocks_scanned = int(meta.get("rpc_blocks_scanned", 0) or 0)
     rpc_log_blocks_scanned = int(meta.get("rpc_log_blocks_scanned", 0) or 0)
     rpc_logs_seen = int(meta.get("rpc_logs_seen", 0) or 0)
-    statistics_window_label = meta.get("statistics_window_label") or "北京时间 00:00:00 至次日 00:00:00"
+    statistics_window_label = meta.get("statistics_window_label") or "北京时间 08:00:00 至次日 08:00:00"
     subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     embedded = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
     generated_at = meta.get("generated_at_local") or format_generated_at(int(meta["generated_at"]))
@@ -147,7 +146,7 @@ def build_html(payload: dict) -> str:
         f"最近刷新：{generated_at}",
         f"统计周期：{statistics_window_label}",
         "采集频率：每 24 小时一次",
-        "抓取时间：每日 00:00（北京时间，夜里 24:00）",
+        "抓取时间：每日 08:00（北京时间）",
     ]
     if int(meta.get("tx_pages", 0) or 0) > 0:
         hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
@@ -1249,17 +1248,17 @@ def build_html(payload: dict) -> str:
         {{
           label: `统计日新增地址数量${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: meta.statistics_window_new_candidate_address_count === null || meta.statistics_window_new_candidate_address_count === undefined ? '—' : `${{formatCount(meta.statistics_window_new_candidate_address_count)}} 个`,
-          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：首次出现在 POWER 合约日志中的候选地址数量。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：首次出现在 POWER 合约日志中的候选地址数量。`
         }},
         {{
           label: `统计日活跃地址数量${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: meta.statistics_window_active_wallet_address_count === null || meta.statistics_window_active_wallet_address_count === undefined ? '—' : `${{formatCount(meta.statistics_window_active_wallet_address_count)}} 个`,
-          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：该窗口内在 POWER 合约日志中出现过的钱包地址数量。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：该窗口内在 POWER 合约日志中出现过的钱包地址数量。`
         }},
         {{
           label: `统计日新增总算力${{meta.statistics_day_label ? ' · ' + meta.statistics_day_label : ''}}`,
           value: formatMaybeUnits(meta.today_new_power),
-          help: `按北京时间统计日（${{meta.statistics_window_label || '00:00 至次日 00:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
+          help: `按北京时间统计日（${{meta.statistics_window_label || '08:00 至次日 08:00'}}）统计：当前全网总算力减去上一统计日合约历史总算力。`
         }},
         {{
           label: '前 100 名总算力',
@@ -1438,7 +1437,7 @@ def build_html(payload: dict) -> str:
 
       document.getElementById('footerText').textContent =
         `当前显示 ${{list.length}} / ${{rows.length}} 行。最近更新时间：${{formatGeneratedAt(meta.generated_at)}}。` +
-        `统计周期：${{meta.statistics_window_label || '北京时间 00:00 至次日 00:00'}}。` +
+        `统计周期：${{meta.statistics_window_label || '北京时间 08:00 至次日 08:00'}}。` +
         `本轮覆盖率 ${{formatCoverage(meta.discovered_power_coverage)}}，目标阈值 ${{formatCoverage(coverageTarget)}}，` +
         `${{targetMet ? '已达标' : '未达标'}}。说明：候选钱包 ${{formatCount(meta.candidate_count)}} 个，正算力钱包 ${{formatCount(meta.positive_power_count)}} 个；` +
         `这是一份基于公开 explorer API、官方 RPC 和合约日志生成的 best effort 榜单，不是官方后端直接导出的全量榜。`;
@@ -3641,7 +3640,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
-    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 00:00 至次日 00:00")
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
     coverage = _as_float(meta.get("discovered_power_coverage"))
     coverage_label = _fmt_percent(coverage)
     coverage_target = _as_float(meta.get("coverage_target"), 0.8)
@@ -3732,12 +3731,12 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             ),
         ),
         ("total_wallets", "总钱包数量", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", _trend_points(meta, "total_wallets", [explorer_total_addresses])),
-        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 00:00 至次日 00:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
+        ("daily_active_addresses", "统计日活跃地址数量", _fmt_count_unit(active_wallet_count), "北京时间 08:00 至次日 08:00", _trend_points(meta, "daily_active_addresses", [active_wallet_count])),
         (
             "daily_new_addresses",
             "统计日新增地址数量",
             _fmt_count_unit(new_address_count),
-            "北京时间 00:00 至次日 00:00",
+            "北京时间 08:00 至次日 08:00",
             _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count)),
         ),
         (
@@ -3788,7 +3787,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("最近刷新", generated_at),
         ("统计周期", statistics_window_label),
         ("采集频率", "每 24 小时一次"),
-        ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
+        ("抓取时间", "每日 08:00（北京时间）"),
         ("全网流通量", circulation),
         ("当前价格", current_price),
         ("最高价格", highest_price),
@@ -3913,7 +3912,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   </header>
   <section class="hero">
     <div class="hero-copy reveal visible">
-      <span class="chip">数据已加载 · 北京时间 00:00 每日采集</span>
+      <span class="chip">数据已加载 · 北京时间 08:00 每日采集</span>
       <h1>MarsChain<br>算力指挥舱</h1>
       <p class="lead">基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。</p>
       <div class="hero-actions">
@@ -4638,11 +4637,37 @@ SHARE_POSTER_JS = r"""
     const text = live ? live.textContent.trim() : '';
     return text || String(meta.network_current_price_display || meta.network_current_price || '待刷新');
   };
+  const formatHighestPrice = (meta) => {
+    const live = document.querySelector('[data-live-highest-price]');
+    const text = live ? live.textContent.trim() : '';
+    return text || String(meta.network_highest_price_display || meta.network_highest_price || '待刷新');
+  };
+  const formatOraclePrice = (meta) => {
+    const live = document.querySelector('[data-live-oracle-trigger-price]');
+    const text = live ? live.textContent.trim() : '';
+    if (text) return text;
+    const highest = asNumber(meta.network_highest_price);
+    if (Number.isFinite(highest)) {
+      const value = highest * 0.5;
+      return value < 1 ? trimZeros(value.toFixed(6)) : trimZeros(value.toFixed(3));
+    }
+    return '待刷新';
+  };
   const formatPercent = (value) => {
     let number = asNumber(value);
     if (!Number.isFinite(number)) return '待刷新';
     if (Math.abs(number) <= 1) number *= 100;
     return `${number.toFixed(2)}%`;
+  };
+  const formatPlainCount = (value) => {
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    return number.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
+  };
+  const formatDailyOutput = (value) => {
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) return '待刷新';
+    return `${compactNumber(number)}枚/日`;
   };
   const metricSeries = (key) => {
     const item = trendPayload().find((entry) => entry && entry.key === key);
@@ -4666,6 +4691,20 @@ SHARE_POSTER_JS = r"""
     if (Math.abs(delta) <= Math.max(Math.abs(currentNumber), 1) * 1e-12) return '较上一期 持平';
     const label = delta >= 0 ? '新增' : '减少';
     return `${label} ${formatter(Math.abs(delta))}`;
+  };
+  const dailyDeltaText = (value, formatter = compactNumber) => {
+    const number = asNumber(value);
+    if (!Number.isFinite(number)) return '日新增 待刷新';
+    if (Math.abs(number) < 1e-12) return '日新增 持平';
+    return number > 0 ? `日新增 +${formatter(number)}` : `日减少 -${formatter(Math.abs(number))}`;
+  };
+  const sublineFromMetricDelta = (key, current, formatter = compactNumber) => {
+    const text = metricDelta(key, current, formatter);
+    if (!text || text === '等待下一期') return '日新增 等待下一期';
+    if (text.includes('持平')) return '日新增 持平';
+    if (text.startsWith('新增 ')) return `日新增 +${text.slice(3)}`;
+    if (text.startsWith('减少 ')) return `日减少 -${text.slice(3)}`;
+    return text;
   };
   const daysOnline = (meta) => {
     const generated = asNumber(meta.generated_at) || Math.floor(Date.now() / 1000);
@@ -4747,20 +4786,30 @@ SHARE_POSTER_JS = r"""
     ctx.fillStyle = '#f6fbff';
     fitText(ctx, value, x + 20, y + 78, w - 40, '950 34px "Microsoft YaHei", sans-serif', 20);
   };
-  const drawCompactStat = (ctx, x, y, w, h, label, sub, value, delta, accent = '#56efff') => {
-    fillRound(ctx, x, y, w, h, 18, 'rgba(13,28,55,.88)', 'rgba(122,225,255,.14)');
-    ctx.fillStyle = '#aebdd7';
-    ctx.font = '850 22px "Microsoft YaHei", sans-serif';
+  const drawSnapshotCard = (ctx, x, y, w, h, label, value, subline, accent = '#56efff', options = {}) => {
+    fillRound(ctx, x, y, w, h, 18, 'rgba(8,20,42,.88)', 'rgba(86,239,255,.30)');
+    ctx.fillStyle = accent;
+    ctx.fillRect(x, y + 18, 5, h - 36);
+    ctx.fillStyle = '#c7d5eb';
+    ctx.font = '900 23px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(label, x + 20, y + 32);
-    ctx.fillStyle = '#61728e';
-    ctx.font = '800 15px "Microsoft YaHei", sans-serif';
-    fitText(ctx, sub || '公开统计', x + 20, y + 57, w * 0.46, '800 15px "Microsoft YaHei", sans-serif', 12);
-    ctx.fillStyle = '#f6f8ff';
-    fitText(ctx, value, x + w - 18, y + 36, w * 0.48, '950 32px "Microsoft YaHei", sans-serif', 18, 'right');
-    const deltaText = delta || '等待下一期';
-    ctx.fillStyle = deltaText.startsWith('减少') ? '#ff687c' : (deltaText.includes('持平') ? '#7788a5' : accent);
-    fitText(ctx, deltaText, x + w - 18, y + 69, w * 0.5, '900 16px "Microsoft YaHei", sans-serif', 12, 'right');
+    ctx.fillText(label, x + 22, y + 35);
+    ctx.fillStyle = '#f6fbff';
+    const valueY = options.valueY || y + 70;
+    const valueWidth = options.valueWidth || w - 44;
+    const align = options.align || 'right';
+    const valueX = align === 'right' ? x + w - 22 : x + 22;
+    fitText(ctx, value, valueX, valueY, valueWidth, options.font || '950 32px "Microsoft YaHei", sans-serif', options.minSize || 18, align);
+    if (subline) {
+      ctx.fillStyle = accent;
+      fitText(ctx, subline, x + 22, y + h - 22, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
+    }
+  };
+  const drawPriceSnapshotCard = (ctx, x, y, w, h, data) => {
+    drawSnapshotCard(ctx, x, y, w, h, '当前价格', data.price, '', '#ffe86a', { valueY: y + 58, valueWidth: 230, font: '950 31px "Microsoft YaHei", sans-serif' });
+    ctx.fillStyle = '#ffe86a';
+    fitText(ctx, `最高价格 ${data.highestPrice}`, x + 22, y + h - 47, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
+    fitText(ctx, `触发预言机 ${data.oraclePrice}`, x + 22, y + h - 23, w - 44, '900 16px "Microsoft YaHei", sans-serif', 12);
   };
   const drawPeriodStat = (ctx, x, y, w, h, label, value, accent) => {
     const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
@@ -4849,39 +4898,42 @@ SHARE_POSTER_JS = r"""
     const meta = payload.meta || {};
     const totalPower = meta.network_total_power;
     const latestBlock = asNumber(meta.latest_block) || asNumber(meta.rpc_latest_block) || asNumber(meta.rpc_log_latest_block) || asNumber(meta.rpc_log_start_block) || asNumber(meta.rpc_log_end_block) || 0;
-    const cards = [
-      ['区块高度', '最新扫描区块', `${latestBlock.toLocaleString('zh-CN')}`, metricDelta('latest_block', latestBlock, compactNumber), '#63ee91'],
-      ['当前价格', '区块浏览器公开报价', formatPrice(meta), metricDelta('network_current_price', meta.network_current_price, compactNumber), '#ffe86a'],
-      ['总地址数', '公开地址规模', formatCount(meta.explorer_total_addresses), metricDelta('total_wallets', meta.explorer_total_addresses, formatCount), '#56efff'],
-      ['正算力地址', '进入排行榜统计', formatCount(meta.positive_power_count), metricDelta('positive_power_addresses', meta.positive_power_count, formatCount), '#7e8cff'],
-      ['流通总量', '公开流通口径', String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)), metricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)), '#9df4c3'],
-      ['销毁总量', 'POWER 合约累计', String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)), metricDelta('total_burned', meta.network_total_burned_tokens, (value) => formatToken(value)), '#ff9fb7'],
-      ['统计日活跃地址', '00:00 至次日 00:00', formatCount(meta.statistics_window_active_wallet_address_count), metricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatCount), '#56efff'],
-      ['统计日新增算力', '同一统计日口径', compactNumber(meta.statistics_window_new_power), metricDelta('daily_new_power', meta.statistics_window_new_power, compactNumber), '#7e8cff'],
-      ['1亿算力日产出', '矿工 75% 产量估算', String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '待刷新'), metricDelta('one_yi_power_output', null, (value) => `${compactNumber(value)}枚/日`), '#ffd37e'],
-      ['产1币需算力', '每日产币模型估算', String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)), metricDelta('power_per_coin', meta.power_required_per_mars_daily, compactNumber), '#9df4c3'],
-    ];
+    const start = String(meta.statistics_window_start_local || '').slice(0, 16);
+    const end = String(meta.statistics_window_end_local || '').slice(0, 16);
+    const rows = Array.isArray(payload.rows) ? payload.rows : [];
+    const top100Power = rows.slice(0, 100).reduce((sum, row) => sum + (asNumber(row && row.power) || 0), 0);
+    const networkPower = asNumber(totalPower);
+    const top100Share = networkPower > 0 ? formatPercent(top100Power / networkPower) : '待刷新';
+    const oneYiNodeText = String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '').trim();
+    const powerPerCoin = asNumber(meta.power_required_per_mars_daily);
+    const oneYiOutput = oneYiNodeText || (powerPerCoin > 0 ? formatDailyOutput(100_000_000 / powerPerCoin) : '待刷新');
     return {
       meta,
       generatedAt: generatedLabel(meta),
       reportDate: reportDateLabel(meta),
+      windowText: start && end ? `${start} - ${end}` : '08:00 至次日 08:00',
       daysOnline: daysOnline(meta),
       countdown: christmasCountdown(),
       coverage: formatPercent(meta.discovered_power_coverage),
       totalPower: compactNumber(totalPower),
-      totalPowerDelta: metricDelta('network_total_power', totalPower, compactNumber),
+      totalPowerDelta: dailyDeltaText(meta.statistics_window_new_power, compactNumber),
       totalPowerTrend: metricSeries('network_total_power'),
-      cards,
-      period7: [
-        ['7天新增地址', formatCount(meta.period_7d_new_candidate_address_count)],
-        ['7天新增算力', compactNumber(meta.period_7d_new_power)],
-        ['7天销毁', String(meta.period_7d_burned_display || formatToken(meta.period_7d_burned_tokens))],
-      ],
-      period30: [
-        ['30天新增地址', formatCount(meta.period_30d_new_candidate_address_count)],
-        ['30天新增算力', compactNumber(meta.period_30d_new_power)],
-        ['30天销毁', String(meta.period_30d_burned_display || formatToken(meta.period_30d_burned_tokens))],
-      ],
+      powerPerCoin: String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)),
+      oneYiOutput,
+      dailyActiveAddresses: formatPlainCount(meta.statistics_window_active_wallet_address_count),
+      dailyTransactions: formatPlainCount(meta.statistics_window_active_transactions_seen),
+      latestBlock: latestBlock ? latestBlock.toLocaleString('zh-CN') : '待刷新',
+      latestBlockDelta: sublineFromMetricDelta('latest_block', latestBlock, compactNumber),
+      price: formatPrice(meta),
+      highestPrice: formatHighestPrice(meta),
+      oraclePrice: formatOraclePrice(meta),
+      circulation: String(meta.network_total_circulation_display || formatToken(meta.network_total_circulation_tokens)),
+      circulationDelta: sublineFromMetricDelta('network_total_circulation', meta.network_total_circulation_tokens, (value) => formatToken(value)),
+      burned: String(meta.network_total_burned_display || formatToken(meta.network_total_burned_tokens)),
+      burnedDelta: dailyDeltaText(meta.statistics_window_burned_tokens, (value) => formatToken(value)),
+      addresses: formatCount(meta.explorer_total_addresses),
+      addressDelta: dailyDeltaText(meta.statistics_window_new_candidate_address_count, formatCount),
+      top100Share,
     };
   };
 
@@ -4893,133 +4945,131 @@ SHARE_POSTER_JS = r"""
     ctx.clearRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
     const bg = ctx.createLinearGradient(0, 0, 0, POSTER_HEIGHT);
-    bg.addColorStop(0, '#061022');
-    bg.addColorStop(.54, '#071225');
-    bg.addColorStop(1, '#030714');
+    bg.addColorStop(0, '#071124');
+    bg.addColorStop(.58, '#071124');
+    bg.addColorStop(1, '#030918');
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
 
-    ctx.strokeStyle = 'rgba(92,218,255,.055)';
-    ctx.lineWidth = 1;
-    for (let x = -120; x < POSTER_WIDTH + 160; x += 54) {
-      ctx.beginPath();
-      ctx.moveTo(x + 160, 0);
-      ctx.lineTo(x - 120, POSTER_HEIGHT);
-      ctx.stroke();
-    }
-    for (let y = 40; y < POSTER_HEIGHT; y += 54) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(POSTER_WIDTH, y);
-      ctx.stroke();
-    }
-    const glow = ctx.createRadialGradient(690, 350, 12, 690, 350, 260);
-    glow.addColorStop(0, 'rgba(82,242,255,.18)');
-    glow.addColorStop(1, 'rgba(82,242,255,0)');
+    const glow = ctx.createRadialGradient(620, 80, 20, 620, 80, 560);
+    glow.addColorStop(0, 'rgba(86,239,255,.18)');
+    glow.addColorStop(1, 'rgba(86,239,255,0)');
     ctx.fillStyle = glow;
     ctx.fillRect(0, 0, POSTER_WIDTH, POSTER_HEIGHT);
+    const lowerGlow = ctx.createRadialGradient(160, 1220, 20, 160, 1220, 430);
+    lowerGlow.addColorStop(0, 'rgba(255,232,106,.12)');
+    lowerGlow.addColorStop(1, 'rgba(255,232,106,0)');
+    ctx.fillStyle = lowerGlow;
+    ctx.fillRect(0, 880, POSTER_WIDTH, 656);
 
-    ctx.fillStyle = 'rgba(255,255,255,.035)';
-    ctx.font = '950 90px "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('M', POSTER_WIDTH / 2, 98);
-
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#a7b8d8';
-    ctx.font = '850 25px "Microsoft YaHei", sans-serif';
-    ctx.fillText(data.daysOnline, 54, 71);
-
-    const chips = [[data.countdown, '#ffe86a'], [`覆盖率 ${data.coverage}`, '#71f4ff']];
-    let chipX = 506;
-    chips.forEach(([label, color], index) => {
-      ctx.font = '900 23px "Microsoft YaHei", sans-serif';
-      const width = ctx.measureText(label).width + 38;
-      fillRound(ctx, chipX, 38, width, 50, 25, index === 0 ? 'rgba(255,232,106,.10)' : 'rgba(11,31,57,.72)', index === 0 ? 'rgba(255,232,106,.34)' : 'rgba(92,242,255,.35)');
-      ctx.fillStyle = color;
-      ctx.fillText(label, chipX + 19, 71);
-      chipX += width + 12;
+    ctx.strokeStyle = 'rgba(255,255,255,.055)';
+    ctx.lineWidth = 92;
+    [90, 1220].forEach((cy, index) => {
+      ctx.beginPath();
+      ctx.arc(index ? 170 : 620, cy, index ? 260 : 370, 0, Math.PI * 2);
+      ctx.stroke();
     });
 
-    ctx.fillStyle = '#ffe86a';
-    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('MarsChain 今日算力战报', POSTER_WIDTH / 2, 132);
-    ctx.fillStyle = '#f5fbff';
-    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
-    ctx.fillText('全网排行榜实时公开', POSTER_WIDTH / 2, 192);
-    ctx.fillStyle = '#9fb0ce';
-    ctx.font = '800 25px "Microsoft YaHei", sans-serif';
-    ctx.fillText(`${data.reportDate} · 00:00 至次日 00:00 · 北京时间`, POSTER_WIDTH / 2, 234);
-    ctx.textAlign = 'left';
-
-    const rule = ctx.createLinearGradient(58, 266, 966, 266);
-    rule.addColorStop(0, 'rgba(82,220,255,0)');
-    rule.addColorStop(.35, 'rgba(82,220,255,.68)');
-    rule.addColorStop(.5, 'rgba(255,232,106,.78)');
-    rule.addColorStop(.65, 'rgba(82,220,255,.68)');
-    rule.addColorStop(1, 'rgba(82,220,255,0)');
-    ctx.fillStyle = rule;
-    ctx.fillRect(58, 266, 908, 3);
-
-    const heroY = 300;
-    const heroH = 230;
-    const bigW = 620;
-    const mainGradient = ctx.createLinearGradient(54, heroY, 54 + bigW, heroY + heroH);
-    mainGradient.addColorStop(0, 'rgba(15,32,62,.97)');
-    mainGradient.addColorStop(1, 'rgba(7,13,29,.95)');
-    fillRound(ctx, 54, heroY, bigW, heroH, 24, mainGradient, 'rgba(94,211,255,.20)');
-    const heroGlow = ctx.createRadialGradient(600, heroY + 34, 10, 600, heroY + 34, 160);
-    heroGlow.addColorStop(0, 'rgba(82,242,255,.20)');
-    heroGlow.addColorStop(1, 'rgba(82,242,255,0)');
-    ctx.fillStyle = heroGlow;
-    ctx.fillRect(54, heroY, bigW, heroH);
-    ctx.fillStyle = '#7cecff';
-    ctx.font = '950 22px "Microsoft YaHei", sans-serif';
-    ctx.fillText('NETWORK POWER', 84, heroY + 42);
-    ctx.fillStyle = '#c2d0e9';
-    ctx.font = '900 29px "Microsoft YaHei", sans-serif';
-    ctx.fillText('全网总算力', 84, heroY + 88);
-    ctx.fillStyle = '#ffffff';
-    fitText(ctx, data.totalPower, 84, heroY + 162, 520, '950 74px "Microsoft YaHei", sans-serif', 46);
-    ctx.fillStyle = data.totalPowerDelta.startsWith('减少') ? '#ff687c' : '#80f2a1';
-    fitText(ctx, `较上一期 ${data.totalPowerDelta}`, 84, heroY + 202, 390, '900 24px "Microsoft YaHei", sans-serif', 18);
-    drawSparkline(ctx, 370, heroY + 142, 250, 58, data.totalPowerTrend);
-
-    fillRound(ctx, 704, heroY, 266, heroH, 24, 'rgba(255,232,106,.08)', 'rgba(255,232,106,.25)');
-    drawQr(ctx, 748, heroY + 24, 178);
-    ctx.fillStyle = '#ffe86a';
+    fillRound(ctx, 52, 48, 188, 48, 24, 'rgba(10,30,58,.82)', 'rgba(86,239,255,.74)');
+    ctx.fillStyle = '#75f3a9';
     ctx.font = '950 24px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('扫码看实时榜', 837, heroY + 216);
-    ctx.textAlign = 'left';
+    ctx.fillText('火星快报', 146, 80);
 
-    const cardW = 450;
-    const cardH = 86;
-    const startX = 54;
-    const gapX = 16;
-    const gapY = 12;
-    data.cards.forEach((card, index) => {
-      const row = Math.floor(index / 2);
-      const col = index % 2;
-      const y = 552 + row * (cardH + gapY);
-      const x = startX + col * (cardW + gapX);
-      drawCompactStat(ctx, x, y, cardW, cardH, card[0], card[1], card[2], card[3], card[4]);
+    fillRound(ctx, 650, 48, 320, 48, 24, 'rgba(255,232,106,.94)', 'rgba(255,232,106,.48)');
+    ctx.fillStyle = '#071124';
+    ctx.font = '950 24px "Microsoft YaHei", sans-serif';
+    ctx.fillText(data.countdown, 810, 80);
+
+    ctx.fillStyle = '#ffe86a';
+    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
+    ctx.fillText('MarsChain 08:00', POSTER_WIDTH / 2, 148);
+    ctx.fillStyle = '#f6fbff';
+    ctx.font = '950 44px "Microsoft YaHei", sans-serif';
+    ctx.fillText('官方浏览器快报', POSTER_WIDTH / 2, 220);
+    ctx.fillStyle = '#aebbd3';
+    ctx.font = '900 22px "Microsoft YaHei", sans-serif';
+    fitText(ctx, `${data.reportDate} · ${data.windowText}`, POSTER_WIDTH / 2, 280, 850, '900 22px "Microsoft YaHei", sans-serif', 18, 'center');
+    ctx.textAlign = 'left';
+    ctx.fillStyle = 'rgba(86,239,255,.72)';
+    ctx.fillRect(58, 294, 908, 3);
+
+    [318, 584, 728, 980, 1220].forEach((y) => {
+      ctx.strokeStyle = 'rgba(86,239,255,.14)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(54, y);
+      ctx.lineTo(970, y);
+      ctx.stroke();
+    });
+    [54, 970].forEach((x) => {
+      ctx.strokeStyle = 'rgba(86,239,255,.10)';
+      ctx.beginPath();
+      ctx.moveTo(x, 300);
+      ctx.lineTo(x, 1270);
+      ctx.stroke();
     });
 
-    const periodY = 1160;
-    const periodW = 298;
-    const periodH = 78;
-    data.period7.forEach((item, index) => drawPeriodStat(ctx, 54 + index * (periodW + 10), periodY, periodW, periodH, item[0], item[1], index === 1 ? '#80f2a1' : '#f6fbff'));
-    data.period30.forEach((item, index) => drawPeriodStat(ctx, 54 + index * (periodW + 10), periodY + 90, periodW, periodH, item[0], item[1], index === 1 ? '#80f2a1' : '#f6fbff'));
+    fillRound(ctx, 54, 324, 916, 238, 28, 'rgba(8,19,40,.88)', 'rgba(86,239,255,.44)');
+    ctx.fillStyle = '#c2d0e9';
+    ctx.font = '950 30px "Microsoft YaHei", sans-serif';
+    ctx.fillText('全网总算力', 86, 392);
+    ctx.fillStyle = '#56efff';
+    ctx.font = '950 17px "Microsoft YaHei", sans-serif';
+    ctx.fillText('NETWORK POWER', 88, 416);
+    ctx.fillStyle = '#ffffff';
+    fitText(ctx, data.totalPower, 86, 494, 335, '950 58px "Microsoft YaHei", sans-serif', 38);
+    ctx.fillStyle = data.totalPowerDelta.includes('减少') ? '#ff9fb7' : '#75f3a9';
+    fitText(ctx, data.totalPowerDelta, 88, 530, 300, '950 20px "Microsoft YaHei", sans-serif', 16);
 
-    ctx.fillStyle = '#7f90ad';
+    fillRound(ctx, 426, 366, 298, 150, 18, 'rgba(5,16,34,.62)', 'rgba(86,239,255,.28)');
+    ctx.fillStyle = '#9fb0ca';
+    ctx.font = '900 17px "Microsoft YaHei", sans-serif';
+    ctx.fillText('算力趋势', 444, 400);
+    drawSparkline(ctx, 444, 426, 262, 66, data.totalPowerTrend);
+    drawQr(ctx, 780, 370, 144);
+    ctx.fillStyle = '#ffe86a';
+    ctx.font = '950 18px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('扫码看实时榜', 852, 536);
+    ctx.textAlign = 'left';
+
+    drawSnapshotCard(ctx, 54, 592, 450, 124, '产1币所需算力', data.powerPerCoin, '官网数据 · 矿工75%日产币口径', '#56efff', { align: 'left', valueY: 680, valueWidth: 270, font: '950 34px "Microsoft YaHei", sans-serif', minSize: 22 });
+    drawSnapshotCard(ctx, 520, 592, 450, 124, '1亿算力产出', data.oneYiOutput, '官网数据 · 按08:00产出口径', '#ffe86a', { align: 'left', valueY: 680, valueWidth: 300, font: '950 34px "Microsoft YaHei", sans-serif', minSize: 22 });
+
+    drawSnapshotCard(ctx, 54, 742, 450, 104, '日活跃地址', data.dailyActiveAddresses, '08:00统计窗口', '#75f3a9', { valueY: 806, valueWidth: 250, font: '950 30px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 742, 450, 104, '日交易数量', data.dailyTransactions, '08:00统计窗口 · 非每日产量', '#7e8cff', { valueY: 806, valueWidth: 250, font: '950 30px "Microsoft YaHei", sans-serif' });
+
+    const cards = [
+      ['最新区块', data.latestBlock, data.latestBlockDelta, '#63ee91'],
+      ['当前价格', data.price, '', '#ffe86a', 'price'],
+      ['前100名占比', data.top100Share, '排行榜统计 · 算力集中度', '#d98cff'],
+      ['流通币量', data.circulation, data.circulationDelta, '#9df4c3'],
+      ['销毁总量', data.burned, data.burnedDelta, '#ff9fb7'],
+      ['地址数量', data.addresses, data.addressDelta, '#56efff'],
+    ];
+    cards.forEach((card, index) => {
+      const row = Math.floor(index / 2);
+      const col = index % 2;
+      const x = 54 + col * 466;
+      const y = 876 + row * 132;
+      if (card[4] === 'price') {
+        drawPriceSnapshotCard(ctx, x, y, 450, 112, data);
+      } else {
+        drawSnapshotCard(ctx, x, y, 450, 112, card[0], card[1], card[2], card[3], { valueY: y + 70, valueWidth: 250, font: '950 31px "Microsoft YaHei", sans-serif' });
+      }
+    });
+
+    ctx.fillStyle = 'rgba(255,232,106,.58)';
+    ctx.fillRect(54, 1256, 916, 2);
+    ctx.fillStyle = '#8fa0bc';
     ctx.font = '800 18px "Microsoft YaHei", sans-serif';
-    ctx.fillText('数据来源：MarsChain Rank / explorer.marschain.net', 54, 1390);
-    ctx.fillText(`最近刷新：${data.generatedAt}`, 54, 1422);
+    ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1292);
+    ctx.fillText(`生成时间：${data.generatedAt}`, 54, 1328);
     ctx.fillStyle = '#dce9ff';
     ctx.font = '950 25px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 860, 1422);
+    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 850, 1412);
     ctx.textAlign = 'left';
     const logo = ctx.createConicGradient(3.8, 894, 1378);
     logo.addColorStop(0, '#7bffcb');
@@ -5028,6 +5078,13 @@ SHARE_POSTER_JS = r"""
     logo.addColorStop(.78, '#ffe86a');
     logo.addColorStop(1, '#7bffcb');
     fillRound(ctx, 892, 1344, 78, 78, 22, logo);
+    ctx.fillStyle = '#071124';
+    fillRound(ctx, 904, 1356, 54, 54, 14, '#071124');
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '950 46px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('M', 931, 1400);
+    ctx.textAlign = 'left';
   };
 
   const setStatus = (text, mode = '') => {
@@ -5405,7 +5462,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '方程': 'Equation',
     '说明': 'Notes',
     '电脑版': 'Desktop',
-    '数据已加载 · 北京时间 00:00 每日采集': 'Data loaded · collected daily at 00:00 Beijing time',
+    '数据已加载 · 北京时间 08:00 每日采集': 'Data loaded · collected daily at 08:00 Beijing time',
     '算力指挥舱': 'Power Command Center',
     '算力榜': 'Power Rank',
     '基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。': 'Based on public explorer data, RPC, and POWER contract logs, showing total network power, wallet addresses, Beijing-day growth, and top address rankings.',
@@ -5531,7 +5588,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '采集频率': 'Collection Frequency',
     '每 24 小时一次': 'Every 24 Hours',
     '抓取时间': 'Collection Time',
-    '每日 00:00（北京时间，夜里 24:00）': 'Daily 00:00 Beijing Time (midnight)',
+    '每日 08:00（北京时间）': 'Daily 08:00 Beijing Time',
     '区块浏览器公开统计': 'Public explorer statistics',
     '区块浏览器公开报价': 'Public explorer quote',
     '官网口径：永不增发': 'Official rule: no additional issuance',
@@ -5539,8 +5596,8 @@ LANGUAGE_TOGGLE_JS = r"""
     'POWER 合约累计燃烧': 'Cumulative POWER contract burns',
     '公开地址规模': 'Public address scale',
     '算力大于 0': 'Power greater than 0',
-    '北京时间 00:00 至次日 00:00': 'Beijing time 00:00 to next-day 00:00',
-    '北京 00:00 至次日 00:00': 'Beijing 00:00 to next-day 00:00',
+    '北京时间 08:00 至次日 08:00': 'Beijing time 08:00 to next-day 08:00',
+    '北京 08:00 至次日 08:00': 'Beijing 08:00 to next-day 08:00',
     '同一统计日口径': 'Same statistics-day method',
     '北京时间统计日口径': 'Beijing-day method',
     '按矿工 75% 产量估算': 'Estimated with the 75% miner emission share',
@@ -5826,7 +5883,7 @@ def build_mobile_html(payload: dict) -> str:
     paid_download_config = load_paid_download_config()
 
     generated_at = _format_generated_at_from_meta(meta)
-    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 00:00 至次日 00:00")
+    statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
     coverage_label = _fmt_percent(meta.get("discovered_power_coverage"))
     network_total_power = meta.get("network_total_power")
     candidate_count = meta.get("candidate_count")
@@ -5957,7 +6014,7 @@ def build_mobile_html(payload: dict) -> str:
             ("最近刷新", generated_at),
             ("统计周期", statistics_window_label),
             ("采集频率", "每 24 小时一次"),
-            ("抓取时间", "每日 00:00（北京时间，夜里 24:00）"),
+            ("抓取时间", "每日 08:00（北京时间）"),
             ("全网流通量", circulation),
             ("当前价格", current_price),
             ("最高价格", highest_price),
@@ -6013,7 +6070,7 @@ def build_mobile_html(payload: dict) -> str:
   </header>
   <main>
     <section class="m-hero">
-      <span class="m-chip">数据已加载 · 北京时间 00:00 每日采集</span>
+      <span class="m-chip">数据已加载 · 北京时间 08:00 每日采集</span>
       <h1><span>MarsChain</span><span>算力榜</span></h1>
       <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
       <div class="m-hero-grid">

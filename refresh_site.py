@@ -391,7 +391,7 @@ def parse_args() -> argparse.Namespace:
         "--cache-ttl-seconds",
         type=int,
         default=DEFAULT_CACHE_TTL_SECONDS,
-        help="Power lookup cache TTL. The default is shorter than the 5-hour schedule so each scheduled build refreshes power data.",
+        help="Power lookup cache TTL. The default is shorter than the 24-hour schedule so each scheduled build refreshes power data.",
     )
     return parser.parse_args()
 
