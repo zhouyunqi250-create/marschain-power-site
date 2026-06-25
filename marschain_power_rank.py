@@ -1850,6 +1850,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     network_current_price = network_stats.get("currentPrice") if isinstance(network_stats, dict) else None
     network_highest_price = network_stats.get("highestPrice") if isinstance(network_stats, dict) else None
     network_lowest_price = network_stats.get("lowestPrice") if isinstance(network_stats, dict) else None
+    latest_block = rpc_log_meta.get("rpc_log_latest_block") if rpc_log_meta else None
+    if latest_block is None:
+        latest_block = rpc_meta.get("rpc_latest_block") if rpc_meta else None
     statistics_reference_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
     if not isinstance(statistics_reference_timestamp, int):
         statistics_reference_timestamp = int(time.time())
@@ -2060,6 +2063,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "network_total_power": network_total_power,
         "network_total_burned_tokens": network_total_burned_tokens,
         "network_total_burned_display": format_token_chinese(network_total_burned_tokens),
+        "latest_block": latest_block,
         "discovered_power_coverage": (discovered_total_power / network_total_power) if network_total_power else 0.0,
         "ranked_count": len(rows),
     }

@@ -145,8 +145,8 @@ def build_html(payload: dict) -> str:
     hero_meta_items = [
         f"最近刷新：{generated_at}",
         f"统计周期：{statistics_window_label}",
-        "采集频率：每 24 小时一次",
-        "抓取时间：每日 08:00（北京时间）",
+        "采集频率：每日 08:01 官方快照 / 08:05 全量扫描",
+        "抓取时间：北京时间 08:01 起",
     ]
     if int(meta.get("tx_pages", 0) or 0) > 0:
         hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
@@ -4061,8 +4061,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     timeline_items = [
         ("最近刷新", generated_at),
         ("统计周期", statistics_window_label),
-        ("采集频率", "每 24 小时一次"),
-        ("抓取时间", "每日 08:00（北京时间）"),
+        ("采集频率", "每日 08:01 官方快照 / 08:05 全量扫描"),
+        ("抓取时间", "北京时间 08:01 起"),
         ("全网流通量", circulation),
         ("当前价格", current_price),
         ("最高价格", highest_price),
@@ -5057,7 +5057,7 @@ SHARE_POSTER_JS = r"""
       ].join(';');
       document.body.appendChild(notice);
     }
-    notice.textContent = '数据统计中，今日 08:00 数据更新完成后可生成快报。';
+    notice.textContent = '数据统计中，今日 08:01 官方快照更新完成后可生成快报。';
     notice.style.opacity = '1';
     window.clearTimeout(notice._hideTimer);
     notice._hideTimer = window.setTimeout(() => { notice.style.opacity = '0'; }, 3200);
@@ -5238,6 +5238,7 @@ SHARE_POSTER_JS = r"""
   const collectPosterData = () => {
     const payload = rankPayload();
     const meta = payload.meta || {};
+    const fastUpdateOnly = Boolean(meta.fast_update_only);
     const totalPower = meta.network_total_power;
     const latestBlock = asNumber(meta.latest_block) || asNumber(meta.rpc_latest_block) || asNumber(meta.rpc_log_latest_block) || asNumber(meta.rpc_log_start_block) || asNumber(meta.rpc_log_end_block) || 0;
     const start = String(meta.statistics_window_start_local || '').slice(0, 16);
@@ -5263,7 +5264,9 @@ SHARE_POSTER_JS = r"""
       powerPerCoin: String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)),
       oneYiOutput,
       dailyActiveAddresses: formatPlainCount(meta.statistics_window_active_wallet_address_count),
-      dailyTransactions: formatPlainCount(meta.statistics_window_active_transactions_seen),
+      dailyActiveAddressesDelta: fastUpdateOnly ? '沿用上期，待全量扫描' : sublineFromMetricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatPlainCount),
+      dailyTransactionVolume: String(meta.statistics_window_transaction_volume_display || formatToken(meta.statistics_window_transaction_volume_wei)),
+      dailyTransactionVolumeDelta: fastUpdateOnly ? '沿用上期，待全量扫描' : sublineFromMetricDelta('daily_transaction_volume', meta.statistics_window_transaction_volume_wei, (value) => formatToken(value)),
       latestBlock: latestBlock ? latestBlock.toLocaleString('zh-CN') : '待刷新',
       latestBlockDelta: sublineFromMetricDelta('latest_block', latestBlock, compactNumber),
       price: formatPrice(meta),
@@ -5369,11 +5372,11 @@ SHARE_POSTER_JS = r"""
     ctx.fillText('扫码看实时榜', 852, 536);
     ctx.textAlign = 'left';
 
-    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, '官网数据 · 矿工75%日产币口径', '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
-    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, '官网数据 · 按08:00产出口径', '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, '', '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, '', '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
 
-    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, '08:00统计窗口', '#75f3a9', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
-    drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易数量', data.dailyTransactions, '08:00统计窗口 · 非每日产量', '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易币量', data.dailyTransactionVolume, data.dailyTransactionVolumeDelta, '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
 
     const cards = [
       ['最新区块', data.latestBlock, data.latestBlockDelta, '#63ee91'],
@@ -6036,9 +6039,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '最近刷新': 'Last Refresh',
     '统计周期': 'Statistics Window',
     '采集频率': 'Collection Frequency',
-    '每 24 小时一次': 'Every 24 Hours',
+    '每日 08:01 官方快照 / 08:05 全量扫描': 'Daily 08:01 Snapshot / 08:05 Full Scan',
     '抓取时间': 'Collection Time',
-    '每日 08:00（北京时间）': 'Daily 08:00 Beijing Time',
+    '北京时间 08:01 起': 'From 08:01 Beijing Time',
     '区块浏览器公开统计': 'Public explorer statistics',
     '区块浏览器公开报价': 'Public explorer quote',
     '官网口径：永不增发': 'Official rule: no additional issuance',
@@ -6565,8 +6568,8 @@ def build_mobile_html(payload: dict) -> str:
         [
             ("最近刷新", generated_at),
             ("统计周期", statistics_window_label),
-            ("采集频率", "每 24 小时一次"),
-            ("抓取时间", "每日 08:00（北京时间）"),
+            ("采集频率", "每日 08:01 官方快照 / 08:05 全量扫描"),
+            ("抓取时间", "北京时间 08:01 起"),
             ("全网流通量", circulation),
             ("当前价格", current_price),
             ("最高价格", highest_price),

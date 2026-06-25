@@ -21,6 +21,7 @@ on:
       - "build_frontend_dashboard.py"
       - "backfill_metric_history.py"
       - "deploy_to_oss.py"
+      - "fast_update_site.py"
       - "marschain_power_rank.py"
       - "paid_download_service.py"
       - "price_data.py"
@@ -84,7 +85,12 @@ jobs:
           now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
           expected_end = now_beijing.replace(hour=8, minute=0, second=0, microsecond=0)
           expected_end_ts = int(expected_end.timestamp())
-          latest_end_ts = meta.get("statistics_window_end_timestamp")
+          latest_end_ts = meta.get("full_scan_statistics_window_end_timestamp")
+          if not isinstance(latest_end_ts, int):
+              if meta.get("fast_update_only"):
+                  latest_end_ts = None
+              else:
+                  latest_end_ts = meta.get("statistics_window_end_timestamp")
           print(f"latest_end_ts={latest_end_ts} expected_end_ts={expected_end_ts}")
           if isinstance(latest_end_ts, int) and latest_end_ts >= expected_end_ts:
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
@@ -297,7 +303,6 @@ jobs:
               "MarsChain 火星快报",
               "申请 Mars 工作室",
               "联系 QQ：3407186257",
-              "日交易数量",
               "每日交易币量",
               "每日交易笔数",
               "选中日期",

@@ -11,7 +11,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from build_frontend_dashboard import build_html, build_mobile_html
-from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, write_csv, write_html, write_json, write_xlsx
+from marschain_power_rank import DEFAULT_CACHE_TTL_SECONDS, build_ranking, format_token_chinese, write_csv, write_html, write_json, write_xlsx
 from price_data import build_price_payload_from_meta, load_price_file
 
 PUBLIC_RANK_LIMIT = 100
@@ -21,6 +21,7 @@ METRIC_SNAPSHOT_FIELDS = {
     "network_total_power": "network_total_power",
     "network_total_circulation": "network_total_circulation_tokens",
     "network_current_price": "network_current_price",
+    "latest_block": "latest_block",
     "total_supply": "emission_total_supply_cap_tokens",
     "daily_emission": "emission_daily_total_tokens",
     "total_burned": "network_total_burned_tokens",
@@ -94,6 +95,11 @@ EXTRA_BUILD_META_KEYS = [
     "today_burned_display",
     "today_burned_basis",
     "today_local_date",
+    "fast_update_only",
+    "fast_metrics_ready",
+    "fast_metrics_generated_at",
+    "full_scan_statistics_window_end_timestamp",
+    "full_scan_statistics_window_end_local",
     "emission_basis",
     "emission_reference_timestamp",
     "emission_genesis_timestamp",
@@ -122,6 +128,7 @@ EXTRA_BUILD_META_KEYS = [
     "network_highest_price_display",
     "network_lowest_price",
     "network_lowest_price_display",
+    "latest_block",
     "network_total_burned_display",
     "period_7d_label",
     "period_7d_start_timestamp",
@@ -317,17 +324,99 @@ def load_metric_history(site_dir: Path) -> list[dict]:
 
 def merge_metric_history(existing: list[dict], snapshot: dict) -> list[dict]:
     merged = normalize_metric_history(existing)
-    identity = snapshot.get("generated_at") or snapshot.get("statistics_window_end_timestamp")
+    identity = snapshot.get("statistics_window_end_timestamp") or snapshot.get("generated_at")
     if identity:
         merged = [
             item
             for item in merged
-            if (item.get("generated_at") or item.get("statistics_window_end_timestamp")) != identity
+            if (item.get("statistics_window_end_timestamp") or item.get("generated_at")) != identity
         ]
     if snapshot.get("values"):
         merged.append(snapshot)
     merged.sort(key=lambda item: item.get("generated_at") or item.get("statistics_window_end_timestamp") or 0)
     return merged[-METRIC_HISTORY_LIMIT:]
+
+
+def metric_snapshot_value(meta: dict, metric_key: str) -> float | int | None:
+    meta_key = METRIC_SNAPSHOT_FIELDS.get(metric_key)
+    if not meta_key:
+        return None
+    return _as_metric_number(meta.get(meta_key))
+
+
+def previous_metric_value(
+    metric_history: list[dict],
+    metric_key: str,
+    current_end_timestamp: float | int | None,
+    fallback_meta: dict | None = None,
+) -> float | int | None:
+    current_end = _as_metric_number(current_end_timestamp)
+    history = normalize_metric_history(metric_history)
+    for item in reversed(history):
+        end_ts = _as_metric_number(item.get("statistics_window_end_timestamp"))
+        if current_end is not None and end_ts is not None and end_ts >= current_end:
+            continue
+        value = item.get("values", {}).get(metric_key)
+        if value is not None:
+            return value
+    if fallback_meta is not None:
+        fallback_end = _as_metric_number(fallback_meta.get("statistics_window_end_timestamp"))
+        if current_end is None or fallback_end is None or fallback_end < current_end:
+            value = metric_snapshot_value(fallback_meta, metric_key)
+            if value is not None:
+                return value
+    return None
+
+
+def apply_official_delta_meta(meta: dict, metric_history: list[dict], fallback_meta: dict | None = None) -> dict:
+    updated = dict(meta)
+    current_end = _as_metric_number(updated.get("statistics_window_end_timestamp"))
+
+    current_power = _as_metric_number(updated.get("statistics_window_end_total_power"))
+    previous_power = previous_metric_value(metric_history, "network_total_power", current_end, fallback_meta)
+    if current_power is not None:
+        start_power = _as_metric_number(updated.get("statistics_window_start_total_power"))
+        if start_power is not None:
+            delta_power = current_power - start_power
+        elif previous_power is not None:
+            delta_power = current_power - previous_power
+        else:
+            delta_power = None
+        if delta_power is not None:
+            updated["today_new_power"] = delta_power
+            updated["statistics_window_new_power"] = delta_power
+            updated["today_new_power_basis"] = f"official 08:00 totalPower minus previous completed 08:00 totalPower"
+            updated["statistics_window_new_power_basis"] = updated["today_new_power_basis"]
+
+    current_wallets = _as_metric_number(updated.get("explorer_total_addresses"))
+    previous_wallets = previous_metric_value(metric_history, "total_wallets", current_end, fallback_meta)
+    if current_wallets is not None:
+        if previous_wallets is not None:
+            delta_wallets = current_wallets - previous_wallets
+        else:
+            delta_wallets = None
+        if delta_wallets is not None:
+            updated["statistics_window_new_candidate_address_count"] = delta_wallets
+            updated["today_new_wallet_count"] = delta_wallets
+            updated["statistics_window_new_candidate_address_basis"] = "official explorer totalAddresses minus previous completed 08:00 totalAddresses"
+            updated["today_new_wallet_basis"] = updated["statistics_window_new_candidate_address_basis"]
+
+    current_burned = _as_metric_number(updated.get("network_total_burned_tokens"))
+    previous_burned = previous_metric_value(metric_history, "total_burned", current_end, fallback_meta)
+    if current_burned is not None:
+        if previous_burned is not None:
+            delta_burned = current_burned - previous_burned
+        else:
+            delta_burned = None
+        if delta_burned is not None:
+            updated["statistics_window_burned_tokens"] = delta_burned
+            updated["statistics_window_burned_display"] = format_token_chinese(delta_burned)
+            updated["today_burned_tokens"] = delta_burned
+            updated["today_burned_display"] = format_token_chinese(delta_burned)
+            updated["statistics_window_burned_basis"] = "official /power/stats totalBurnedTokens minus previous completed 08:00 totalBurnedTokens"
+            updated["today_burned_basis"] = updated["statistics_window_burned_basis"]
+
+    return updated
 
 
 def build_metric_trends(meta: dict, metric_history: list[dict]) -> dict:
@@ -374,18 +463,20 @@ def write_site_bundle(site_dir: Path, payload: dict, metric_history: list[dict] 
         shutil.rmtree(downloads_dir)
 
     existing_price = load_price_file(data_dir / "price.json")
-    (site_dir / "index.html").write_text(build_html(payload))
-    (mobile_dir / "index.html").write_text(build_mobile_html(payload))
-    (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    (site_dir / "index.html").write_text(build_html(payload), encoding="utf-8")
+    (mobile_dir / "index.html").write_text(build_mobile_html(payload), encoding="utf-8")
+    (data_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (data_dir / "price.json").write_text(
         json.dumps(build_price_payload_from_meta(payload.get("meta", {}), existing_price), ensure_ascii=False, indent=2)
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     if metric_history is not None:
         (data_dir / "metric-history.json").write_text(
-            json.dumps({"snapshots": normalize_metric_history(metric_history)}, ensure_ascii=False, indent=2) + "\n"
+            json.dumps({"snapshots": normalize_metric_history(metric_history)}, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
-    (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n")
+    (site_dir / "robots.txt").write_text("User-agent: *\nAllow: /\n", encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:
@@ -466,6 +557,11 @@ def main() -> int:
     chosen_meta["coverage_target"] = args.coverage_target
     chosen_meta["target_met"] = target_met
     chosen_meta["tier_label"] = chosen_label
+    existing_metric_history = load_metric_history(site_dir)
+    chosen_meta = apply_official_delta_meta(chosen_meta, existing_metric_history)
+    chosen_meta["fast_update_only"] = False
+    chosen_meta["full_scan_statistics_window_end_timestamp"] = chosen_meta.get("statistics_window_end_timestamp")
+    chosen_meta["full_scan_statistics_window_end_local"] = chosen_meta.get("statistics_window_end_local")
 
     stamp = time.strftime("%Y%m%d_%H%M%S")
     payload = {"meta": chosen_meta, "rows": [row.to_dict() for row in chosen_rows]}
@@ -480,7 +576,7 @@ def main() -> int:
     write_html(html_path, chosen_rows, chosen_meta)
     write_xlsx(xlsx_path, chosen_rows, chosen_meta)
 
-    (latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    (latest_dir / "latest.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (latest_dir / "build-meta.json").write_text(
         json.dumps(
             add_extra_build_meta(
@@ -530,13 +626,14 @@ def main() -> int:
             ensure_ascii=False,
             indent=2,
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
     shutil.copy2(csv_path, latest_dir / "latest.csv")
     shutil.copy2(html_path, latest_dir / "latest.html")
     shutil.copy2(xlsx_path, latest_dir / "latest.xlsx")
 
-    metric_history = merge_metric_history(load_metric_history(site_dir), build_metric_snapshot(chosen_meta))
+    metric_history = merge_metric_history(existing_metric_history, build_metric_snapshot(chosen_meta))
     public_payload = build_public_payload(payload)
     public_payload["meta"]["metric_trends"] = build_metric_trends(public_payload["meta"], metric_history)
     write_site_bundle(site_dir, public_payload, metric_history)
@@ -579,7 +676,7 @@ def main() -> int:
         "tier_label": chosen_meta["tier_label"],
         "history_json": str(json_path),
     }, chosen_meta)
-    (site_dir / "build-meta.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n")
+    (site_dir / "build-meta.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     print(
         f"[done] latest coverage={chosen_meta['discovered_power_coverage']:.4%} "

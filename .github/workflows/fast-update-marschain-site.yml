@@ -1,0 +1,84 @@
+name: Fast Update MarsChain Site
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "1 0 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-site
+  cancel-in-progress: false
+
+jobs:
+  fast-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+      ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+      ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+      ALIYUN_OSS_PREFIX: ${{ secrets.ALIYUN_OSS_PREFIX }}
+      ALIYUN_PAID_OSS_BUCKET: ${{ secrets.ALIYUN_PAID_OSS_BUCKET }}
+      ALIYUN_PAID_OSS_ENDPOINT: ${{ secrets.ALIYUN_PAID_OSS_ENDPOINT }}
+      ALIYUN_PAID_OSS_PREFIX: ${{ secrets.ALIYUN_PAID_OSS_PREFIX }}
+      ALIYUN_SITE_BASE_URL: ${{ secrets.ALIYUN_SITE_BASE_URL }}
+      MARSCHAIN_PAID_DOWNLOAD_API_BASE: ${{ secrets.MARSCHAIN_PAID_DOWNLOAD_API_BASE }}
+      BAIDU_TONGJI_SITE_ID: 1dc172d16803cd4223b85645006548b4
+      MICROSOFT_CLARITY_PROJECT_ID: ${{ secrets.MICROSOFT_CLARITY_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "requirements.txt"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Fast refresh from official snapshot
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python fast_update_site.py \
+            --site-dir site \
+            --output-dir output \
+            --origin "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com" \
+            --rpc-url "https://rpcs.marschain.net"
+
+      - name: Verify fast refresh markers
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          desktop = Path("site/index.html").read_text(encoding="utf-8")
+          required = [
+              "MarsChain 火星快报",
+              "日交易币量",
+              "每日交易笔数",
+              "沿用上期，待全量扫描",
+              "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
+          ]
+          missing = [marker for marker in required if marker not in desktop]
+          if missing:
+              raise SystemExit(f"fast refresh verification failed: {missing}")
+          PY
+
+      - name: Deploy site to Alibaba Cloud OSS
+        run: |
+          SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
+          python deploy_to_oss.py \
+            --site-dir site \
+            --bucket "$ALIYUN_OSS_BUCKET" \
+            --endpoint "$ALIYUN_OSS_ENDPOINT" \
+            --base-url "$SITE_BASE_URL" \
+            --prefix "${ALIYUN_OSS_PREFIX:-}" \
+            --allow-bucket-root
