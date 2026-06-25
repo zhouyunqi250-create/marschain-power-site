@@ -2168,9 +2168,9 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .trend-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px 24px 24px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 16px 24px 22px;
 }
 .trend-stat {
   min-width: 0;
@@ -2690,7 +2690,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .trend-modal { padding: 12px; align-items: end; }
   .trend-panel {
     width: calc(100vw - 24px);
-    max-width: 366px;
+    max-width: none;
     max-height: calc(100vh - 24px);
     border-radius: 22px;
     justify-self: start;
@@ -2715,11 +2715,18 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   }
   .trend-chart svg { height: 230px; }
   .trend-stats {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    padding: 12px 16px 18px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    padding: 12px;
   }
-  .trend-stat { padding: 12px; border-radius: 14px; }
-  .trend-stat b { font-size: 18px; }
+  .trend-stat { padding: 10px 8px; border-radius: 14px; }
+  .trend-stat span { font-size: 10px; line-height: 1.25; }
+  .trend-stat b { font-size: 15px; }
+  .trend-stat b.is-multi { gap: 5px; font-size: 13px; }
+  .trend-stat-row { grid-template-columns: 1fr; align-items: start; gap: 2px; }
+  .trend-stat-row i { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+  .trend-stat-row strong { font-size: 12px; text-align: left; }
+  .trend-stat small { font-size: 10px; }
   .trend-foot { margin: -4px 16px 18px; }
   .growth-grid { grid-template-columns: 1fr; gap: 12px; }
   .equation-grid { grid-template-columns: 1fr; gap: 10px; }
@@ -2786,6 +2793,22 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .risk h3 { font-size: 22px; }
   .risk p { font-size: 13px; line-height: 1.8; }
   .footer { padding: 44px 14px 40px; line-height: 1.65; }
+}
+@media (max-width: 480px) {
+  .trend-panel { max-width: 366px; }
+  .trend-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding: 12px 16px 18px;
+  }
+  .trend-stat { padding: 12px; }
+  .trend-stat span { font-size: 12px; }
+  .trend-stat b { font-size: 18px; }
+  .trend-stat b.is-multi { gap: 6px; font-size: 16px; }
+  .trend-stat-row { grid-template-columns: minmax(74px, auto) minmax(0, 1fr); align-items: baseline; gap: 8px; }
+  .trend-stat-row i { overflow: visible; font-size: 11px; white-space: normal; }
+  .trend-stat-row strong { font-size: 16px; text-align: right; }
+  .trend-stat small { font-size: 11px; }
 }
 @media (max-width: 380px) {
   .shell { width: calc(100vw - 18px); }
@@ -4017,7 +4040,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("每日产币量", daily_total),
         ("最新区块", f"{latest_block_value:,}"),
         ("算力日志", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
-        ("候选地址", _fmt_chinese_number(candidate_count)),
+        ("已扫描地址", _fmt_chinese_number(candidate_count)),
         ("正算力地址", _fmt_chinese_number(positive_power_count)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
@@ -4182,7 +4205,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <div class="core"><b>{escape(coverage_label)}</b><span>扫描覆盖率</span></div>
         <i class="node n1"></i><i class="node n2"></i><i class="node n3"></i>
         <div class="mini">
-          <div><span>候选地址</span><b>{_fmt_chinese_number(candidate_count)}</b></div>
+          <div><span>已扫描地址</span><b>{_fmt_chinese_number(candidate_count)}</b></div>
           <div><span>正算力占比</span><b>{_fmt_percent(positive_ratio)}</b></div>
           <div><span>未覆盖算力</span><b>{_fmt_power(uncovered_power)}</b></div>
         </div>
@@ -5895,7 +5918,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '下方优先展示前 100 名算力地址，默认先看前 10。': 'Top 100 power addresses are shown below, with the first 10 visible by default.',
     '继续查看核心数据、增长趋势与数据说明': 'Continue to core data, growth trends, and data notes',
     '扫描覆盖率': 'Scan Coverage',
-    '候选地址': 'Candidate Addresses',
+    '已扫描地址': 'Scanned Addresses',
     '正算力占比': 'Positive Power Share',
     '未覆盖算力': 'Uncovered Power',
     '01 / 算力排行': '01 / Power Rank',
@@ -6506,7 +6529,7 @@ def build_mobile_html(payload: dict) -> str:
         ("period_30d_new_addresses", "30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
         ("period_30d_burned", "30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
     ]
-    hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[:8])
+    hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[1:8])
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
     equation_cards = _build_mobile_flow_cards(
         [
