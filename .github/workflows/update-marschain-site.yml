@@ -1,4 +1,5 @@
-# Runs at Beijing 08:00 (UTC 00:00).
+# Runs shortly after Beijing 08:00. UTC 00:07 is the primary trigger;
+# UTC 00:10 is a backup trigger, with a preflight skip to avoid duplicate crawls.
 name: Update MarsChain Site
 
 on:
@@ -26,7 +27,8 @@ on:
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
-    - cron: "0 0 * * *"
+    - cron: "7 0 * * *"
+    - cron: "10 0 * * *"
 
 permissions:
   contents: read
@@ -34,7 +36,7 @@ permissions:
 
 concurrency:
   group: marschain-site
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build-and-deploy:
@@ -57,12 +59,51 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Preflight schedule guard
+        id: preflight
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.request
+
+          origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
+          try:
+              with urllib.request.urlopen(f"{origin}/data/latest.json?v=preflight", timeout=30) as resp:
+                  payload = json.load(resp)
+          except Exception as exc:
+              print(f"preflight fetch failed: {exc}")
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                  fh.write("skip_refresh=false\n")
+              raise SystemExit(0)
+
+          meta = payload.get("meta") or {}
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
+          expected_end = now_beijing.replace(hour=8, minute=0, second=0, microsecond=0)
+          expected_end_ts = int(expected_end.timestamp())
+          latest_end_ts = meta.get("statistics_window_end_timestamp")
+          print(f"latest_end_ts={latest_end_ts} expected_end_ts={expected_end_ts}")
+          if isinstance(latest_end_ts, int) and latest_end_ts >= expected_end_ts:
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                  fh.write("skip_refresh=true\n")
+              print("skip_refresh=true")
+          else:
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                  fh.write("skip_refresh=false\n")
+              print("skip_refresh=false")
+          PY
+
       - name: Setup Python
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Restore crawler cache
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         uses: actions/cache/restore@v4
         with:
           path: output/marschain_power_cache.json
@@ -72,12 +113,13 @@ jobs:
             marschain-power-cache-${{ runner.os }}-
 
       - name: Install dependencies
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Preserve paid download API base
-        if: ${{ env.MARSCHAIN_PAID_DOWNLOAD_API_BASE == '' }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && env.MARSCHAIN_PAID_DOWNLOAD_API_BASE == '' }}
         run: |
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python - <<'PY' >> "$GITHUB_ENV"
@@ -101,6 +143,7 @@ jobs:
           PY
 
       - name: Restore public metric history
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         run: |
           python - <<'PY'
           import urllib.request
@@ -120,18 +163,19 @@ jobs:
           PY
 
       - name: Backfill metric history from recent artifacts
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           python backfill_metric_history.py --site-dir site --repo "$GITHUB_REPOSITORY" --max-runs 10
 
       - name: Refresh site with best-effort coverage
-        if: ${{ !((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && !((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
 
       - name: Rebuild site shell from current public data
-        if: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && ((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
         run: |
           python - <<'PY'
           import json
@@ -190,6 +234,7 @@ jobs:
           PY
 
       - name: Rebuild and verify frontend shell
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         run: |
           python - <<'PY'
           import json
@@ -262,6 +307,7 @@ jobs:
           PY
 
       - name: Upload build artifacts
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
@@ -273,13 +319,14 @@ jobs:
           if-no-files-found: error
 
       - name: Save crawler cache
-        if: always()
+        if: ${{ always() && steps.preflight.outputs.skip_refresh != 'true' }}
         uses: actions/cache/save@v4
         with:
           path: output/marschain_power_cache.json
           key: marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Deploy site to Alibaba Cloud OSS
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         run: |
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python deploy_to_oss.py \
