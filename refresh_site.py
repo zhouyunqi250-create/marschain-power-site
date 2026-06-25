@@ -46,7 +46,7 @@ SCAN_TIERS = [
     {
         "tx_pages": 0,
         "block_pages": 0,
-        "max_candidates": 0,
+        "max_candidates": 3000,
         "upline_limit": 0,
         "upline_depth": 0,
         "workers": 16,
@@ -185,6 +185,7 @@ def make_args(
     rpc_blocks: int,
     rpc_log_blocks: int,
     cache_file: Path,
+    address_pool_file: Path,
     cache_ttl_seconds: int,
 ) -> Namespace:
     return Namespace(
@@ -216,6 +217,7 @@ def make_args(
         output_dir="output",
         prefix="marschain_power_rank",
         cache_file=str(cache_file),
+        address_pool_file=str(address_pool_file),
         cache_ttl_seconds=cache_ttl_seconds,
         progress=True,
     )
@@ -408,6 +410,7 @@ def main() -> int:
     latest_dir = output_dir / "latest"
     site_dir = Path(args.site_dir)
     cache_file = Path(args.cache_file)
+    address_pool_file = Path("output/marschain_address_pool.json")
 
     history_dir.mkdir(parents=True, exist_ok=True)
     latest_dir.mkdir(parents=True, exist_ok=True)
@@ -433,6 +436,7 @@ def main() -> int:
             rpc_blocks=tier["rpc_blocks"],
             rpc_log_blocks=tier["rpc_log_blocks"],
             cache_file=cache_file,
+            address_pool_file=address_pool_file,
             cache_ttl_seconds=args.cache_ttl_seconds,
         )
         rows, meta = build_ranking(run_args)

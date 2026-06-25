@@ -32,6 +32,7 @@ POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
 GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR = "0x1c1b5cdf"
 TOKENS_BURNED_EVENT_TOPIC = "0xccbea4088a3b7ae9ca2d15fab9a9742a4075b4d7247768a1eecea917565aba00"
 DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
+DEFAULT_ADDRESS_POOL_FILE = "output/marschain_address_pool.json"
 BEIJING_OFFSET_SECONDS = 8 * 60 * 60
 STATISTICS_DAY_START_HOUR = 8
 STATISTICS_DAY_START_LABEL = f"{STATISTICS_DAY_START_HOUR:02d}:00"
@@ -431,6 +432,146 @@ def save_cache(path: Path | None, cache: dict[str, dict[str, Any]]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cache, ensure_ascii=False, indent=2) + "\n")
+
+
+def load_address_pool(path: Path | None) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+    if not path or not path.exists():
+        return {}, {}
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return {}, {}
+    if isinstance(data, dict) and isinstance(data.get("addresses"), dict):
+        raw_addresses = data.get("addresses") or {}
+        raw_meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    elif isinstance(data, dict):
+        raw_addresses = data
+        raw_meta = {}
+    else:
+        return {}, {}
+
+    normalized: dict[str, dict[str, Any]] = {}
+    for key, value in raw_addresses.items():
+        address = normalize_address(str(key))
+        if address and isinstance(value, dict):
+            normalized[address] = dict(value)
+    return normalized, dict(raw_meta)
+
+
+def save_address_pool(path: Path | None, pool: dict[str, dict[str, Any]], meta: dict[str, Any] | None = None) -> None:
+    if not path:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "meta": meta or {},
+                "addresses": pool,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n"
+    )
+
+
+def ensure_address_pool_entry(
+    pool: dict[str, dict[str, Any]],
+    address: str,
+    observed_at: int,
+    source: str,
+) -> dict[str, Any]:
+    entry = pool.get(address)
+    if entry is None:
+        entry = {
+            "first_seen_at": observed_at,
+            "first_seen_source": source,
+            "last_seen_at": observed_at,
+            "last_seen_source": source,
+            "tx_seen_total": 0,
+            "miner_seen_total": 0,
+            "log_seen_total": 0,
+            "upline_seen_total": 0,
+            "source_score_total": 0,
+            "discovery_rounds": 0,
+            "last_network_refresh_at": None,
+            "last_network_refresh_source": None,
+            "network_refresh_count": 0,
+            "first_seen_block": None,
+            "last_seen_block": None,
+        }
+        pool[address] = entry
+    else:
+        if entry.get("first_seen_at") is None:
+            entry["first_seen_at"] = observed_at
+        if entry.get("first_seen_source") is None:
+            entry["first_seen_source"] = source
+        if entry.get("last_seen_at") is None or int(observed_at) >= int(entry.get("last_seen_at") or 0):
+            entry["last_seen_at"] = observed_at
+            entry["last_seen_source"] = source
+    return entry
+
+
+def merge_address_pool_counters(
+    pool: dict[str, dict[str, Any]],
+    tx_counter: Counter[str],
+    miner_counter: Counter[str],
+    log_counter: Counter[str],
+    upline_counter: Counter[str],
+    observed_at: int,
+) -> int:
+    new_addresses = 0
+    source_specs = (
+        ("tx", tx_counter, "tx_seen_total", 10),
+        ("miner", miner_counter, "miner_seen_total", 20),
+        ("log", log_counter, "log_seen_total", 15),
+        ("upline", upline_counter, "upline_seen_total", 5),
+    )
+    for source, counter, total_key, weight in source_specs:
+        for address, count in counter.items():
+            if count <= 0:
+                continue
+            entry = pool.get(address)
+            if entry is None:
+                new_addresses += 1
+            entry = ensure_address_pool_entry(pool, address, observed_at, source)
+            entry[total_key] = int(entry.get(total_key, 0) or 0) + int(count)
+            entry["source_score_total"] = int(entry.get("source_score_total", 0) or 0) + int(count) * weight
+            entry["discovery_rounds"] = int(entry.get("discovery_rounds", 0) or 0) + 1
+    return new_addresses
+
+
+def add_cache_addresses_to_pool(
+    pool: dict[str, dict[str, Any]],
+    cache: dict[str, dict[str, Any]],
+    observed_at: int,
+) -> int:
+    added = 0
+    for address, payload in cache.items():
+        if address in pool:
+            continue
+        entry = ensure_address_pool_entry(pool, address, observed_at, "cache")
+        cached_at = payload.get("cached_at")
+        if isinstance(cached_at, int | float):
+            entry["last_network_refresh_at"] = int(cached_at)
+            entry["last_network_refresh_source"] = "cache"
+            entry["network_refresh_count"] = max(1, int(entry.get("network_refresh_count", 0) or 0))
+        added += 1
+    return added
+
+
+def mark_network_refresh(
+    pool: dict[str, dict[str, Any]],
+    address: str,
+    observed_at: int,
+    source: str,
+) -> None:
+    entry = pool.get(address)
+    if entry is None:
+        entry = ensure_address_pool_entry(pool, address, observed_at, source)
+    entry["last_network_refresh_at"] = observed_at
+    entry["last_network_refresh_source"] = source
+    entry["network_refresh_count"] = int(entry.get("network_refresh_count", 0) or 0) + 1
 
 
 def is_cache_entry_fresh(payload: dict[str, Any], ttl_seconds: int | None) -> bool:
@@ -1367,10 +1508,11 @@ def lookup_power_rows(
     args: argparse.Namespace,
     cache: dict[str, dict[str, Any]],
     progress_label: str,
-) -> tuple[list[RankedAddress], dict[str, dict[str, Any]], Counter[str]]:
+) -> tuple[list[RankedAddress], dict[str, dict[str, Any]], Counter[str], dict[str, str]]:
     rows: list[RankedAddress] = []
     cache_updates: dict[str, dict[str, Any]] = {}
     cache_stats: Counter[str] = Counter()
+    cache_status_by_address: dict[str, str] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         future_map = {
             pool.submit(fetch_power_payload, address, cache, args.cache_ttl_seconds): address
@@ -1384,6 +1526,7 @@ def lookup_power_rows(
                 print(f"[warn] power lookup failed for {address}: {exc}", file=sys.stderr)
                 continue
             cache_stats[cache_status] += 1
+            cache_status_by_address[returned_address] = cache_status
             cache_updates[returned_address] = payload
             row = build_row_from_payload(
                 returned_address,
@@ -1397,7 +1540,63 @@ def lookup_power_rows(
                 rows.append(row)
             if args.progress and idx % 100 == 0:
                 print(f"[info] {progress_label}: checked {idx}/{len(addresses)} candidates", file=sys.stderr)
-    return rows, cache_updates, cache_stats
+    return rows, cache_updates, cache_stats, cache_status_by_address
+
+
+def build_rows_from_pool(
+    pool: dict[str, dict[str, Any]],
+    cache: dict[str, dict[str, Any]],
+) -> list[RankedAddress]:
+    rows: list[RankedAddress] = []
+    for address, entry in pool.items():
+        payload = cache.get(address)
+        if not payload:
+            continue
+        row = build_row_from_payload(
+            address,
+            payload,
+            tx_seen=int(entry.get("tx_seen_total", 0) or 0),
+            miner_seen=int(entry.get("miner_seen_total", 0) or 0),
+            log_seen=int(entry.get("log_seen_total", 0) or 0),
+            upline_seen=int(entry.get("upline_seen_total", 0) or 0),
+        )
+        if row:
+            rows.append(row)
+    return rows
+
+
+def select_refresh_candidates(
+    pool: dict[str, dict[str, Any]],
+    cache: dict[str, dict[str, Any]],
+    current_scores: dict[str, int],
+    max_candidates: int,
+    cache_ttl_seconds: int | None,
+    observed_at: int,
+) -> list[str]:
+    if max_candidates <= 0:
+        budget = len(pool)
+    else:
+        budget = max_candidates
+    if budget <= 0:
+        return []
+
+    ranked: list[tuple[tuple[int, int, int, int, str], str]] = []
+    for address, entry in pool.items():
+        cached = cache.get(address)
+        if cached is not None and is_cache_entry_fresh(cached, cache_ttl_seconds):
+            continue
+        last_refresh_at = entry.get("last_network_refresh_at")
+        if isinstance(last_refresh_at, int | float):
+            refresh_age = max(0, observed_at - int(last_refresh_at))
+        else:
+            refresh_age = 10**12
+        current_score = int(current_scores.get(address, 0) or 0)
+        pool_score = int(entry.get("source_score_total", 0) or 0)
+        last_seen_at = int(entry.get("last_seen_at", 0) or 0)
+        ranked.append(((refresh_age, current_score, pool_score, last_seen_at, address), address))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return [address for _, address in ranked[:budget]]
 
 
 def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[str, Any]]:
@@ -1438,11 +1637,15 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             progress=args.progress,
         )
 
-    candidates = set(tx_counter) | set(miner_counter) | set(log_counter)
-    ordered_candidates = sorted(
-        candidates,
+    now = int(time.time())
+    current_scores = {
+        address: tx_counter[address] * 10 + miner_counter[address] * 20 + log_counter[address] * 15
+        for address in set(tx_counter) | set(miner_counter) | set(log_counter)
+    }
+    current_candidates = sorted(
+        current_scores,
         key=lambda addr: (
-            tx_counter[addr] * 10 + miner_counter[addr] * 20 + log_counter[addr] * 15,
+            current_scores[addr],
             log_counter[addr],
             tx_counter[addr],
             miner_counter[addr],
@@ -1450,15 +1653,44 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         ),
         reverse=True,
     )
-    if args.max_candidates:
-        ordered_candidates = ordered_candidates[: args.max_candidates]
 
     cache = load_cache(Path(args.cache_file) if args.cache_file else None)
+    pool_path = Path(args.address_pool_file) if getattr(args, "address_pool_file", None) else None
+    address_pool, address_pool_meta = load_address_pool(pool_path)
+    bootstrap_complete = bool(address_pool_meta.get("bootstrap_complete"))
+    add_cache_addresses_to_pool(address_pool, cache, now)
+    for address in current_candidates:
+        ensure_address_pool_entry(address_pool, address, now, "current")
+
+    if bootstrap_complete:
+        ordered_candidates = select_refresh_candidates(
+            address_pool,
+            cache,
+            current_scores,
+            args.max_candidates,
+            args.cache_ttl_seconds,
+            now,
+        )
+        refresh_mode = "incremental"
+    else:
+        ordered_candidates = sorted(
+            address_pool,
+            key=lambda addr: (
+                current_scores.get(addr, 0),
+                int(address_pool.get(addr, {}).get("source_score_total", 0) or 0),
+                int(address_pool.get(addr, {}).get("last_seen_at", 0) or 0),
+                addr,
+            ),
+            reverse=True,
+        )
+        refresh_mode = "bootstrap"
+    bootstrap_complete_after = bootstrap_complete or bool(ordered_candidates)
+
     cache_lookup_stats: Counter[str] = Counter()
     upline_counter: Counter[str] = Counter()
     rows_map: dict[str, RankedAddress] = {}
 
-    initial_rows, cache_updates, cache_stats = lookup_power_rows(
+    initial_rows, cache_updates, cache_stats, cache_status_by_address = lookup_power_rows(
         ordered_candidates,
         tx_counter,
         miner_counter,
@@ -1487,7 +1719,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             break
         seen_addresses.update(next_addresses)
         upline_counter.update(next_counter)
-        depth_rows, cache_updates, cache_stats = lookup_power_rows(
+        depth_rows, cache_updates, cache_stats, depth_cache_status = lookup_power_rows(
             next_addresses,
             tx_counter,
             miner_counter,
@@ -1499,6 +1731,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         )
         cache_lookup_stats.update(cache_stats)
         cache.update(cache_updates)
+        cache_status_by_address.update(depth_cache_status)
         for row in depth_rows:
             rows_map[row.address] = row
 
@@ -1534,7 +1767,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
 
         seen_addresses.update(next_addresses)
         tx_counter.update(history_counter)
-        depth_rows, cache_updates, cache_stats = lookup_power_rows(
+        depth_rows, cache_updates, cache_stats, depth_cache_status = lookup_power_rows(
             next_addresses,
             tx_counter,
             miner_counter,
@@ -1546,12 +1779,39 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         )
         cache_lookup_stats.update(cache_stats)
         cache.update(cache_updates)
+        cache_status_by_address.update(depth_cache_status)
         for row in depth_rows:
             rows_map[row.address] = row
 
-    save_cache(Path(args.cache_file) if args.cache_file else None, cache)
+    for address, status in cache_status_by_address.items():
+        if status == "refreshed":
+            mark_network_refresh(address_pool, address, now, "power")
 
-    all_rows = list(rows_map.values())
+    merge_address_pool_counters(
+        address_pool,
+        tx_counter,
+        miner_counter,
+        log_counter,
+        upline_counter,
+        now,
+    )
+    save_cache(Path(args.cache_file) if args.cache_file else None, cache)
+    pool_meta = {
+        "schema_version": 1,
+        "generated_at": now,
+        "generated_at_local": format_beijing_datetime(now),
+        "address_count": len(address_pool),
+        "cached_address_count": len(cache),
+        "selected_refresh_count": len(ordered_candidates),
+        "current_candidate_count": len(current_candidates),
+        "source_score_total": sum(int(entry.get("source_score_total", 0) or 0) for entry in address_pool.values()),
+        "bootstrap_complete": bootstrap_complete_after,
+        "refresh_mode": refresh_mode,
+    }
+    address_pool_meta.update(pool_meta)
+    save_address_pool(pool_path, address_pool, address_pool_meta)
+
+    all_rows = build_rows_from_pool(address_pool, cache)
     all_rows.sort(
         key=lambda row: (
             row.power,
@@ -1780,7 +2040,12 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "power_cache_refreshed": cache_lookup_stats.get("refreshed", 0),
         "power_cache_stale_fallbacks": cache_lookup_stats.get("stale_fallback", 0),
         "seed_candidate_count": len(ordered_candidates),
-        "candidate_count": len(seen_addresses),
+        "candidate_count": len(address_pool),
+        "address_pool_count": len(address_pool),
+        "bootstrap_complete": bootstrap_complete_after,
+        "refresh_mode": refresh_mode,
+        "address_pool_bootstrap_complete": bootstrap_complete_after,
+        "address_pool_refresh_mode": refresh_mode,
         "positive_power_count": len(all_rows),
         "explorer_total_addresses": explorer_total_addresses,
         "network_total_circulation_tokens": network_total_circulation_tokens,
@@ -1831,6 +2096,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="output", help="Directory for JSON and CSV outputs.")
     parser.add_argument("--prefix", default="marschain_power_rank", help="Output filename prefix.")
     parser.add_argument("--cache-file", default="output/marschain_power_cache.json", help="Power lookup cache JSON path.")
+    parser.add_argument("--address-pool-file", default=DEFAULT_ADDRESS_POOL_FILE, help="Persistent discovered address pool JSON path.")
     parser.add_argument(
         "--cache-ttl-seconds",
         type=int,

@@ -112,6 +112,16 @@ jobs:
             marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-
             marschain-power-cache-${{ runner.os }}-
 
+      - name: Restore address pool
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: output/marschain_address_pool.json
+          key: marschain-address-pool-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            marschain-address-pool-${{ runner.os }}-${{ github.ref_name }}-
+            marschain-address-pool-${{ runner.os }}-
+
       - name: Install dependencies
         if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
         run: |
@@ -328,6 +338,13 @@ jobs:
         with:
           path: output/marschain_power_cache.json
           key: marschain-power-cache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+
+      - name: Save address pool
+        if: ${{ always() && steps.preflight.outputs.skip_refresh != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: output/marschain_address_pool.json
+          key: marschain-address-pool-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
 
       - name: Deploy site to Alibaba Cloud OSS
         if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
