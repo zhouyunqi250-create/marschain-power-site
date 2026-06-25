@@ -2168,7 +2168,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
 }
 .trend-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 16px 24px 24px;
 }
@@ -2190,6 +2190,37 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   margin-top: 8px;
   font-size: 22px;
   letter-spacing: -.035em;
+  word-break: break-word;
+}
+.trend-stat b.is-multi {
+  display: grid;
+  gap: 6px;
+  font-size: 18px;
+  letter-spacing: 0;
+}
+.trend-stat-row {
+  display: grid;
+  grid-template-columns: minmax(82px, auto) minmax(0, 1fr);
+  align-items: baseline;
+  gap: 10px;
+  line-height: 1.25;
+}
+.trend-stat-row i {
+  color: #91a4bf;
+  font-family: var(--font);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 950;
+  letter-spacing: 0;
+}
+.trend-stat-row strong {
+  min-width: 0;
+  color: #eef8ff;
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: -.02em;
+  text-align: right;
   word-break: break-word;
 }
 .trend-stat small {
@@ -4394,6 +4425,10 @@ a { color: inherit; }
 .trend-stat { min-width: 0; padding: 12px; border: 1px solid rgba(86,239,255,.14); border-radius: 14px; background: rgba(255,255,255,.045); }
 .trend-stat span { display: block; color: #91a4bf; font-size: 12px; font-weight: 900; }
 .trend-stat b { display: block; margin-top: 8px; font-size: 18px; letter-spacing: -.035em; word-break: break-word; }
+.trend-stat b.is-multi { display: grid; gap: 6px; font-size: 16px; letter-spacing: 0; }
+.trend-stat-row { display: grid; grid-template-columns: minmax(74px, auto) minmax(0, 1fr); align-items: baseline; gap: 8px; line-height: 1.25; }
+.trend-stat-row i { color: #91a4bf; font-family: var(--font); font-size: 11px; font-style: normal; font-weight: 950; letter-spacing: 0; }
+.trend-stat-row strong { min-width: 0; color: #eef8ff; font-family: var(--mono); font-size: 16px; font-weight: 950; letter-spacing: -.02em; text-align: right; word-break: break-word; }
 .trend-stat small { display: block; margin-top: 4px; color: #72849d; font-size: 11px; line-height: 1.35; }
 .trend-foot { margin: -4px 16px 18px; color: #899bb6; font-size: 12px; line-height: 1.55; }
 .m-section { padding: 34px 0; }
@@ -5254,26 +5289,19 @@ SHARE_POSTER_JS = r"""
       ctx.stroke();
     });
 
-    fillRound(ctx, 52, 48, 188, 48, 24, 'rgba(10,30,58,.82)', 'rgba(86,239,255,.74)');
-    ctx.fillStyle = '#75f3a9';
-    ctx.font = '950 24px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('火星快报', 146, 80);
-
     fillRound(ctx, 650, 48, 320, 48, 24, 'rgba(255,232,106,.94)', 'rgba(255,232,106,.48)');
     ctx.fillStyle = '#071124';
     ctx.font = '950 24px "Microsoft YaHei", sans-serif';
     ctx.fillText(data.countdown, 810, 80);
 
     ctx.fillStyle = '#ffe86a';
-    ctx.font = '950 52px "Microsoft YaHei", sans-serif';
-    ctx.fillText('MarsChain 08:00', POSTER_WIDTH / 2, 148);
-    ctx.fillStyle = '#f6fbff';
-    ctx.font = '950 44px "Microsoft YaHei", sans-serif';
-    ctx.fillText('官方浏览器快报', POSTER_WIDTH / 2, 220);
-    ctx.fillStyle = '#aebbd3';
-    ctx.font = '900 22px "Microsoft YaHei", sans-serif';
-    fitText(ctx, `${data.reportDate} · ${data.windowText}`, POSTER_WIDTH / 2, 280, 850, '900 22px "Microsoft YaHei", sans-serif', 18, 'center');
+    ctx.font = '950 48px "Microsoft YaHei", sans-serif';
+    ctx.fillText('MarsChain 火星快报', POSTER_WIDTH / 2, 162);
+    fillRound(ctx, 210, 208, 604, 68, 28, 'rgba(5,14,31,.86)', 'rgba(86,239,255,.36)');
+    ctx.fillStyle = '#b9c7dd';
+    ctx.font = '900 24px "Microsoft YaHei", sans-serif';
+    fitText(ctx, data.windowText, POSTER_WIDTH / 2, 252, 560, '900 24px "Microsoft YaHei", sans-serif', 18, 'center');
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(86,239,255,.72)';
     ctx.fillRect(58, 294, 908, 3);
@@ -5346,14 +5374,31 @@ SHARE_POSTER_JS = r"""
 
     ctx.fillStyle = 'rgba(255,232,106,.58)';
     ctx.fillRect(54, 1256, 916, 2);
+    fillRound(ctx, 54, 1276, 736, 62, 22, 'rgba(8,22,43,.93)', 'rgba(255,232,106,.55)');
+    ctx.fillStyle = '#ffe86a';
+    ctx.fillRect(54, 1294, 5, 26);
+    fillRound(ctx, 80, 1291, 78, 32, 16, 'rgba(255,232,106,.96)');
+    ctx.fillStyle = '#071124';
+    ctx.font = '950 20px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('招募', 119, 1314);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f6fbff';
+    ctx.font = '950 25px "Microsoft YaHei", sans-serif';
+    ctx.fillText('申请 Mars 工作室', 184, 1315);
+    ctx.fillStyle = '#75f3a9';
+    ctx.font = '950 24px "Microsoft YaHei", sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('联系 QQ：3407186257', 760, 1315);
+    ctx.textAlign = 'left';
     ctx.fillStyle = '#8fa0bc';
     ctx.font = '800 18px "Microsoft YaHei", sans-serif';
-    ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1292);
-    ctx.fillText(`生成时间：${data.generatedAt}`, 54, 1328);
+    ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1368);
+    ctx.fillText(`生成时间：${data.generatedAt}`, 54, 1400);
     ctx.fillStyle = '#dce9ff';
     ctx.font = '950 25px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 850, 1412);
+    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 850, 1430);
     ctx.textAlign = 'left';
     const logo = ctx.createConicGradient(3.8, 894, 1378);
     logo.addColorStop(0, '#7bffcb');
@@ -5361,13 +5406,13 @@ SHARE_POSTER_JS = r"""
     logo.addColorStop(.55, '#f58aff');
     logo.addColorStop(.78, '#ffe86a');
     logo.addColorStop(1, '#7bffcb');
-    fillRound(ctx, 892, 1344, 78, 78, 22, logo);
+    fillRound(ctx, 892, 1358, 78, 78, 22, logo);
     ctx.fillStyle = '#071124';
-    fillRound(ctx, 904, 1356, 54, 54, 14, '#071124');
+    fillRound(ctx, 904, 1370, 54, 54, 14, '#071124');
     ctx.fillStyle = '#ffffff';
     ctx.font = '950 46px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('M', 931, 1400);
+    ctx.fillText('M', 931, 1414);
     ctx.textAlign = 'left';
   };
 
@@ -5569,6 +5614,20 @@ METRIC_TREND_JS = r"""
     '"': '&quot;',
     "'": '&#39;',
   }[char]));
+  const setTrendStat = (selector, rows) => {
+    const node = modal && modal.querySelector(selector);
+    if (!node) return;
+    const cleanRows = Array.isArray(rows) ? rows.filter(Boolean) : [{ label: '', value: rows }];
+    if (cleanRows.length > 1 || (cleanRows[0] && cleanRows[0].label)) {
+      node.classList.add('is-multi');
+      node.innerHTML = cleanRows.map((row) => (
+        `<span class="trend-stat-row"><i>${escapeHtml(row.label || '')}</i><strong>${escapeHtml(row.value || '待刷新')}</strong></span>`
+      )).join('');
+      return;
+    }
+    node.classList.remove('is-multi');
+    node.textContent = cleanRows[0] ? String(cleanRows[0].value || '待刷新') : '待刷新';
+  };
   const chartLabelIndexes = (count) => {
     if (count <= 0) return new Set();
     if (count <= 16) return new Set(Array.from({ length: count }, (_, index) => index));
@@ -5600,10 +5659,10 @@ METRIC_TREND_JS = r"""
         <div class="trend-legend" data-trend-legend></div>
         <div class="trend-chart" data-trend-chart></div>
         <div class="trend-stats">
-          <div class="trend-stat"><span>光标日期</span><b data-trend-focus-value>待刷新</b><small data-trend-focus-label></small></div>
+          <div class="trend-stat"><span>选中日期</span><b data-trend-focus-value>待刷新</b><small data-trend-focus-label></small></div>
           <div class="trend-stat"><span>最新值</span><b data-trend-latest>待刷新</b><small data-trend-latest-label></small></div>
-          <div class="trend-stat"><span>最低</span><b data-trend-min>待刷新</b><small data-trend-min-label></small></div>
-          <div class="trend-stat"><span>最高</span><b data-trend-max>待刷新</b><small data-trend-max-label></small></div>
+          <div class="trend-stat"><span>区间最低</span><b data-trend-min>待刷新</b><small data-trend-min-label></small></div>
+          <div class="trend-stat"><span>区间最高</span><b data-trend-max>待刷新</b><small data-trend-max-label></small></div>
         </div>
         <p class="trend-foot" data-trend-foot>拖动图表查看具体日期。</p>
       </section>
@@ -5631,27 +5690,27 @@ METRIC_TREND_JS = r"""
     if (seriesList.length > 1) {
       const focusRows = seriesList.map((series) => {
         const point = series.points[Math.min(focusIndex, series.points.length - 1)];
-        return `${series.label} ${formatTrendValue(point && point.value)}`;
+        return { label: series.label, value: formatTrendValue(point && point.value) };
       });
       const latestRows = seriesList.map((series) => {
         const point = series.points[series.points.length - 1];
-        return `${series.label} ${formatTrendValue(point && point.value)}`;
+        return { label: series.label, value: formatTrendValue(point && point.value) };
       });
       const focusPoint = seriesList[0].points[Math.min(focusIndex, seriesList[0].points.length - 1)];
       const latestPoint = seriesList[0].points[seriesList[0].points.length - 1];
-      modal.querySelector('[data-trend-focus-value]').textContent = focusRows.join(' / ');
+      setTrendStat('[data-trend-focus-value]', focusRows);
       modal.querySelector('[data-trend-focus-label]').textContent = focusPoint ? focusPoint.label : '';
-      modal.querySelector('[data-trend-latest]').textContent = latestRows.join(' / ');
+      setTrendStat('[data-trend-latest]', latestRows);
       modal.querySelector('[data-trend-latest-label]').textContent = latestPoint ? latestPoint.label : '';
-      modal.querySelector('[data-trend-min]').textContent = seriesList.map((series) => {
+      setTrendStat('[data-trend-min]', seriesList.map((series) => {
         const minPoint = series.points.reduce((best, item) => item.value < best.value ? item : best, series.points[0]);
-        return `${series.label} ${formatTrendValue(minPoint.value)}`;
-      }).join(' / ');
+        return { label: series.label, value: formatTrendValue(minPoint.value) };
+      }));
       modal.querySelector('[data-trend-min-label]').textContent = '各自区间最低';
-      modal.querySelector('[data-trend-max]').textContent = seriesList.map((series) => {
+      setTrendStat('[data-trend-max]', seriesList.map((series) => {
         const maxPoint = series.points.reduce((best, item) => item.value > best.value ? item : best, series.points[0]);
-        return `${series.label} ${formatTrendValue(maxPoint.value)}`;
-      }).join(' / ');
+        return { label: series.label, value: formatTrendValue(maxPoint.value) };
+      }));
       modal.querySelector('[data-trend-max-label]').textContent = '各自区间最高';
     } else {
       const point = activePoints[focusIndex];
@@ -5659,13 +5718,13 @@ METRIC_TREND_JS = r"""
       const minPoint = activePoints.reduce((best, item) => item.value < best.value ? item : best, activePoints[0]);
       const maxPoint = activePoints.reduce((best, item) => item.value > best.value ? item : best, activePoints[0]);
       const latest = activePoints[activePoints.length - 1];
-      modal.querySelector('[data-trend-focus-value]').textContent = formatTrendValue(point.value);
+      setTrendStat('[data-trend-focus-value]', formatTrendValue(point.value));
       modal.querySelector('[data-trend-focus-label]').textContent = point.label;
-      modal.querySelector('[data-trend-latest]').textContent = formatTrendValue(latest.value);
+      setTrendStat('[data-trend-latest]', formatTrendValue(latest.value));
       modal.querySelector('[data-trend-latest-label]').textContent = latest.label;
-      modal.querySelector('[data-trend-min]').textContent = formatTrendValue(Math.min(...values));
+      setTrendStat('[data-trend-min]', formatTrendValue(Math.min(...values)));
       modal.querySelector('[data-trend-min-label]').textContent = minPoint.label;
-      modal.querySelector('[data-trend-max]').textContent = formatTrendValue(Math.max(...values));
+      setTrendStat('[data-trend-max]', formatTrendValue(Math.max(...values)));
       modal.querySelector('[data-trend-max-label]').textContent = maxPoint.label;
     }
     modal.querySelectorAll('[data-cursor-index]').forEach((node) => {
@@ -6014,10 +6073,10 @@ LANGUAGE_TOGGLE_JS = r"""
     '一个月': 'Month',
     '一季度': 'Quarter',
     '全部': 'All',
-    '光标日期': 'Cursor Date',
+    '选中日期': 'Selected Date',
     '最新值': 'Latest',
-    '最低': 'Low',
-    '最高': 'High',
+    '区间最低': 'Range Low',
+    '区间最高': 'Range High',
     '拖动图表查看具体日期。': 'Drag across the chart to inspect each date.',
     '趋势采样中，等待下次刷新。': 'Trend sampling, waiting for the next refresh.'
   };
