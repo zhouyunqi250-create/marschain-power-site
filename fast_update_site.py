@@ -96,7 +96,31 @@ def load_public_metric_history(origin: str, site_dir: Path) -> list[dict]:
     return []
 
 
-def fetch_latest_block(rpc_url: str) -> int | None:
+def _as_int(value: object) -> int | None:
+    try:
+        if value is None or value == "":
+            return None
+        return int(float(str(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def fetch_latest_block(rpc_url: str, network_stats: dict | None = None) -> int | None:
+    if isinstance(network_stats, dict):
+        for key in ("latestBlockNumber", "chainBlockNumber", "blockNumber"):
+            value = _as_int(network_stats.get(key))
+            if value and value > 0:
+                return value
+    try:
+        blocks = request_json("/blocks", {"page": 1, "limit": 1})
+        if isinstance(blocks, dict):
+            block_rows = blocks.get("blocks")
+            if isinstance(block_rows, list) and block_rows:
+                value = _as_int(block_rows[0].get("number"))
+                if value and value > 0:
+                    return value
+    except Exception:
+        pass
     try:
         value = rpc_call(rpc_url, "eth_blockNumber")
     except Exception:
@@ -111,7 +135,7 @@ def build_fast_meta(base_meta: dict, origin_history: list[dict], rpc_url: str) -
     reference_timestamp = int(window_meta["statistics_window_end_timestamp"])
     network_stats = request_json("/stats")
     power_stats = request_json("/power/stats")
-    latest_block = fetch_latest_block(rpc_url)
+    latest_block = fetch_latest_block(rpc_url, network_stats)
 
     total_power = int(power_stats.get("totalPower", "0") or 0) if isinstance(power_stats, dict) else 0
     total_burned = int(power_stats.get("totalBurnedTokens", "0") or 0) if isinstance(power_stats, dict) else 0

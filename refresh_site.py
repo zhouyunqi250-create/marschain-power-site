@@ -94,6 +94,10 @@ EXTRA_BUILD_META_KEYS = [
     "today_burned_tokens",
     "today_burned_display",
     "today_burned_basis",
+    "today_new_blocks",
+    "today_new_blocks_basis",
+    "statistics_window_new_blocks",
+    "statistics_window_new_blocks_basis",
     "today_local_date",
     "fast_update_only",
     "fast_metrics_ready",
@@ -415,6 +419,15 @@ def apply_official_delta_meta(meta: dict, metric_history: list[dict], fallback_m
             updated["today_burned_display"] = format_token_chinese(delta_burned)
             updated["statistics_window_burned_basis"] = "official /power/stats totalBurnedTokens minus previous completed 08:00 totalBurnedTokens"
             updated["today_burned_basis"] = updated["statistics_window_burned_basis"]
+
+    current_block = _as_metric_number(updated.get("latest_block"))
+    previous_block = previous_metric_value(metric_history, "latest_block", current_end, fallback_meta)
+    if current_block is not None and previous_block is not None:
+        delta_blocks = current_block - previous_block
+        updated["statistics_window_new_blocks"] = delta_blocks
+        updated["today_new_blocks"] = delta_blocks
+        updated["statistics_window_new_blocks_basis"] = "official explorer latestBlockNumber minus previous completed 08:00 latestBlockNumber"
+        updated["today_new_blocks_basis"] = updated["statistics_window_new_blocks_basis"]
 
     return updated
 

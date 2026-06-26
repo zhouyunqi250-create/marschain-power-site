@@ -111,7 +111,6 @@ jobs:
               "MarsChain 火星快报",
               "日交易币量",
               "每日交易笔数",
-              "沿用上期，待全量扫描",
               "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
           ]
           missing = [marker for marker in required if marker not in desktop]
