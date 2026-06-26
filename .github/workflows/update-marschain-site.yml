@@ -186,12 +186,12 @@ jobs:
           python backfill_metric_history.py --site-dir site --repo "$GITHUB_REPOSITORY" --max-runs 10
 
       - name: Refresh site with best-effort coverage
-        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && !((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && github.event_name != 'push' && !(github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
 
       - name: Rebuild site shell from current public data
-        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && ((github.event_name == 'push' && contains(github.event.head_commit.message, '[site-only]')) || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
         run: |
           python - <<'PY'
           import json
