@@ -3922,6 +3922,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     total_wallet_points = _trend_points(meta, "total_wallets", [explorer_total_addresses])
     daily_active_address_points = _trend_points(meta, "daily_active_addresses", [active_wallet_count])
     daily_new_address_points = _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))
+    positive_power_address_points = _trend_points(meta, "positive_power_addresses", [positive_power_count])
     circulation_points = _trend_points(meta, "network_total_circulation", [total_circulation_tokens])
     total_burned_points = _trend_points(
         meta,
@@ -3954,13 +3955,15 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         "secondary_items": [
             {"label": "新增地址", "value": _fmt_count_unit(new_address_count), "note": "08:00 统计日新增"},
             {"label": "活跃地址", "value": _fmt_count_unit(active_wallet_count), "note": "同一统计窗口内活跃"},
+            {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址合并查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址合并查看。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
             {"key": "daily_active_addresses", "label": "活跃地址", "points": daily_active_address_points},
+            {"key": "positive_power_addresses", "label": "正算力地址", "points": positive_power_address_points},
         ],
     }
     merged_supply_extra = {
@@ -5992,6 +5995,8 @@ LANGUAGE_TOGGLE_JS = r"""
     '从 POWER 合约日志发现的相关地址，仍需要逐个查询当前算力。': 'Related addresses found from POWER contract logs; each still needs a current power query.',
     '算力 > 0': 'Power > 0',
     '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
+    '当前算力大于 0': 'Current power > 0',
+    '总钱包、新增地址、活跃地址、正算力地址合并查看。': 'Combined view of total wallets, new addresses, active addresses, and positive-power addresses.',
     '05 / 数据说明': '05 / Data Notes',
     '数据来源与准确性说明': 'Data Sources and Accuracy',
     '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
@@ -6425,6 +6430,7 @@ def build_mobile_html(payload: dict) -> str:
     total_wallet_points = _trend_points(meta, "total_wallets", [explorer_total_addresses])
     daily_active_address_points = _trend_points(meta, "daily_active_addresses", [active_wallet_count])
     daily_new_address_points = _trend_points(meta, "daily_new_addresses", _trend_average_points(new_address_count, period_7d_new_address_count, period_30d_new_address_count))
+    positive_power_address_points = _trend_points(meta, "positive_power_addresses", [positive_power_count])
     circulation_points = _trend_points(meta, "network_total_circulation", [total_circulation_tokens])
     total_burned_points = _trend_points(
         meta,
@@ -6457,13 +6463,15 @@ def build_mobile_html(payload: dict) -> str:
         "secondary_items": [
             {"label": "新增地址", "value": _fmt_count_unit(new_address_count), "note": "08:00 统计日新增"},
             {"label": "活跃地址", "value": _fmt_count_unit(active_wallet_count), "note": "同一统计窗口内活跃"},
+            {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址合并查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址合并查看。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
             {"key": "daily_active_addresses", "label": "活跃地址", "points": daily_active_address_points},
+            {"key": "positive_power_addresses", "label": "正算力地址", "points": positive_power_address_points},
         ],
     }
     merged_supply_extra = {
