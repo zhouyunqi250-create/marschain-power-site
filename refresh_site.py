@@ -17,6 +17,43 @@ from price_data import build_price_payload_from_meta, load_price_file
 PUBLIC_RANK_LIMIT = 100
 METRIC_HISTORY_LIMIT = 90
 
+OFFICIAL_FAST_META_KEYS = (
+    "network_total_power",
+    "network_total_burned_tokens",
+    "network_total_burned_display",
+    "explorer_total_addresses",
+    "network_total_circulation_tokens",
+    "network_total_circulation_display",
+    "network_current_price",
+    "network_current_price_display",
+    "network_highest_price",
+    "network_highest_price_display",
+    "network_lowest_price",
+    "network_lowest_price_display",
+    "latest_block",
+    "rpc_latest_block",
+    "statistics_window_start_total_power",
+    "statistics_window_end_total_power",
+    "statistics_window_new_power",
+    "statistics_window_new_power_basis",
+    "today_new_power",
+    "today_new_power_basis",
+    "statistics_window_new_candidate_address_count",
+    "statistics_window_new_candidate_address_basis",
+    "today_new_wallet_count",
+    "today_new_wallet_basis",
+    "statistics_window_burned_tokens",
+    "statistics_window_burned_display",
+    "statistics_window_burned_basis",
+    "today_burned_tokens",
+    "today_burned_display",
+    "today_burned_basis",
+    "statistics_window_new_blocks",
+    "statistics_window_new_blocks_basis",
+    "today_new_blocks",
+    "today_new_blocks_basis",
+)
+
 METRIC_SNAPSHOT_FIELDS = {
     "network_total_power": "network_total_power",
     "network_total_circulation": "network_total_circulation_tokens",
@@ -102,6 +139,7 @@ EXTRA_BUILD_META_KEYS = [
     "fast_update_only",
     "fast_metrics_ready",
     "fast_metrics_generated_at",
+    "fast_metrics_cutoff_locked",
     "full_scan_statistics_window_end_timestamp",
     "full_scan_statistics_window_end_local",
     "emission_basis",
@@ -432,6 +470,23 @@ def apply_official_delta_meta(meta: dict, metric_history: list[dict], fallback_m
     return updated
 
 
+def preserve_fast_official_meta(scan_meta: dict, fast_meta: dict | None) -> dict:
+    if not isinstance(fast_meta, dict):
+        return scan_meta
+    if not fast_meta.get("fast_metrics_ready"):
+        return scan_meta
+    if fast_meta.get("statistics_window_end_timestamp") != scan_meta.get("statistics_window_end_timestamp"):
+        return scan_meta
+    updated = dict(scan_meta)
+    for key in OFFICIAL_FAST_META_KEYS:
+        if key in fast_meta:
+            updated[key] = fast_meta.get(key)
+    updated["fast_metrics_ready"] = True
+    updated["fast_metrics_generated_at"] = fast_meta.get("fast_metrics_generated_at") or fast_meta.get("generated_at")
+    updated["fast_metrics_cutoff_locked"] = True
+    return updated
+
+
 def build_metric_trends(meta: dict, metric_history: list[dict]) -> dict:
     trends: dict[str, dict] = {}
     daily_power_history = meta.get("daily_total_power_history")
@@ -571,6 +626,14 @@ def main() -> int:
     chosen_meta["target_met"] = target_met
     chosen_meta["tier_label"] = chosen_label
     existing_metric_history = load_metric_history(site_dir)
+    fast_meta: dict | None = None
+    latest_public_path = site_dir / "data" / "latest.json"
+    if latest_public_path.exists():
+        try:
+            fast_meta = json.loads(latest_public_path.read_text(encoding="utf-8")).get("meta")
+        except Exception:
+            fast_meta = None
+    chosen_meta = preserve_fast_official_meta(chosen_meta, fast_meta)
     chosen_meta = apply_official_delta_meta(chosen_meta, existing_metric_history)
     chosen_meta["fast_update_only"] = False
     chosen_meta["full_scan_statistics_window_end_timestamp"] = chosen_meta.get("statistics_window_end_timestamp")

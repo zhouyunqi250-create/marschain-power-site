@@ -2,20 +2,8 @@ name: Fast Update MarsChain Site
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/workflows/fast-update-marschain-site.yml"
-      - "build_frontend_dashboard.py"
-      - "deploy_to_oss.py"
-      - "fast_update_site.py"
-      - "marschain_power_rank.py"
-      - "price_data.py"
-      - "refresh_site.py"
-      - "requirements.txt"
   schedule:
-    - cron: "1,4,7 0 * * *"
+    - cron: "0-7 0 * * *"
 
 permissions:
   contents: read
@@ -98,7 +86,8 @@ jobs:
             --site-dir site \
             --output-dir output \
             --origin "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com" \
-            --rpc-url "https://rpcs.marschain.net"
+            --rpc-url "https://rpcs.marschain.net" \
+            --max-cutoff-lag-minutes 10
 
       - name: Verify fast refresh markers
         if: ${{ steps.preflight.outputs.skip != 'true' }}

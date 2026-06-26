@@ -41,6 +41,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="output", help="Directory for generated ranking files.")
     parser.add_argument("--origin", default=DEFAULT_PUBLIC_ORIGIN, help="Public site origin used to restore the last published data.")
     parser.add_argument("--rpc-url", default=DEFAULT_RPC_URL, help="Public JSON-RPC endpoint.")
+    parser.add_argument(
+        "--max-cutoff-lag-minutes",
+        type=int,
+        default=10,
+        help="Refuse to publish realtime official stats when the run starts too far after the 08:00 cutoff.",
+    )
     return parser.parse_args()
 
 
@@ -128,11 +134,20 @@ def fetch_latest_block(rpc_url: str, network_stats: dict | None = None) -> int |
     return hex_to_int(value) if isinstance(value, str) else None
 
 
-def build_fast_meta(base_meta: dict, origin_history: list[dict], rpc_url: str) -> dict:
+def build_fast_meta(base_meta: dict, origin_history: list[dict], rpc_url: str, max_cutoff_lag_minutes: int) -> dict:
     meta = dict(base_meta)
     now = int(time.time())
     window_meta = build_statistics_window_meta(now)
     reference_timestamp = int(window_meta["statistics_window_end_timestamp"])
+    cutoff_lag_seconds = now - reference_timestamp
+    if max_cutoff_lag_minutes >= 0 and cutoff_lag_seconds > max_cutoff_lag_minutes * 60:
+        cutoff_local = window_meta.get("statistics_window_end_local")
+        generated_local = format_beijing_datetime(now)
+        raise RuntimeError(
+            f"Fast official snapshot is {cutoff_lag_seconds // 60} minutes after cutoff "
+            f"({cutoff_local}); refuse to publish realtime stats as strict 08:00 data. "
+            f"Run time: {generated_local}."
+        )
     network_stats = request_json("/stats")
     power_stats = request_json("/power/stats")
     latest_block = fetch_latest_block(rpc_url, network_stats)
@@ -241,7 +256,7 @@ def main() -> int:
     base_meta = dict(base_payload.get("meta") or {})
     public_history = load_public_metric_history(args.origin, site_dir)
 
-    meta = build_fast_meta(base_meta, public_history, args.rpc_url)
+    meta = build_fast_meta(base_meta, public_history, args.rpc_url, args.max_cutoff_lag_minutes)
     payload = {"meta": meta, "rows": list(base_payload.get("rows") or [])}
 
     metric_history = merge_metric_history(public_history, build_metric_snapshot(meta))
