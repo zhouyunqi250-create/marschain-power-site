@@ -5057,7 +5057,7 @@ SHARE_POSTER_JS = r"""
       ].join(';');
       document.body.appendChild(notice);
     }
-    notice.textContent = '数据统计中，今日 08:01 官方快照更新完成后可生成快报。';
+    notice.textContent = '数据统计中，更新完成后可生成快报。';
     notice.style.opacity = '1';
     window.clearTimeout(notice._hideTimer);
     notice._hideTimer = window.setTimeout(() => { notice.style.opacity = '0'; }, 3200);

@@ -2,8 +2,20 @@ name: Fast Update MarsChain Site
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/fast-update-marschain-site.yml"
+      - "build_frontend_dashboard.py"
+      - "deploy_to_oss.py"
+      - "fast_update_site.py"
+      - "marschain_power_rank.py"
+      - "price_data.py"
+      - "refresh_site.py"
+      - "requirements.txt"
   schedule:
-    - cron: "1 0 * * *"
+    - cron: "1,4,7 0 * * *"
 
 permissions:
   contents: read
@@ -33,7 +45,39 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Preflight fast update guard
+        id: preflight
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import json
+          import os
+          import urllib.request
+
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
+          expected_end = now_beijing.replace(hour=8, minute=0, second=0, microsecond=0)
+          expected_end_ts = int(expected_end.timestamp())
+          url = f"https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com/data/latest.json?v={int(now_utc.timestamp())}"
+          latest_end_ts = None
+          try:
+              request = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  payload = json.loads(response.read().decode("utf-8"))
+              meta = payload.get("meta") or {}
+              latest_end_ts = meta.get("statistics_window_end_timestamp")
+          except Exception as exc:
+              print(f"preflight fetch failed, continue fast update: {exc}")
+          print(f"latest_end_ts={latest_end_ts} expected_end_ts={expected_end_ts}")
+          if isinstance(latest_end_ts, int) and latest_end_ts >= expected_end_ts:
+              with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+                  fh.write("skip=true\n")
+              print("Fast metrics already refreshed for today's 08:00 window; skip duplicate run.")
+          PY
+
       - name: Setup Python
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -41,11 +85,13 @@ jobs:
           cache-dependency-path: "requirements.txt"
 
       - name: Install dependencies
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Fast refresh from official snapshot
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python fast_update_site.py \
@@ -55,6 +101,7 @@ jobs:
             --rpc-url "https://rpcs.marschain.net"
 
       - name: Verify fast refresh markers
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -73,6 +120,7 @@ jobs:
           PY
 
       - name: Deploy site to Alibaba Cloud OSS
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python deploy_to_oss.py \
