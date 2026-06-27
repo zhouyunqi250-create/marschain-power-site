@@ -1,9 +1,11 @@
+# Runs fast official metrics at Beijing 08:00, then retries once at 08:06.
+# GitHub scheduled workflows have a 5-minute minimum interval; preflight skips duplicates.
 name: Fast Update MarsChain Site
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0-7 0 * * *"
+    - cron: "0,6 0 * * *"
 
 permissions:
   contents: read
@@ -93,16 +95,27 @@ jobs:
         if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
           python - <<'PY'
+          import datetime as dt
+          import json
           from pathlib import Path
 
-          desktop = Path("site/index.html").read_text(encoding="utf-8")
-          required = [
-              "MarsChain 火星快报",
-              "日交易币量",
-              "每日交易笔数",
-              "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
-          ]
-          missing = [marker for marker in required if marker not in desktop]
+          payload = json.loads(Path("site/data/latest.json").read_text(encoding="utf-8"))
+          meta = payload.get("meta") or {}
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
+          expected_end = now_beijing.replace(hour=8, minute=0, second=0, microsecond=0)
+          expected_end_ts = int(expected_end.timestamp())
+          checks = {
+              "fast_metrics_ready": meta.get("fast_metrics_ready") is True,
+              "fast_update_only": meta.get("fast_update_only") is True,
+              "statistics_window_end_timestamp": meta.get("statistics_window_end_timestamp") == expected_end_ts,
+              "network_total_power": meta.get("network_total_power") is not None,
+              "network_total_burned_tokens": meta.get("network_total_burned_tokens") is not None,
+              "explorer_total_addresses": meta.get("explorer_total_addresses") is not None,
+              "today_new_power": meta.get("today_new_power") is not None,
+              "today_burned_display": bool(meta.get("today_burned_display")),
+          }
+          missing = [name for name, ok in checks.items() if not ok]
           if missing:
               raise SystemExit(f"fast refresh verification failed: {missing}")
           PY
