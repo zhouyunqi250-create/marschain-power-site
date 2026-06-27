@@ -5401,25 +5401,6 @@ SHARE_POSTER_JS = r"""
       }
     });
 
-    ctx.fillStyle = 'rgba(255,232,106,.58)';
-    ctx.fillRect(54, 1256, 916, 2);
-    fillRound(ctx, 54, 1276, 736, 62, 22, 'rgba(8,22,43,.93)', 'rgba(255,232,106,.55)');
-    ctx.fillStyle = '#ffe86a';
-    ctx.fillRect(54, 1294, 5, 26);
-    fillRound(ctx, 80, 1291, 78, 32, 16, 'rgba(255,232,106,.96)');
-    ctx.fillStyle = '#071124';
-    ctx.font = '950 20px "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('招募', 119, 1314);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = '#f6fbff';
-    ctx.font = '950 25px "Microsoft YaHei", sans-serif';
-    ctx.fillText('申请 Mars 工作室', 184, 1315);
-    ctx.fillStyle = '#75f3a9';
-    ctx.font = '950 24px "Microsoft YaHei", sans-serif';
-    ctx.textAlign = 'right';
-    ctx.fillText('联系 QQ：3407186257', 760, 1315);
-    ctx.textAlign = 'left';
     ctx.fillStyle = '#8fa0bc';
     ctx.font = '800 18px "Microsoft YaHei", sans-serif';
     ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1368);
