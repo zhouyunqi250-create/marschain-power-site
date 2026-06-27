@@ -5582,13 +5582,14 @@ METRIC_TREND_JS = r"""
     'period_30d_burned',
   ]);
   const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-  const displayNumber = (value) => {
+  const displayNumber = (value, metricKey = null) => {
     const number = Number(value);
     if (!Number.isFinite(number)) return NaN;
-    return activeMetric && TOKEN_WEI_METRICS.has(activeMetric.key) ? number / 1e18 : number;
+    const key = metricKey || (activeMetric && activeMetric.key);
+    return TOKEN_WEI_METRICS.has(key) ? number / 1e18 : number;
   };
-  const formatTrendValue = (value) => {
-    const number = displayNumber(value);
+  const formatTrendValue = (value, metricKey = null) => {
+    const number = displayNumber(value, metricKey);
     if (!Number.isFinite(number)) return '待刷新';
     const abs = Math.abs(number);
     if (abs >= 1_0000_0000_0000) return `${trimZeros((number / 1_0000_0000_0000).toFixed(3))}万亿`;
@@ -5719,11 +5720,11 @@ METRIC_TREND_JS = r"""
     if (seriesList.length > 1) {
       const focusRows = seriesList.map((series) => {
         const point = series.points[Math.min(focusIndex, series.points.length - 1)];
-        return { label: series.label, value: formatTrendValue(point && point.value) };
+        return { label: series.label, value: formatTrendValue(point && point.value, series.key) };
       });
       const latestRows = seriesList.map((series) => {
         const point = series.points[series.points.length - 1];
-        return { label: series.label, value: formatTrendValue(point && point.value) };
+        return { label: series.label, value: formatTrendValue(point && point.value, series.key) };
       });
       const focusPoint = seriesList[0].points[Math.min(focusIndex, seriesList[0].points.length - 1)];
       const latestPoint = seriesList[0].points[seriesList[0].points.length - 1];
@@ -5733,12 +5734,12 @@ METRIC_TREND_JS = r"""
       modal.querySelector('[data-trend-latest-label]').textContent = latestPoint ? latestPoint.label : '';
       setTrendStat('[data-trend-min]', seriesList.map((series) => {
         const minPoint = series.points.reduce((best, item) => item.value < best.value ? item : best, series.points[0]);
-        return { label: series.label, value: formatTrendValue(minPoint.value) };
+        return { label: series.label, value: formatTrendValue(minPoint.value, series.key) };
       }));
       modal.querySelector('[data-trend-min-label]').textContent = '各自区间最低';
       setTrendStat('[data-trend-max]', seriesList.map((series) => {
         const maxPoint = series.points.reduce((best, item) => item.value > best.value ? item : best, series.points[0]);
-        return { label: series.label, value: formatTrendValue(maxPoint.value) };
+        return { label: series.label, value: formatTrendValue(maxPoint.value, series.key) };
       }));
       modal.querySelector('[data-trend-max-label]').textContent = '各自区间最高';
     } else {
