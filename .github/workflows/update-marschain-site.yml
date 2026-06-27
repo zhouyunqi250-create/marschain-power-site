@@ -301,8 +301,6 @@ jobs:
               "data-live-oracle-trigger-price",
               "SHARE POSTER",
               "MarsChain 火星快报",
-              "申请 Mars 工作室",
-              "联系 QQ：3407186257",
               "每日交易币量",
               "每日交易笔数",
               "选中日期",
@@ -312,7 +310,17 @@ jobs:
               "数据来源：官方浏览器 / POWER合约 / MarsChain Rank",
           ]
           missing = [marker for marker in required_markers if marker not in desktop_html]
-          forbidden = [marker for marker in ("MarsChain 今日算力战报", "数据来源：MarsChain Rank / explorer.marschain.net") if marker in desktop_html]
+          forbidden = [
+              marker
+              for marker in (
+                  "MarsChain 今日算力战报",
+                  "数据来源：MarsChain Rank / explorer.marschain.net",
+                  "申请 Mars 工作室",
+                  "联系 QQ：3407186257",
+                  "3407186257",
+              )
+              if marker in desktop_html
+          ]
           if missing or forbidden:
               raise SystemExit(f"frontend shell verification failed: missing={missing}, forbidden={forbidden}")
 
