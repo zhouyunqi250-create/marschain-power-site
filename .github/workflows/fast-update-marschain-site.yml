@@ -1,13 +1,13 @@
-# Prewarms before Beijing 08:00, waits until the cutoff, then publishes the
-# official snapshot as quickly as possible. Extra 08:00-08:10 schedules are
+# Prewarms at Beijing 07:58, waits until the 08:00 cutoff, then publishes the
+# official snapshot as quickly as possible. Extra 08:00-08:15 schedules are
 # lightweight fallbacks; preflight skips duplicates once today's snapshot lands.
 name: Fast Update MarsChain Site
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "50,55 23 * * *"
-    - cron: "0,5,10 0 * * *"
+    - cron: "58 23 * * *"
+    - cron: "0,2,5,8,10,15 0 * * *"
 
 permissions:
   contents: read

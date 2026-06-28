@@ -1,4 +1,4 @@
-# Runs every 5 minutes from Beijing 08:05 to 09:00.
+# Runs every 5 minutes from Beijing 08:06 to 09:06.
 # Preflight skips duplicate crawls once today's 08:00 window has been collected.
 name: Update MarsChain Site
 
@@ -28,8 +28,8 @@ on:
       - "refresh_site.py"
       - "requirements.txt"
   schedule:
-    - cron: "5-55/5 0 * * *"
-    - cron: "0 1 * * *"
+    - cron: "6-56/5 0 * * *"
+    - cron: "1,6 1 * * *"
 
 permissions:
   contents: read

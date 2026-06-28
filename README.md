@@ -4,7 +4,7 @@
 
 当前方案：
 
-- 使用 GitHub Actions 每日 08:00 起快速刷新官方快照，08:05 起继续全量扫描和站点更新
+- 使用 GitHub Actions 每日 07:58 预热，08:00 起快速刷新官方快照，08:06 起继续全量扫描和站点更新；价格任务同时做 08:00 自动更新兜底巡检
 - 基于公开 RPC 扫描 POWER 合约日志，扫描窗口设为 1000 万块以覆盖当前全链，尽量提高覆盖率
 - 算力缓存默认 3 小时过期，短于 24 小时定时周期，避免定时刷新继续使用旧算力
 - 首页明确展示全链地址、算力候选钱包、正算力钱包、链上今日新增钱包和链上今日新增总算力
@@ -25,7 +25,7 @@
 - [scripts/deploy_paid_download_backend.py](scripts/deploy_paid_download_backend.py)：创建私有下载桶并部署付费核销函数
 - [ALIYUN_DEPLOY.md](ALIYUN_DEPLOY.md)：阿里云上线步骤和 GitHub Secrets 配置说明
 - [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：08:05 起的全量更新工作流
-- [fast-update-marschain-site.yml](.github/workflows/fast-update-marschain-site.yml)：每日 08:00 起的官方快照快更工作流
+- [fast-update-marschain-site.yml](.github/workflows/fast-update-marschain-site.yml)：每日 07:58 预热、08:00 起的官方快照快更工作流
 - [deploy-paid-download.yml](.github/workflows/deploy-paid-download.yml)：付费下载后端部署工作流
 
 ## 本地运行
