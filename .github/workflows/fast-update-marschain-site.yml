@@ -1,11 +1,13 @@
-# Runs fast official metrics at Beijing 08:00, then retries once at 08:06.
-# GitHub scheduled workflows have a 5-minute minimum interval; preflight skips duplicates.
+# Prewarms before Beijing 08:00, waits until the cutoff, then publishes the
+# official snapshot as quickly as possible. Extra 08:00-08:10 schedules are
+# lightweight fallbacks; preflight skips duplicates once today's snapshot lands.
 name: Fast Update MarsChain Site
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0,6 0 * * *"
+    - cron: "50,55 23 * * *"
+    - cron: "0,5,10 0 * * *"
 
 permissions:
   contents: read
@@ -80,6 +82,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Wait for Beijing 08:00 cutoff
+        if: ${{ steps.preflight.outputs.skip != 'true' }}
+        run: |
+          python3 - <<'PY'
+          import datetime as dt
+          import time
+
+          now_utc = dt.datetime.now(dt.timezone.utc)
+          now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
+          target = now_beijing.replace(hour=8, minute=0, second=5, microsecond=0)
+          if now_beijing < target:
+              wait_seconds = int((target - now_beijing).total_seconds())
+              print(f"Waiting {wait_seconds}s for Beijing 08:00 official snapshot cutoff.")
+              time.sleep(wait_seconds)
+          else:
+              print(f"Beijing 08:00 cutoff has passed: {now_beijing:%Y-%m-%d %H:%M:%S}.")
+          PY
+
       - name: Fast refresh from official snapshot
         if: ${{ steps.preflight.outputs.skip != 'true' }}
         run: |
@@ -89,7 +109,7 @@ jobs:
             --output-dir output \
             --origin "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com" \
             --rpc-url "https://rpcs.marschain.net" \
-            --max-cutoff-lag-minutes 10
+            --max-cutoff-lag-minutes 12
 
       - name: Verify fast refresh markers
         if: ${{ steps.preflight.outputs.skip != 'true' }}

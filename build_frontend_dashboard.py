@@ -145,8 +145,8 @@ def build_html(payload: dict) -> str:
     hero_meta_items = [
         f"最近刷新：{generated_at}",
         f"统计周期：{statistics_window_label}",
-        "采集频率：每日 08:01 官方快照 / 08:05 全量扫描",
-        "抓取时间：北京时间 08:01 起",
+        "采集频率：每日 08:00 官方快照",
+        "抓取时间：北京时间 08:00",
     ]
     if int(meta.get("tx_pages", 0) or 0) > 0:
         hero_meta_items.append(f'交易扫描：{int(meta.get("tx_pages", 0))} 页')
@@ -4064,8 +4064,8 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     timeline_items = [
         ("最近刷新", generated_at),
         ("统计周期", statistics_window_label),
-        ("采集频率", "每日 08:01 官方快照 / 08:05 全量扫描"),
-        ("抓取时间", "北京时间 08:01 起"),
+        ("采集频率", "每日 08:00 官方快照"),
+        ("抓取时间", "北京时间 08:00"),
         ("全网流通量", circulation),
         ("当前价格", current_price),
         ("最高价格", highest_price),
@@ -6026,9 +6026,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '最近刷新': 'Last Refresh',
     '统计周期': 'Statistics Window',
     '采集频率': 'Collection Frequency',
-    '每日 08:01 官方快照 / 08:05 全量扫描': 'Daily 08:01 Snapshot / 08:05 Full Scan',
+    '每日 08:00 官方快照': 'Daily 08:00 Official Snapshot',
     '抓取时间': 'Collection Time',
-    '北京时间 08:01 起': 'From 08:01 Beijing Time',
+    '北京时间 08:00': '08:00 Beijing Time',
     '区块浏览器公开统计': 'Public explorer statistics',
     '区块浏览器公开报价': 'Public explorer quote',
     '官网口径：永不增发': 'Official rule: no additional issuance',
@@ -6558,8 +6558,8 @@ def build_mobile_html(payload: dict) -> str:
         [
             ("最近刷新", generated_at),
             ("统计周期", statistics_window_label),
-            ("采集频率", "每日 08:01 官方快照 / 08:05 全量扫描"),
-            ("抓取时间", "北京时间 08:01 起"),
+            ("采集频率", "每日 08:00 官方快照"),
+            ("抓取时间", "北京时间 08:00"),
             ("全网流通量", circulation),
             ("当前价格", current_price),
             ("最高价格", highest_price),
