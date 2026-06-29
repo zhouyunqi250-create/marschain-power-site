@@ -77,9 +77,19 @@ jobs:
           now_utc = dt.datetime.now(dt.timezone.utc)
           now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
           minute_of_day = now_beijing.hour * 60 + now_beijing.minute
-          if not (7 * 60 + 58 <= minute_of_day <= 9 * 60 + 30):
+          if not (7 * 60 + 55 <= minute_of_day <= 9 * 60 + 30):
               print(f"outside daily watchdog window: {now_beijing:%Y-%m-%d %H:%M:%S}")
               raise SystemExit(0)
+
+          fast_prewarm = now_beijing.replace(hour=7, minute=58, second=0, microsecond=0)
+          if now_beijing < fast_prewarm:
+              wait_seconds = int((fast_prewarm - now_beijing).total_seconds())
+              print(f"early watchdog trigger; waiting {wait_seconds}s until Beijing 07:58 prewarm.")
+              import time
+              time.sleep(wait_seconds)
+              now_utc = dt.datetime.now(dt.timezone.utc)
+              now_beijing = now_utc.astimezone(dt.timezone(dt.timedelta(hours=8)))
+              minute_of_day = now_beijing.hour * 60 + now_beijing.minute
 
           expected_end = now_beijing.replace(hour=8, minute=0, second=0, microsecond=0)
           expected_end_ts = int(expected_end.timestamp())
