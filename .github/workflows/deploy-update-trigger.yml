@@ -1,0 +1,51 @@
+name: Deploy MarsChain Update Trigger
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-update-trigger.yml"
+      - "marschain_update_trigger.py"
+      - "scripts/deploy_update_trigger.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-update-trigger
+  cancel-in-progress: false
+
+jobs:
+  deploy-update-trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+      ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+      ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+      MARSCHAIN_GITHUB_TOKEN: ${{ secrets.MARSCHAIN_GITHUB_TOKEN }}
+      MARSCHAIN_GITHUB_REPO: zhouyunqi250-create/marschain-power-site
+      MARSCHAIN_GITHUB_BRANCH: main
+      MARSCHAIN_PUBLIC_ORIGIN: https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install alibabacloud_fc20230330 alibabacloud_sts20150401
+
+      - name: Deploy cloud timer trigger
+        run: |
+          python scripts/deploy_update_trigger.py
+

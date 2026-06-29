@@ -1,10 +1,10 @@
 # 阿里云上线说明
 
-这套站点默认按“阿里云 OSS + CDN + 自定义域名 + GitHub Actions 定时刷新”上线。
+这套站点默认按“阿里云 OSS + CDN + 自定义域名 + 阿里云定时函数主动触发 GitHub Actions”上线。
 
 如果 CDN 和域名还没接好，也可以先走“只发 OSS”的过渡形态：
 
-- GitHub Actions 继续每日 07:58 预热，08:00 起刷新官方快照，08:06 起做全量扫描和上传；价格任务同时做 08:00 自动更新兜底巡检
+- 阿里云定时函数每日 07:58 主动触发 GitHub Actions 快刷，08:06 起主动触发全量扫描和上传；GitHub 自身定时和价格任务巡检作为备用兜底
 - `ALIYUN_SITE_BASE_URL` 先留空
 - 工作流会跳过 CDN 刷新
 - 等 CDN 和域名准备好后，再补上 `ALIYUN_SITE_BASE_URL`
@@ -49,6 +49,7 @@
 - `MARSCHAIN_PAID_DOWNLOAD_API_BASE`
 - `BAIDU_TONGJI_SITE_ID`
 - `MICROSOFT_CLARITY_PROJECT_ID`
+- `MARSCHAIN_GITHUB_TOKEN`
 
 说明：
 
@@ -63,6 +64,7 @@
 - `MARSCHAIN_PAID_DOWNLOAD_API_BASE`：付费下载 API 地址，例如 `https://mars.example.com/api`
 - `BAIDU_TONGJI_SITE_ID`：百度统计站点 ID，可选
 - `MICROSOFT_CLARITY_PROJECT_ID`：Clarity 项目 ID，可选
+- `MARSCHAIN_GITHUB_TOKEN`：用于阿里云定时函数触发 GitHub Actions 的 token。建议使用只授予本仓库 Actions 读写权限的 fine-grained token。
 
 统计说明：
 
@@ -76,7 +78,7 @@
 
 - `.github/workflows/update-marschain-site.yml`
 
-它会每日 07:58 预热，08:00 起先刷新官方快照，08:06 起执行全量扫描：
+它会每日 07:58 由阿里云定时函数触发快刷，08:06 起触发全量扫描：
 
 1. 跑 `refresh_site.py`
 2. 按分层扫描规则冲到 `80%` 覆盖率
@@ -85,6 +87,12 @@
 5. 同步 `site/` 到 OSS
 6. 如果配置了 `ALIYUN_PAID_OSS_BUCKET`，把全量 CSV / Excel 上传到私有 OSS
 7. 如果配置了 `ALIYUN_SITE_BASE_URL`，再刷新首页、最新 JSON、构建摘要和旧公开下载文件的 CDN 缓存
+
+另有 `.github/workflows/deploy-update-trigger.yml` 用于部署云端触发器。它会创建阿里云定时函数：
+
+- 07:58、08:02、08:06、08:10 触发快刷工作流
+- 08:06、08:16、08:31、08:46、09:01 触发全量采集工作流
+- 每次触发前先检查当天 08:00 窗口是否已经更新，已经更新则跳过
 
 ## 5. 付费下载 API
 
