@@ -196,7 +196,7 @@ def main() -> int:
         runtime=os.getenv("MARS_UPDATE_TRIGGER_RUNTIME", "python3.10"),
         memory_size=int(os.getenv("MARS_UPDATE_TRIGGER_MEMORY", "128")),
         timeout=int(os.getenv("MARS_UPDATE_TRIGGER_TIMEOUT", "120")),
-        cpu=float(os.getenv("MARS_UPDATE_TRIGGER_CPU", "0.35")),
+        cpu=float(os.getenv("MARS_UPDATE_TRIGGER_CPU", "0.1")),
         disk_size=int(os.getenv("MARS_UPDATE_TRIGGER_DISK_SIZE", "512")),
         instance_concurrency=int(os.getenv("MARS_UPDATE_TRIGGER_CONCURRENCY", "1")),
         internet_access=True,
@@ -227,4 +227,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

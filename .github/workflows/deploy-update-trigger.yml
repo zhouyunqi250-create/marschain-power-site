@@ -47,5 +47,8 @@ jobs:
 
       - name: Deploy cloud timer trigger
         run: |
-          python scripts/deploy_update_trigger.py
-
+          if ! python scripts/deploy_update_trigger.py > update-trigger-deploy.json 2> update-trigger-deploy.err; then
+            cat update-trigger-deploy.err
+            exit 1
+          fi
+          cat update-trigger-deploy.json
