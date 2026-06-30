@@ -28,6 +28,7 @@ TIMER_TRIGGERS = [
     ("fast-0802", "0 2 0 * * *", {"mode": "fast"}),
     ("fast-0806", "0 6 0 * * *", {"mode": "fast"}),
     ("fast-0810", "0 10 0 * * *", {"mode": "fast"}),
+    ("full-0801", "0 1 0 * * *", {"mode": "full"}),
     ("full-0806", "0 6 0 * * *", {"mode": "full"}),
     ("full-0816", "0 16 0 * * *", {"mode": "full"}),
     ("full-0831", "0 31 0 * * *", {"mode": "full"}),

@@ -4,7 +4,7 @@
 
 当前方案：
 
-- 使用阿里云定时函数每日 07:58 主动触发 GitHub Actions 快刷，08:06 起主动触发全量采集；GitHub 自身定时和价格任务巡检作为备用兜底
+- 使用阿里云定时函数每日 07:58 主动触发 GitHub Actions 快刷，08:01 起主动触发全量采集；GitHub 自身定时和价格任务巡检作为备用兜底
 - 基于公开 RPC 扫描 POWER 合约日志，扫描窗口设为 1000 万块以覆盖当前全链，尽量提高覆盖率
 - 算力缓存默认 3 小时过期，短于 24 小时定时周期，避免定时刷新继续使用旧算力
 - 首页明确展示全链地址、算力候选钱包、正算力钱包、链上今日新增钱包和链上今日新增总算力
@@ -24,7 +24,7 @@
 - [paid_download_service.py](paid_download_service.py)：核销 1000 MARS 转账并返回 1 小时有效的私有下载链接
 - [scripts/deploy_paid_download_backend.py](scripts/deploy_paid_download_backend.py)：创建私有下载桶并部署付费核销函数
 - [ALIYUN_DEPLOY.md](ALIYUN_DEPLOY.md)：阿里云上线步骤和 GitHub Secrets 配置说明
-- [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：08:05 起的全量更新工作流
+- [update-marschain-site.yml](.github/workflows/update-marschain-site.yml)：08:01 起的全量更新工作流
 - [fast-update-marschain-site.yml](.github/workflows/fast-update-marschain-site.yml)：每日 07:58 预热、08:00 起的官方快照快更工作流
 - [deploy-update-trigger.yml](.github/workflows/deploy-update-trigger.yml)：部署阿里云定时函数，云端主动触发快刷和全量采集
 - [deploy-paid-download.yml](.github/workflows/deploy-paid-download.yml)：付费下载后端部署工作流
