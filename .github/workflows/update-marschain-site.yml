@@ -201,7 +201,7 @@ jobs:
 
           from build_frontend_dashboard import build_html, build_mobile_html
           from price_data import build_price_payload_from_meta
-          from refresh_site import build_metric_trends, normalize_metric_history
+          from refresh_site import apply_official_delta_meta, build_metric_trends, normalize_metric_history
 
           origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
           with urllib.request.urlopen(f"{origin}/data/latest.json", timeout=60) as resp:
@@ -236,6 +236,7 @@ jobs:
                   metric_history = normalize_metric_history(json.loads(metric_history_path.read_text()))
               except Exception:
                   metric_history = []
+          payload["meta"] = apply_official_delta_meta(payload.get("meta", {}), metric_history)
           payload["meta"]["metric_trends"] = build_metric_trends(payload.get("meta", {}), metric_history)
           (site_dir / "index.html").write_text(build_html(payload))
           (mobile_dir / "index.html").write_text(build_mobile_html(payload))
@@ -259,7 +260,7 @@ jobs:
 
           from build_frontend_dashboard import build_html, build_mobile_html
           from price_data import build_price_payload_from_meta, load_price_file
-          from refresh_site import build_metric_trends, normalize_metric_history
+          from refresh_site import apply_official_delta_meta, build_metric_trends, normalize_metric_history
 
           site_dir = Path("site")
           data_dir = site_dir / "data"
@@ -278,7 +279,8 @@ jobs:
                   metric_history = normalize_metric_history(json.loads(metric_history_path.read_text(encoding="utf-8")))
               except Exception:
                   metric_history = []
-          payload.setdefault("meta", {})["metric_trends"] = build_metric_trends(payload.get("meta", {}), metric_history)
+          payload["meta"] = apply_official_delta_meta(payload.get("meta", {}), metric_history)
+          payload["meta"]["metric_trends"] = build_metric_trends(payload.get("meta", {}), metric_history)
 
           price_payload = load_price_file(data_dir / "price.json")
           if not price_payload:

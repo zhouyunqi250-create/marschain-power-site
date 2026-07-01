@@ -410,6 +410,25 @@ def previous_metric_value(
     return None
 
 
+def metric_value_at_timestamp(
+    metric_history: list[dict],
+    metric_key: str,
+    target_timestamp: float | int | None,
+) -> float | int | None:
+    target = _as_metric_number(target_timestamp)
+    if target is None:
+        return None
+    history = normalize_metric_history(metric_history)
+    for item in reversed(history):
+        end_ts = _as_metric_number(item.get("statistics_window_end_timestamp"))
+        if end_ts != target:
+            continue
+        value = item.get("values", {}).get(metric_key)
+        if value is not None:
+            return value
+    return None
+
+
 def apply_official_delta_meta(meta: dict, metric_history: list[dict], fallback_meta: dict | None = None) -> dict:
     updated = dict(meta)
     current_end = _as_metric_number(updated.get("statistics_window_end_timestamp"))
@@ -466,6 +485,45 @@ def apply_official_delta_meta(meta: dict, metric_history: list[dict], fallback_m
         updated["today_new_blocks"] = delta_blocks
         updated["statistics_window_new_blocks_basis"] = "official explorer latestBlockNumber minus previous completed 08:00 latestBlockNumber"
         updated["today_new_blocks_basis"] = updated["statistics_window_new_blocks_basis"]
+
+    current_wallets = _as_metric_number(updated.get("explorer_total_addresses"))
+    current_burned = _as_metric_number(updated.get("network_total_burned_tokens"))
+    for days in (7, 30):
+        prefix = f"period_{days}d"
+        start_ts = updated.get(f"{prefix}_start_timestamp")
+        start_wallets = metric_value_at_timestamp(metric_history, "total_wallets", start_ts)
+        if current_wallets is None:
+            updated[f"{prefix}_new_candidate_address_count"] = None
+            updated[f"{prefix}_new_candidate_address_display"] = "待刷新"
+        elif start_wallets is not None:
+            updated[f"{prefix}_new_candidate_address_count"] = current_wallets - start_wallets
+            updated.pop(f"{prefix}_new_candidate_address_display", None)
+            updated[f"{prefix}_new_candidate_address_basis"] = (
+                f"official explorer totalAddresses at period end minus start 08:00 totalAddresses"
+            )
+        else:
+            updated[f"{prefix}_new_candidate_address_count"] = None
+            updated[f"{prefix}_new_candidate_address_display"] = "待历史补齐"
+            updated[f"{prefix}_new_candidate_address_basis"] = (
+                f"waiting for official explorer totalAddresses snapshot at period start 08:00"
+            )
+        start_burned = metric_value_at_timestamp(metric_history, "total_burned", start_ts)
+        if current_burned is None:
+            updated[f"{prefix}_burned_tokens"] = None
+            updated[f"{prefix}_burned_display"] = "待刷新"
+        elif start_burned is not None:
+            burned_delta = current_burned - start_burned
+            updated[f"{prefix}_burned_tokens"] = burned_delta
+            updated[f"{prefix}_burned_display"] = format_token_chinese(burned_delta)
+            updated[f"{prefix}_burned_basis"] = (
+                f"official /power/stats totalBurnedTokens at period end minus start 08:00 totalBurnedTokens"
+            )
+        else:
+            updated[f"{prefix}_burned_tokens"] = None
+            updated[f"{prefix}_burned_display"] = "待历史补齐"
+            updated[f"{prefix}_burned_basis"] = (
+                f"waiting for official /power/stats totalBurnedTokens snapshot at period start 08:00"
+            )
 
     return updated
 

@@ -3315,6 +3315,13 @@ def _fmt_count_unit(value: object, unit: str = "个") -> str:
     return f"{formatted}{unit}"
 
 
+def _fmt_period_address_count(meta: dict, prefix: str, value: object) -> str:
+    display = meta.get(f"{prefix}_new_candidate_address_display")
+    if display:
+        return str(display)
+    return _fmt_count_unit(value)
+
+
 def _fmt_token_amount(value: object) -> str:
     if value is None or value == "":
         return "待刷新"
@@ -3889,9 +3896,11 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
+    period_7d_new_address_display = _fmt_period_address_count(meta, "period_7d", period_7d_new_address_count)
     period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
     period_30d_new_power = meta.get("period_30d_new_power")
     period_30d_new_address_count = meta.get("period_30d_new_candidate_address_count")
+    period_30d_new_address_display = _fmt_period_address_count(meta, "period_30d", period_30d_new_address_count)
     period_30d_burned = str(meta.get("period_30d_burned_display") or "待刷新")
     positive_ratio = 0.0
     if _as_float(candidate_count) > 0:
@@ -4052,10 +4061,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("每日交易币量", daily_transaction_volume_display),
         ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
         ("7天新增算力", _fmt_power(period_7d_new_power)),
-        ("7天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+        ("7天新增地址", period_7d_new_address_display),
         ("7天销毁", period_7d_burned),
         ("30天新增算力", _fmt_power(period_30d_new_power)),
-        ("30天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+        ("30天新增地址", period_30d_new_address_display),
         ("30天销毁", period_30d_burned),
         ("单币日需算力", power_per_coin),
         ("1亿算力产出", one_yi_power_output),
@@ -4078,10 +4087,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("每日交易币量", daily_transaction_volume_display),
         ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
         ("7 天新增算力", _fmt_power(period_7d_new_power)),
-        ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+        ("7 天新增地址", period_7d_new_address_display),
         ("7 天销毁", period_7d_burned),
         ("30 天新增算力", _fmt_power(period_30d_new_power)),
-        ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+        ("30 天新增地址", period_30d_new_address_display),
         ("30 天销毁", period_30d_burned),
         ("矿工日产币量", daily_miner),
         ("节点日产币量", daily_node),
@@ -4099,14 +4108,14 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <span class="kicker">7 DAYS</span>
         <h3>7 天新增</h3>
         <div class="line"><span>新增算力</span><b>{escape(_fmt_power(period_7d_new_power))}</b></div>
-        <div class="line"><span>新增地址</span><b>{escape(_fmt_count_unit(period_7d_new_address_count))}</b></div>
+        <div class="line"><span>新增地址</span><b>{escape(period_7d_new_address_display)}</b></div>
         <div class="line"><span>销毁数量</span><b>{escape(period_7d_burned)}</b></div>
       </article>
       <article class="growth-card reveal">
         <span class="kicker">30 DAYS</span>
         <h3>30 天新增</h3>
         <div class="line"><span>新增算力</span><b>{escape(_fmt_power(period_30d_new_power))}</b></div>
-        <div class="line"><span>新增地址</span><b>{escape(_fmt_count_unit(period_30d_new_address_count))}</b></div>
+        <div class="line"><span>新增地址</span><b>{escape(period_30d_new_address_display)}</b></div>
         <div class="line"><span>销毁数量</span><b>{escape(period_30d_burned)}</b></div>
       </article>
     """
@@ -4234,7 +4243,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
   <section id="growth" class="section">
     <div class="section-head reveal">
       <div><span class="kicker">03 / 周期增长</span><h2>7 天与 30 天新增</h2></div>
-      <p>按最近完整北京时间统计日汇总新增算力、新增地址和 TokensBurned 销毁事件。</p>
+      <p>按最近完整北京时间统计日汇总新增算力，并用官方 08:00 快照差额统计新增地址和销毁数量。</p>
     </div>
     <div class="growth-grid">{growth_cards}</div>
   </section>
@@ -5933,7 +5942,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。': 'Shows the latest network power, emission model, address scale, and Beijing-day growth data.',
     '03 / 周期增长': '03 / Growth',
     '7 天与 30 天新增': '7-Day and 30-Day Growth',
-    '按最近完整北京时间统计日汇总新增算力、新增地址和 TokensBurned 销毁事件。': 'Summarizes new power, new addresses, and TokensBurned events by complete Beijing-day windows.',
+    '按最近完整北京时间统计日汇总新增算力，并用官方 08:00 快照差额统计新增地址和销毁数量。': 'Summarizes new power by complete Beijing-day windows, with new addresses and burned amount calculated from official 08:00 snapshot deltas.',
     '7 天新增': '7-Day Growth',
     '30 天新增': '30-Day Growth',
     '新增算力': 'New Power',
@@ -6052,6 +6061,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '最近 30 个完整统计日': 'Latest 30 complete statistics days',
     '首次进入 POWER 日志': 'First entered POWER logs',
     'TokensBurned 汇总': 'TokensBurned total',
+    '官方地址快照差额': 'Official address snapshot delta',
+    '官方累计销毁差额': 'Official cumulative burn delta',
+    '待历史补齐': 'Waiting for history',
     '公开接口返回的地址规模，不代表全部参与挖矿。': 'Public API address scale; not all addresses participate in mining.',
     '从 POWER 合约日志识别出的相关地址。': 'Related addresses identified from POWER contract logs.',
     '当前查询到算力大于 0 的钱包地址。': 'Wallet addresses currently queried with power above 0.',
@@ -6382,9 +6394,11 @@ def build_mobile_html(payload: dict) -> str:
     daily_burned = str(meta.get("statistics_window_burned_display") or meta.get("today_burned_display") or "待刷新")
     period_7d_new_power = meta.get("period_7d_new_power")
     period_7d_new_address_count = meta.get("period_7d_new_candidate_address_count")
+    period_7d_new_address_display = _fmt_period_address_count(meta, "period_7d", period_7d_new_address_count)
     period_7d_burned = str(meta.get("period_7d_burned_display") or "待刷新")
     period_30d_new_power = meta.get("period_30d_new_power")
     period_30d_new_address_count = meta.get("period_30d_new_candidate_address_count")
+    period_30d_new_address_display = _fmt_period_address_count(meta, "period_30d", period_30d_new_address_count)
     period_30d_burned = str(meta.get("period_30d_burned_display") or "待刷新")
 
     total_supply = str(meta.get("emission_total_supply_cap_display") or "2000亿")
@@ -6516,11 +6530,11 @@ def build_mobile_html(payload: dict) -> str:
         ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
         ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", daily_transaction_volume_points, merged_transaction_extra),
         ("period_7d_new_power", "7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_points(meta, "period_7d_new_power", [period_7d_new_power])),
-        ("period_7d_new_addresses", "7 天新增地址", _fmt_count_unit(period_7d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
-        ("period_7d_burned", "7 天销毁", period_7d_burned, "TokensBurned 汇总", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
+        ("period_7d_new_addresses", "7 天新增地址", period_7d_new_address_display, "官方地址快照差额", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
+        ("period_7d_burned", "7 天销毁", period_7d_burned, "官方累计销毁差额", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
         ("period_30d_new_power", "30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_points(meta, "period_30d_new_power", [period_30d_new_power])),
-        ("period_30d_new_addresses", "30 天新增地址", _fmt_count_unit(period_30d_new_address_count), "首次进入 POWER 日志", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
-        ("period_30d_burned", "30 天销毁", period_30d_burned, "TokensBurned 汇总", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
+        ("period_30d_new_addresses", "30 天新增地址", period_30d_new_address_display, "官方地址快照差额", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
+        ("period_30d_burned", "30 天销毁", period_30d_burned, "官方累计销毁差额", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
     ]
     hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[1:8])
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
@@ -6569,10 +6583,10 @@ def build_mobile_html(payload: dict) -> str:
             ("每日交易币量", daily_transaction_volume_display),
             ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
             ("7 天新增算力", _fmt_power(period_7d_new_power)),
-            ("7 天新增地址", _fmt_count_unit(period_7d_new_address_count)),
+            ("7 天新增地址", period_7d_new_address_display),
             ("7 天销毁", period_7d_burned),
             ("30 天新增算力", _fmt_power(period_30d_new_power)),
-            ("30 天新增地址", _fmt_count_unit(period_30d_new_address_count)),
+            ("30 天新增地址", period_30d_new_address_display),
             ("30 天销毁", period_30d_burned),
             ("总产量", total_supply),
             ("矿工日产币量", daily_miner),
