@@ -41,12 +41,47 @@ REQUIRED_SITE_MARKERS = (
     "data-live-oracle-trigger-price",
 )
 
+REQUIRED_MOBILE_SITE_MARKERS = (
+    "data-share-poster",
+    "data-live-highest-price",
+    "data-live-oracle-trigger-price",
+)
+
 REQUIRED_LATEST_META_KEYS = (
     "statistics_window_end_timestamp",
     "statistics_window_end_local",
     "network_total_power",
     "network_total_burned_tokens",
     "explorer_total_addresses",
+)
+
+REQUIRED_FAST_META_KEYS = (
+    "fast_update_only",
+    "fast_metrics_ready",
+    "today_new_power",
+    "statistics_window_new_power",
+    "statistics_window_burned_tokens",
+    "statistics_window_burned_display",
+    "latest_block",
+    "statistics_window_new_blocks",
+    "power_required_per_mars_daily",
+)
+
+REQUIRED_FULL_META_KEYS = (
+    "full_scan_statistics_window_end_timestamp",
+    "full_scan_statistics_window_end_local",
+    "statistics_window_new_power",
+    "statistics_window_burned_tokens",
+    "statistics_window_burned_display",
+    "statistics_window_new_candidate_address_count",
+    "statistics_window_active_wallet_address_count",
+    "statistics_window_active_transactions_seen",
+    "statistics_window_transaction_volume_wei",
+    "statistics_window_transaction_volume_display",
+    "latest_block",
+    "statistics_window_new_blocks",
+    "power_required_per_mars_daily",
+    "power_required_per_mars_daily_display",
 )
 
 
@@ -98,9 +133,12 @@ def build_remote_key(prefix: str, rel_path: str) -> str:
 
 def validate_site_bundle(site_dir: Path) -> None:
     index_path = site_dir / "index.html"
+    mobile_index_path = site_dir / "m" / "index.html"
     latest_path = site_dir / "data" / "latest.json"
     if not index_path.exists():
         raise SystemExit(f"Missing deployable homepage: {index_path}")
+    if not mobile_index_path.exists():
+        raise SystemExit(f"Missing deployable mobile homepage: {mobile_index_path}")
     if not latest_path.exists():
         raise SystemExit(f"Missing deployable latest data: {latest_path}")
 
@@ -110,6 +148,14 @@ def validate_site_bundle(site_dir: Path) -> None:
         raise SystemExit(
             "Refusing to deploy an outdated MarsChain site shell; "
             f"missing markers: {', '.join(missing_markers)}"
+        )
+
+    mobile_html = mobile_index_path.read_text(encoding="utf-8", errors="replace")
+    missing_mobile_markers = [marker for marker in REQUIRED_MOBILE_SITE_MARKERS if marker not in mobile_html]
+    if missing_mobile_markers:
+        raise SystemExit(
+            "Refusing to deploy an outdated MarsChain mobile site shell; "
+            f"missing markers: {', '.join(missing_mobile_markers)}"
         )
 
     try:
@@ -127,6 +173,25 @@ def validate_site_bundle(site_dir: Path) -> None:
             "Refusing to deploy incomplete MarsChain latest data; "
             f"missing meta keys: {', '.join(missing_meta)}"
         )
+
+    if meta.get("fast_update_only") is True:
+        missing_fast_meta = [key for key in REQUIRED_FAST_META_KEYS if meta.get(key) in (None, "")]
+        if meta.get("fast_metrics_ready") is not True:
+            missing_fast_meta.append("fast_metrics_ready=true")
+        if missing_fast_meta:
+            raise SystemExit(
+                "Refusing to deploy incomplete MarsChain fast snapshot data; "
+                f"missing meta keys: {', '.join(missing_fast_meta)}"
+            )
+    else:
+        missing_full_meta = [key for key in REQUIRED_FULL_META_KEYS if meta.get(key) in (None, "")]
+        if meta.get("full_scan_statistics_window_end_timestamp") != meta.get("statistics_window_end_timestamp"):
+            missing_full_meta.append("full_scan_statistics_window_end_timestamp=current window")
+        if missing_full_meta:
+            raise SystemExit(
+                "Refusing to deploy incomplete MarsChain full-scan data; "
+                f"missing meta keys: {', '.join(missing_full_meta)}"
+            )
 
 
 def guess_headers(rel_path: str) -> dict[str, str]:
