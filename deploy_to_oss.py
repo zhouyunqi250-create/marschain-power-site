@@ -33,6 +33,22 @@ NO_CACHE_KEYS = {
     "m/index.html",
 }
 
+REQUIRED_SITE_MARKERS = (
+    "data-share-poster",
+    "powerPerCoinDelta",
+    "oneYiOutputDelta",
+    "data-live-highest-price",
+    "data-live-oracle-trigger-price",
+)
+
+REQUIRED_LATEST_META_KEYS = (
+    "statistics_window_end_timestamp",
+    "statistics_window_end_local",
+    "network_total_power",
+    "network_total_burned_tokens",
+    "explorer_total_addresses",
+)
+
 
 def normalize_endpoint(endpoint: str) -> str:
     endpoint = endpoint.strip()
@@ -78,6 +94,39 @@ def build_remote_key(prefix: str, rel_path: str) -> str:
     if prefix:
         return f"{prefix}/{rel_path}"
     return rel_path
+
+
+def validate_site_bundle(site_dir: Path) -> None:
+    index_path = site_dir / "index.html"
+    latest_path = site_dir / "data" / "latest.json"
+    if not index_path.exists():
+        raise SystemExit(f"Missing deployable homepage: {index_path}")
+    if not latest_path.exists():
+        raise SystemExit(f"Missing deployable latest data: {latest_path}")
+
+    html = index_path.read_text(encoding="utf-8", errors="replace")
+    missing_markers = [marker for marker in REQUIRED_SITE_MARKERS if marker not in html]
+    if missing_markers:
+        raise SystemExit(
+            "Refusing to deploy an outdated MarsChain site shell; "
+            f"missing markers: {', '.join(missing_markers)}"
+        )
+
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SystemExit(f"Invalid deployable latest data JSON: {latest_path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Invalid deployable latest data payload: {latest_path}")
+    meta = payload.get("meta")
+    if not isinstance(meta, dict):
+        raise SystemExit(f"Missing deployable latest data meta: {latest_path}")
+    missing_meta = [key for key in REQUIRED_LATEST_META_KEYS if meta.get(key) in (None, "")]
+    if missing_meta:
+        raise SystemExit(
+            "Refusing to deploy incomplete MarsChain latest data; "
+            f"missing meta keys: {', '.join(missing_meta)}"
+        )
 
 
 def guess_headers(rel_path: str) -> dict[str, str]:
@@ -257,6 +306,7 @@ def main() -> int:
     if not prefix and not args.allow_bucket_root:
         raise SystemExit("Refusing to sync to OSS bucket root without --allow-bucket-root.")
 
+    validate_site_bundle(site_dir)
     sync_summary = sync_site(site_dir, bucket_name, endpoint, prefix, args.dry_run)
     paid_sync_summary = {"upload": []}
     paid_upload_skipped = args.skip_paid_download_upload or not paid_bucket_name
