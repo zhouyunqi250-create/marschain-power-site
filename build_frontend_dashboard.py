@@ -5261,7 +5261,8 @@ SHARE_POSTER_JS = r"""
     const top100Share = networkPower > 0 ? formatPercent(top100Power / networkPower) : '待刷新';
     const oneYiNodeText = String(document.querySelector('[data-label="1亿算力产出"] b')?.textContent || '').trim();
     const powerPerCoin = asNumber(meta.power_required_per_mars_daily);
-    const oneYiOutput = oneYiNodeText || (powerPerCoin > 0 ? formatDailyOutput(100_000_000 / powerPerCoin) : '待刷新');
+    const oneYiOutputValue = powerPerCoin > 0 ? 100_000_000 / powerPerCoin : NaN;
+    const oneYiOutput = oneYiNodeText || (Number.isFinite(oneYiOutputValue) ? formatDailyOutput(oneYiOutputValue) : '待刷新');
     return {
       meta,
       generatedAt: generatedLabel(meta),
@@ -5274,9 +5275,11 @@ SHARE_POSTER_JS = r"""
       totalPowerDelta: dailyDeltaText(meta.statistics_window_new_power, compactNumber),
       totalPowerTrend: metricSeries('network_total_power'),
       powerPerCoin: String(meta.power_required_per_mars_daily_display || compactNumber(meta.power_required_per_mars_daily)),
+      powerPerCoinDelta: sublineFromMetricDelta('power_per_coin', meta.power_required_per_mars_daily, compactNumber),
       oneYiOutput,
+      oneYiOutputDelta: sublineFromMetricDelta('one_yi_power_output', oneYiOutputValue, formatDailyOutput),
       dailyActiveAddresses: formatPlainCount(meta.statistics_window_active_wallet_address_count),
-      dailyActiveAddressesDelta: fastUpdateOnly ? '' : sublineFromMetricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatPlainCount),
+      dailyActiveAddressesDelta: sublineFromMetricDelta('daily_active_addresses', meta.statistics_window_active_wallet_address_count, formatPlainCount),
       dailyTransactionVolume: String(meta.statistics_window_transaction_volume_display || formatToken(meta.statistics_window_transaction_volume_wei)),
       dailyTransactionVolumeDelta: fastUpdateOnly ? '' : sublineFromMetricDelta('daily_transaction_volume', meta.statistics_window_transaction_volume_wei, (value) => formatToken(value)),
       latestBlock: latestBlock ? latestBlock.toLocaleString('zh-CN') : '待刷新',
@@ -5384,8 +5387,8 @@ SHARE_POSTER_JS = r"""
     ctx.fillText('扫码看实时榜', 852, 536);
     ctx.textAlign = 'left';
 
-    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, '', '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
-    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, '', '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, data.powerPerCoinDelta, '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, data.oneYiOutputDelta, '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
 
     drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
     drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易币量', data.dailyTransactionVolume, data.dailyTransactionVolumeDelta, '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
