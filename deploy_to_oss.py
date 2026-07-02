@@ -47,6 +47,15 @@ REQUIRED_MOBILE_SITE_MARKERS = (
     "data-live-oracle-trigger-price",
 )
 
+FORBIDDEN_OUTDATED_SITE_MARKERS = (
+    "\u6bcf 5 \u5c0f\u65f6\u5237\u65b0",
+    "\u5237\u65b0\u9891\u7387\uff1a\u6bcf 5 \u5c0f\u65f6",
+    "\u6570\u636e\u5df2\u52a0\u8f7d \u00b7 \u6bcf 5 \u5c0f\u65f6\u5237\u65b0",
+    "Every 5 Hours",
+    "refreshes every 5 hours",
+    "MarsChain Rank / explorer.marschain.net",
+)
+
 REQUIRED_LATEST_META_KEYS = (
     "statistics_window_end_timestamp",
     "statistics_window_end_local",
@@ -131,6 +140,14 @@ def build_remote_key(prefix: str, rel_path: str) -> str:
     return rel_path
 
 
+def printable_marker(marker: str) -> str:
+    return marker.encode("unicode_escape").decode("ascii")
+
+
+def forbidden_markers_in(text: str) -> list[str]:
+    return [marker for marker in FORBIDDEN_OUTDATED_SITE_MARKERS if marker in text]
+
+
 def validate_site_bundle(site_dir: Path) -> None:
     index_path = site_dir / "index.html"
     mobile_index_path = site_dir / "m" / "index.html"
@@ -149,6 +166,13 @@ def validate_site_bundle(site_dir: Path) -> None:
             "Refusing to deploy an outdated MarsChain site shell; "
             f"missing markers: {', '.join(missing_markers)}"
         )
+    forbidden_markers = forbidden_markers_in(html)
+    if forbidden_markers:
+        raise SystemExit(
+            "Refusing to deploy an outdated MarsChain site shell; "
+            "forbidden markers: "
+            f"{', '.join(printable_marker(marker) for marker in forbidden_markers)}"
+        )
 
     mobile_html = mobile_index_path.read_text(encoding="utf-8", errors="replace")
     missing_mobile_markers = [marker for marker in REQUIRED_MOBILE_SITE_MARKERS if marker not in mobile_html]
@@ -156,6 +180,13 @@ def validate_site_bundle(site_dir: Path) -> None:
         raise SystemExit(
             "Refusing to deploy an outdated MarsChain mobile site shell; "
             f"missing markers: {', '.join(missing_mobile_markers)}"
+        )
+    forbidden_mobile_markers = forbidden_markers_in(mobile_html)
+    if forbidden_mobile_markers:
+        raise SystemExit(
+            "Refusing to deploy an outdated MarsChain mobile site shell; "
+            "forbidden markers: "
+            f"{', '.join(printable_marker(marker) for marker in forbidden_mobile_markers)}"
         )
 
     try:

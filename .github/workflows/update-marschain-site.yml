@@ -91,8 +91,38 @@ jobs:
                   latest_end_ts = None
               else:
                   latest_end_ts = meta.get("statistics_window_end_timestamp")
-          print(f"latest_end_ts={latest_end_ts} expected_end_ts={expected_end_ts}")
-          if isinstance(latest_end_ts, int) and latest_end_ts >= expected_end_ts:
+
+          required_shell_markers = (
+              "data-share-poster",
+              "powerPerCoinDelta",
+              "oneYiOutputDelta",
+              "data-live-highest-price",
+              "data-live-oracle-trigger-price",
+          )
+          forbidden_shell_markers = (
+              "\u6bcf 5 \u5c0f\u65f6\u5237\u65b0",
+              "\u5237\u65b0\u9891\u7387\uff1a\u6bcf 5 \u5c0f\u65f6",
+              "Every 5 Hours",
+              "refreshes every 5 hours",
+          )
+          shell_current = False
+          try:
+              shell_url = f"{origin}/index.html?v=preflight-shell-{int(now_utc.timestamp())}"
+              request = urllib.request.Request(shell_url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+              with urllib.request.urlopen(request, timeout=30) as resp:
+                  shell = resp.read().decode("utf-8", "replace")
+              shell_current = all(marker in shell for marker in required_shell_markers) and not any(
+                  marker in shell for marker in forbidden_shell_markers
+              )
+          except Exception as exc:
+              print(f"shell preflight fetch failed: {exc}")
+
+          latest_fresh = isinstance(latest_end_ts, int) and latest_end_ts >= expected_end_ts
+          print(
+              f"latest_end_ts={latest_end_ts} expected_end_ts={expected_end_ts} "
+              f"latest_fresh={latest_fresh} shell_current={shell_current}"
+          )
+          if latest_fresh and shell_current:
               with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
                   fh.write("skip_refresh=true\n")
               print("skip_refresh=true")
@@ -186,12 +216,12 @@ jobs:
           python backfill_metric_history.py --site-dir site --repo "$GITHUB_REPOSITORY" --max-runs 10
 
       - name: Refresh site with best-effort coverage
-        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && github.event_name != 'push' && !(github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
         run: |
           python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
 
       - name: Rebuild site shell from current public data
-        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.site_only == 'true')) }}
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' && github.event_name == 'workflow_dispatch' && inputs.site_only == 'true' }}
         run: |
           python - <<'PY'
           import json
@@ -372,3 +402,44 @@ jobs:
             --base-url "$SITE_BASE_URL" \
             --prefix "${ALIYUN_OSS_PREFIX:-}" \
             --allow-bucket-root
+
+      - name: Verify public OSS shell after deploy
+        if: ${{ steps.preflight.outputs.skip_refresh != 'true' }}
+        run: |
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          origin = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
+          required = {
+              "index.html": (
+                  "data-share-poster",
+                  "powerPerCoinDelta",
+                  "oneYiOutputDelta",
+                  "data-live-highest-price",
+                  "data-live-oracle-trigger-price",
+              ),
+              "m/index.html": (
+                  "data-share-poster",
+                  "data-live-highest-price",
+                  "data-live-oracle-trigger-price",
+              ),
+          }
+          forbidden = (
+              "\u6bcf 5 \u5c0f\u65f6\u5237\u65b0",
+              "\u5237\u65b0\u9891\u7387\uff1a\u6bcf 5 \u5c0f\u65f6",
+              "Every 5 Hours",
+              "refreshes every 5 hours",
+          )
+          time.sleep(3)
+          for path, markers in required.items():
+              url = f"{origin}/{path}?v=verify-shell-{int(time.time())}"
+              request = urllib.request.Request(url, headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
+              with urllib.request.urlopen(request, timeout=45) as response:
+                  text = response.read().decode("utf-8", "replace")
+              missing = [marker for marker in markers if marker not in text]
+              bad = [marker for marker in forbidden if marker in text]
+              if missing or bad:
+                  raise SystemExit(f"OSS shell verification failed for {path}: missing={missing}, forbidden={bad}")
+          print("OSS shell verification passed.")
+          PY
