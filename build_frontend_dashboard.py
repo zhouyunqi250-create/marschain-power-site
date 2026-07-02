@@ -5152,8 +5152,19 @@ SHARE_POSTER_JS = r"""
     const valueX = align === 'right' ? x + w - 22 : x + 22;
     fitText(ctx, value, valueX, valueY, valueWidth, options.font || '950 29px "Microsoft YaHei", sans-serif', options.minSize || 18, align);
     if (subline) {
-      ctx.fillStyle = accent;
-      fitText(ctx, subline, x + 22, y + h - 15, w - 44, options.subFont || '900 14px "Microsoft YaHei", sans-serif', 10);
+      const subFont = options.subFont || '900 14px "Microsoft YaHei", sans-serif';
+      const sublineY = options.sublineY || y + h - 15;
+      if (options.sublineBadge) {
+        ctx.font = subFont;
+        const badgeHeight = options.sublineBadgeHeight || 28;
+        const badgeWidth = Math.min(w - 44, Math.max(options.sublineBadgeMinWidth || 134, ctx.measureText(subline).width + 30));
+        fillRound(ctx, x + 22, sublineY - badgeHeight + 8, badgeWidth, badgeHeight, 11, 'rgba(255,255,255,.07)', accent);
+        ctx.fillStyle = accent;
+        fitText(ctx, subline, x + 37, sublineY, badgeWidth - 30, subFont, options.subMinSize || 13);
+      } else {
+        ctx.fillStyle = accent;
+        fitText(ctx, subline, x + 22, sublineY, w - 44, subFont, options.subMinSize || 10);
+      }
     }
   };
   const drawPriceSnapshotCard = (ctx, x, y, w, h, data) => {
@@ -5392,10 +5403,10 @@ SHARE_POSTER_JS = r"""
     ctx.fillText('扫码看实时榜', 852, 536);
     ctx.textAlign = 'left';
 
-    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, data.powerPerCoinDelta, '#56efff', { align: 'left', valueY: 666, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
-    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, data.oneYiOutputDelta, '#ffe86a', { align: 'left', valueY: 666, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 13px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, data.powerPerCoinDelta, '#56efff', { align: 'left', valueY: 662, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 18px "Microsoft YaHei", sans-serif', sublineY: 696, sublineBadge: true });
+    drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, data.oneYiOutputDelta, '#ffe86a', { align: 'left', valueY: 662, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 18px "Microsoft YaHei", sans-serif', sublineY: 696, sublineBadge: true });
 
-    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 794, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif', subFont: '900 17px "Microsoft YaHei", sans-serif', sublineY: 834, sublineBadge: true });
     drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易币量', data.dailyTransactionVolume, data.dailyTransactionVolumeDelta, '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
 
     const cards = [
