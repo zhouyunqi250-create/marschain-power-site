@@ -4963,6 +4963,11 @@ SHARE_POSTER_JS = r"""
     return `${compactNumber(number)}枚/日`;
   };
   const metricSeries = (key) => {
+    const metaTrends = rankPayload().meta && rankPayload().meta.metric_trends;
+    const metaItem = metaTrends && metaTrends[key];
+    const metaPoints = metaItem && Array.isArray(metaItem.values) ? metaItem.values : [];
+    const fromMeta = metaPoints.map((point) => asNumber(point && point.value)).filter(Number.isFinite);
+    if (fromMeta.length) return fromMeta;
     const item = trendPayload().find((entry) => entry && entry.key === key);
     const points = item && Array.isArray(item.points) ? item.points : [];
     return points.map((point) => asNumber(point && point.value)).filter(Number.isFinite);
