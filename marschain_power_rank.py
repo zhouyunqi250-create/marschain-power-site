@@ -2157,7 +2157,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
 
     forced_refresh_addresses = set(blackhole_counter)
 
-    if bool(getattr(args, "full_calibration", False)):
+    full_calibration_enabled = bool(getattr(args, "full_calibration", False))
+
+    if full_calibration_enabled:
         ordered_candidates = sorted(
             address_pool,
             key=lambda addr: (
@@ -2217,13 +2219,14 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
 
     seen_addresses = set(ordered_candidates)
     blackhole_upline_counter: Counter[str] = Counter()
-    for address in blackhole_counter:
-        payload = cache.get(address)
-        if not isinstance(payload, dict):
-            continue
-        for candidate in (normalize_address(payload.get("upline1")), normalize_address(payload.get("upline2"))):
-            if is_probably_user_address(candidate):
-                blackhole_upline_counter[candidate] += 1
+    if not full_calibration_enabled:
+        for address in blackhole_counter:
+            payload = cache.get(address)
+            if not isinstance(payload, dict):
+                continue
+            for candidate in (normalize_address(payload.get("upline1")), normalize_address(payload.get("upline2"))):
+                if is_probably_user_address(candidate):
+                    blackhole_upline_counter[candidate] += 1
 
     if blackhole_upline_counter:
         upline_counter.update(blackhole_upline_counter)
