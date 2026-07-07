@@ -13,6 +13,14 @@ on:
         options:
           - "false"
           - "true"
+      full_calibration:
+        description: "Force-refresh every address in the cached address pool"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
   push:
     branches:
       - main
@@ -217,8 +225,14 @@ jobs:
 
       - name: Refresh site with best-effort coverage
         if: ${{ steps.preflight.outputs.skip_refresh != 'true' && !(github.event_name == 'workflow_dispatch' && inputs.site_only == 'true') }}
+        env:
+          FULL_CALIBRATION: ${{ github.event_name == 'workflow_dispatch' && inputs.full_calibration || 'false' }}
         run: |
-          python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
+          if [ "$FULL_CALIBRATION" = "true" ]; then
+            python refresh_site.py --coverage-target 0.99 --output-dir output --site-dir site --full-calibration
+          else
+            python refresh_site.py --coverage-target 0.80 --output-dir output --site-dir site
+          fi
 
       - name: Rebuild site shell from current public data
         if: ${{ steps.preflight.outputs.skip_refresh != 'true' && github.event_name == 'workflow_dispatch' && inputs.site_only == 'true' }}

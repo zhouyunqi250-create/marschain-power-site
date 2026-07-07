@@ -236,6 +236,8 @@ def make_args(
     cache_file: Path,
     address_pool_file: Path,
     cache_ttl_seconds: int,
+    full_calibration: bool,
+    blackhole_tx_max_pages: int,
 ) -> Namespace:
     return Namespace(
         tx_pages=tx_pages,
@@ -268,6 +270,11 @@ def make_args(
         cache_file=str(cache_file),
         address_pool_file=str(address_pool_file),
         cache_ttl_seconds=cache_ttl_seconds,
+        blackhole_address="0x0000000000000000000000000000000000001001",
+        blackhole_tx_limit=100,
+        blackhole_tx_max_pages=blackhole_tx_max_pages,
+        disable_blackhole_refresh=False,
+        full_calibration=full_calibration,
         progress=True,
     )
 
@@ -617,6 +624,8 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CACHE_TTL_SECONDS,
         help="Power lookup cache TTL. The default is shorter than the 24-hour schedule so each scheduled build refreshes power data.",
     )
+    parser.add_argument("--full-calibration", action="store_true", help="Force-refresh every address in the persistent address pool.")
+    parser.add_argument("--blackhole-tx-max-pages", type=int, default=2000, help="Maximum blackhole transaction pages to scan for the completed 08:00 window.")
     return parser.parse_args()
 
 
@@ -642,7 +651,7 @@ def main() -> int:
         run_args = make_args(
             tx_pages=tier["tx_pages"],
             block_pages=tier["block_pages"],
-            max_candidates=tier["max_candidates"],
+            max_candidates=0 if args.full_calibration else tier["max_candidates"],
             upline_limit=tier["upline_limit"],
             upline_depth=tier["upline_depth"],
             workers=tier["workers"],
@@ -654,13 +663,17 @@ def main() -> int:
             rpc_log_blocks=tier["rpc_log_blocks"],
             cache_file=cache_file,
             address_pool_file=address_pool_file,
-            cache_ttl_seconds=args.cache_ttl_seconds,
+            cache_ttl_seconds=0 if args.full_calibration else args.cache_ttl_seconds,
+            full_calibration=args.full_calibration,
+            blackhole_tx_max_pages=args.blackhole_tx_max_pages,
         )
         rows, meta = build_ranking(run_args)
         coverage = meta["discovered_power_coverage"]
         chosen_rows = rows
         chosen_meta = meta
         chosen_label = f'tx{tier["tx_pages"]}_blk{tier["block_pages"]}'
+        if args.full_calibration:
+            chosen_label += "_full_calibration"
         target_met = coverage >= args.coverage_target
         print(
             f"[info] tier {chosen_label}: "

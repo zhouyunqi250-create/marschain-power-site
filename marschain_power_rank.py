@@ -29,6 +29,7 @@ from typing import Any
 BASE_URL = "https://explorer.marschain.net/api"
 DEFAULT_RPC_URL = "https://rpcs.marschain.net"
 POWER_CONTRACT_ADDRESS = "0x0000000000000000000000000000000000001001"
+BLACKHOLE_ADDRESS = POWER_CONTRACT_ADDRESS
 GET_DAILY_TOTAL_POWER_HISTORY_SELECTOR = "0x1c1b5cdf"
 TOKENS_BURNED_EVENT_TOPIC = "0xccbea4088a3b7ae9ca2d15fab9a9742a4075b4d7247768a1eecea917565aba00"
 DEFAULT_CACHE_TTL_SECONDS = 3 * 60 * 60
@@ -36,6 +37,7 @@ DEFAULT_ADDRESS_POOL_FILE = "output/marschain_address_pool.json"
 BEIJING_OFFSET_SECONDS = 8 * 60 * 60
 STATISTICS_DAY_START_HOUR = 8
 STATISTICS_DAY_START_LABEL = f"{STATISTICS_DAY_START_HOUR:02d}:00"
+MARSCHAIN_BLOCK_SECONDS = 3
 MARS_TOTAL_SUPPLY_CAP_TOKENS = 200_000_000_000
 MARS_INITIAL_CYCLE_OUTPUT_TOKENS = 100_000_000_000
 MARS_HALVING_PERIOD_DAYS = 448
@@ -190,6 +192,23 @@ def find_first_block_at_or_after_timestamp(
         else:
             left = mid + 1
     return found
+
+
+def estimate_first_block_at_or_after_timestamp(
+    latest_block: int | None,
+    latest_timestamp: int | None,
+    timestamp: int | None,
+) -> int | None:
+    if latest_block is None or latest_timestamp is None or timestamp is None:
+        return None
+    if latest_block < 0:
+        return None
+    delta_seconds = int(latest_timestamp) - int(timestamp)
+    if delta_seconds >= 0:
+        blocks_back = delta_seconds // MARSCHAIN_BLOCK_SECONDS
+        return max(0, int(latest_block) - blocks_back)
+    blocks_forward = (-delta_seconds + MARSCHAIN_BLOCK_SECONDS - 1) // MARSCHAIN_BLOCK_SECONDS
+    return int(latest_block) + blocks_forward
 
 
 def decode_uint256_words(data: str) -> list[int]:
@@ -519,14 +538,17 @@ def merge_address_pool_counters(
     log_counter: Counter[str],
     upline_counter: Counter[str],
     observed_at: int,
+    blackhole_counter: Counter[str] | None = None,
 ) -> int:
     new_addresses = 0
-    source_specs = (
+    source_specs: tuple[tuple[str, Counter[str], str, int], ...] = (
         ("tx", tx_counter, "tx_seen_total", 10),
         ("miner", miner_counter, "miner_seen_total", 20),
         ("log", log_counter, "log_seen_total", 15),
         ("upline", upline_counter, "upline_seen_total", 5),
     )
+    if blackhole_counter is not None:
+        source_specs = source_specs + (("blackhole", blackhole_counter, "blackhole_seen_total", 100),)
     for source, counter, total_key, weight in source_specs:
         for address, count in counter.items():
             if count <= 0:
@@ -764,7 +786,12 @@ def collect_statistics_window_active_addresses(
     rpc_batch_size: int,
     rpc_workers: int,
     progress: bool,
-) -> dict[str, Any]:
+    blackhole_address: str | None = None,
+    window_start_block: int | None = None,
+    window_end_marker_block: int | None = None,
+) -> tuple[dict[str, Any], Counter[str], dict[str, Any]]:
+    blackhole = normalize_address(blackhole_address) if blackhole_address else ""
+    blackhole_counter: Counter[str] = Counter()
     meta: dict[str, Any] = {
         "statistics_window_active_address_basis": f"unique transaction sender/receiver wallet addresses in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window",
         "statistics_window_active_wallet_address_count": None,
@@ -774,25 +801,56 @@ def collect_statistics_window_active_addresses(
         "statistics_window_transaction_volume_display": None,
         "statistics_window_active_error_count": 0,
     }
+    blackhole_meta: dict[str, Any] = {
+        "blackhole_address": blackhole or None,
+        "blackhole_scan_source": "statistics_window_rpc_block_transactions",
+        "blackhole_window_start_timestamp": start_timestamp,
+        "blackhole_window_end_timestamp": end_timestamp,
+        "blackhole_window_start_local": format_beijing_datetime(start_timestamp),
+        "blackhole_window_end_local": format_beijing_datetime(end_timestamp),
+        "blackhole_blocks_scanned": 0,
+        "blackhole_transactions_seen": 0,
+        "blackhole_transactions_in_window": 0,
+        "blackhole_sender_count": 0,
+        "blackhole_scan_complete": False,
+        "blackhole_scan_error_count": 0,
+        "blackhole_scan_basis": f"RPC block transactions to blackhole address in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window",
+    }
+    if not blackhole:
+        blackhole_meta["blackhole_scan_disabled"] = True
     if not rpc_url:
         meta["statistics_window_active_error"] = "missing rpc url"
-        return meta
+        if blackhole:
+            blackhole_meta["blackhole_scan_error"] = "missing rpc url"
+        return meta, blackhole_counter, blackhole_meta
 
     try:
         if latest_block is None:
             latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
         if latest_block is None:
             raise RuntimeError("eth_blockNumber returned an invalid value")
-        start_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, start_timestamp)
-        end_marker_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, end_timestamp)
+        start_block = (
+            int(window_start_block)
+            if isinstance(window_start_block, int)
+            else find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, start_timestamp)
+        )
+        end_marker_block = (
+            int(window_end_marker_block)
+            if isinstance(window_end_marker_block, int)
+            else find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, end_timestamp)
+        )
     except Exception as exc:
         meta["statistics_window_active_error"] = str(exc)
+        if blackhole:
+            blackhole_meta["blackhole_scan_error"] = str(exc)
         print(f"[warn] statistics window active address lookup failed: {exc}", file=sys.stderr)
-        return meta
+        return meta, blackhole_counter, blackhole_meta
 
     if start_block is None:
         meta["statistics_window_active_error"] = "window start block not found"
-        return meta
+        if blackhole:
+            blackhole_meta["blackhole_scan_error"] = "window start block not found"
+        return meta, blackhole_counter, blackhole_meta
     if end_marker_block is None:
         end_marker_block = latest_block + 1
 
@@ -805,9 +863,18 @@ def collect_statistics_window_active_addresses(
             "statistics_window_active_end_marker_block": end_marker_block,
         }
     )
+    blackhole_meta.update(
+        {
+            "blackhole_start_block": low_block,
+            "blackhole_end_block": high_block,
+            "blackhole_end_marker_block": end_marker_block,
+        }
+    )
     if high_block < low_block:
         meta["statistics_window_active_wallet_address_count"] = 0
-        return meta
+        if blackhole:
+            blackhole_meta["blackhole_scan_complete"] = True
+        return meta, blackhole_counter, blackhole_meta
 
     batch_size = max(1, min(rpc_batch_size, 200))
     batches: list[list[int]] = []
@@ -817,7 +884,7 @@ def collect_statistics_window_active_addresses(
         batches.append(list(range(current, end - 1, -1)))
         current = end - 1
 
-    def fetch_batch(numbers: list[int]) -> tuple[set[str], int, int, int]:
+    def fetch_batch(numbers: list[int]) -> tuple[set[str], Counter[str], int, int, int, int]:
         payload = [
             {
                 "jsonrpc": "2.0",
@@ -832,9 +899,11 @@ def collect_statistics_window_active_addresses(
             raise RuntimeError(f"Unexpected RPC batch response: {type(parsed).__name__}")
 
         local_addresses: set[str] = set()
+        local_blackhole_counter: Counter[str] = Counter()
         scanned = 0
         tx_seen = 0
         tx_volume_wei = 0
+        blackhole_tx_seen = 0
         for item in parsed:
             if not isinstance(item, dict) or item.get("error"):
                 continue
@@ -855,7 +924,10 @@ def collect_statistics_window_active_addresses(
                 receiver = normalize_address(tx.get("to"))
                 if is_probably_user_address(receiver):
                     local_addresses.add(receiver)
-        return local_addresses, scanned, tx_seen, tx_volume_wei
+                if blackhole and receiver == blackhole and is_probably_user_address(sender):
+                    local_blackhole_counter[sender] += 1
+                    blackhole_tx_seen += 1
+        return local_addresses, local_blackhole_counter, scanned, tx_seen, tx_volume_wei, blackhole_tx_seen
 
     active_addresses: set[str] = set()
     total_transaction_volume_wei = 0
@@ -864,9 +936,11 @@ def collect_statistics_window_active_addresses(
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
             block_range = future_map[future]
             try:
-                batch_addresses, scanned, tx_seen, tx_volume_wei = future.result()
+                batch_addresses, batch_blackhole_counter, scanned, tx_seen, tx_volume_wei, blackhole_tx_seen = future.result()
             except Exception as exc:
                 meta["statistics_window_active_error_count"] += 1
+                if blackhole:
+                    blackhole_meta["blackhole_scan_error_count"] += 1
                 if meta["statistics_window_active_error_count"] <= 10:
                     print(
                         f"[warn] statistics window active block batch {block_range[-1]}-{block_range[0]} failed: {exc}",
@@ -874,13 +948,19 @@ def collect_statistics_window_active_addresses(
                     )
                 continue
             active_addresses.update(batch_addresses)
+            blackhole_counter.update(batch_blackhole_counter)
             meta["statistics_window_active_blocks_scanned"] += scanned
             meta["statistics_window_active_transactions_seen"] += tx_seen
             total_transaction_volume_wei += tx_volume_wei
+            if blackhole:
+                blackhole_meta["blackhole_blocks_scanned"] += scanned
+                blackhole_meta["blackhole_transactions_seen"] += tx_seen
+                blackhole_meta["blackhole_transactions_in_window"] += blackhole_tx_seen
             if progress and idx % 50 == 0:
                 print(
                     f"[info] statistics window active scan: {idx}/{len(batches)} batches, "
-                    f"{meta['statistics_window_active_blocks_scanned']} blocks",
+                    f"{meta['statistics_window_active_blocks_scanned']} blocks"
+                    + (f", {blackhole_meta['blackhole_transactions_in_window']} blackhole tx" if blackhole else ""),
                     file=sys.stderr,
                 )
 
@@ -888,7 +968,150 @@ def collect_statistics_window_active_addresses(
     meta["statistics_window_transaction_volume_wei"] = total_transaction_volume_wei
     meta["statistics_window_transaction_volume_display"] = format_token_chinese(total_transaction_volume_wei)
     meta["statistics_window_transaction_volume_basis"] = f"sum native MARS transaction value in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window"
-    return meta
+    blackhole_meta["blackhole_sender_count"] = len(blackhole_counter)
+    if blackhole:
+        blackhole_meta["blackhole_scan_complete"] = blackhole_meta["blackhole_scan_error_count"] == 0
+    return meta, blackhole_counter, blackhole_meta
+
+
+def collect_blackhole_window_senders_rpc(
+    rpc_url: str,
+    latest_block: int | None,
+    blackhole_address: str,
+    start_timestamp: int,
+    end_timestamp: int,
+    rpc_batch_size: int,
+    rpc_workers: int,
+    progress: bool,
+) -> tuple[Counter[str], dict[str, Any]]:
+    blackhole = normalize_address(blackhole_address)
+    counter: Counter[str] = Counter()
+    meta: dict[str, Any] = {
+        "blackhole_address": blackhole,
+        "blackhole_scan_source": "rpc_block_transactions",
+        "blackhole_window_start_timestamp": start_timestamp,
+        "blackhole_window_end_timestamp": end_timestamp,
+        "blackhole_window_start_local": format_beijing_datetime(start_timestamp),
+        "blackhole_window_end_local": format_beijing_datetime(end_timestamp),
+        "blackhole_blocks_scanned": 0,
+        "blackhole_transactions_seen": 0,
+        "blackhole_transactions_in_window": 0,
+        "blackhole_sender_count": 0,
+        "blackhole_scan_complete": False,
+        "blackhole_scan_error_count": 0,
+        "blackhole_scan_basis": "RPC block transactions to blackhole address in the latest completed Beijing 08:00 statistics window",
+    }
+    if not rpc_url or not blackhole:
+        meta["blackhole_scan_error"] = "missing rpc url or blackhole address"
+        return counter, meta
+
+    try:
+        if latest_block is None:
+            latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
+        if latest_block is None:
+            raise RuntimeError("eth_blockNumber returned an invalid value")
+        start_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, start_timestamp)
+        end_marker_block = find_first_block_at_or_after_timestamp(rpc_url, 0, latest_block, end_timestamp)
+    except Exception as exc:
+        meta["blackhole_scan_error"] = str(exc)
+        print(f"[warn] blackhole window block lookup failed: {exc}", file=sys.stderr)
+        return counter, meta
+
+    if start_block is None:
+        meta["blackhole_scan_error"] = "window start block not found"
+        return counter, meta
+    if end_marker_block is None:
+        end_marker_block = latest_block + 1
+
+    low_block = start_block
+    high_block = min(latest_block, end_marker_block - 1)
+    meta.update(
+        {
+            "blackhole_start_block": low_block,
+            "blackhole_end_block": high_block,
+            "blackhole_end_marker_block": end_marker_block,
+        }
+    )
+    if high_block < low_block:
+        meta["blackhole_scan_complete"] = True
+        return counter, meta
+
+    batch_size = max(1, min(rpc_batch_size, 200))
+    batches: list[list[int]] = []
+    current = high_block
+    while current >= low_block:
+        end = max(low_block, current - batch_size + 1)
+        batches.append(list(range(current, end - 1, -1)))
+        current = end - 1
+
+    def fetch_batch(numbers: list[int]) -> tuple[Counter[str], int, int, int]:
+        payload = [
+            {
+                "jsonrpc": "2.0",
+                "id": number,
+                "method": "eth_getBlockByNumber",
+                "params": [hex(number), True],
+            }
+            for number in numbers
+        ]
+        parsed = rpc_json(rpc_url, payload)
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Unexpected RPC batch response: {type(parsed).__name__}")
+
+        local_counter: Counter[str] = Counter()
+        scanned = 0
+        tx_seen = 0
+        blackhole_tx_seen = 0
+        for item in parsed:
+            if not isinstance(item, dict) or item.get("error"):
+                continue
+            block = item.get("result")
+            if not isinstance(block, dict):
+                continue
+            scanned += 1
+            for tx in block.get("transactions", []):
+                if not isinstance(tx, dict):
+                    continue
+                tx_seen += 1
+                receiver = normalize_address(tx.get("to"))
+                if receiver != blackhole:
+                    continue
+                sender = normalize_address(tx.get("from"))
+                if not is_probably_user_address(sender):
+                    continue
+                local_counter[sender] += 1
+                blackhole_tx_seen += 1
+        return local_counter, scanned, tx_seen, blackhole_tx_seen
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_workers, 12))) as pool:
+        future_map = {pool.submit(fetch_batch, batch): batch for batch in batches}
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            block_range = future_map[future]
+            try:
+                batch_counter, scanned, tx_seen, blackhole_tx_seen = future.result()
+            except Exception as exc:
+                meta["blackhole_scan_error_count"] += 1
+                if meta["blackhole_scan_error_count"] <= 10:
+                    print(
+                        f"[warn] blackhole block batch {block_range[-1]}-{block_range[0]} failed: {exc}",
+                        file=sys.stderr,
+                    )
+                continue
+            counter.update(batch_counter)
+            meta["blackhole_blocks_scanned"] += scanned
+            meta["blackhole_transactions_seen"] += tx_seen
+            meta["blackhole_transactions_in_window"] += blackhole_tx_seen
+            if progress and idx % 50 == 0:
+                print(
+                    f"[info] blackhole block scan: {idx}/{len(batches)} batches, "
+                    f"{meta['blackhole_blocks_scanned']} blocks, "
+                    f"{meta['blackhole_transactions_in_window']} blackhole tx",
+                    file=sys.stderr,
+                )
+
+    meta["blackhole_sender_count"] = len(counter)
+    meta["blackhole_scan_complete"] = meta["blackhole_scan_error_count"] == 0
+    return counter, meta
 
 
 def collect_rpc_log_candidates(
@@ -898,8 +1121,9 @@ def collect_rpc_log_candidates(
     rpc_log_chunk_size: int,
     rpc_log_workers: int,
     progress: bool,
-) -> tuple[Counter[str], dict[str, Any]]:
+) -> tuple[Counter[str], Counter[str], dict[str, Any]]:
     log_counter: Counter[str] = Counter()
+    burn_address_counter: Counter[str] = Counter()
     meta: dict[str, Any] = {
         "rpc_log_url": rpc_url,
         "rpc_log_contract": POWER_CONTRACT_ADDRESS,
@@ -909,18 +1133,18 @@ def collect_rpc_log_candidates(
         "rpc_log_error_count": 0,
     }
     if not rpc_url or rpc_log_blocks <= 0:
-        return log_counter, meta
+        return log_counter, burn_address_counter, meta
 
     try:
         latest_block = hex_to_int(rpc_call(rpc_url, "eth_blockNumber"))
     except Exception as exc:
         meta["rpc_log_error"] = str(exc)
         print(f"[warn] rpc log latest block lookup failed: {exc}", file=sys.stderr)
-        return log_counter, meta
+        return log_counter, burn_address_counter, meta
 
     if latest_block is None:
         meta["rpc_log_error"] = "eth_blockNumber returned an invalid value"
-        return log_counter, meta
+        return log_counter, burn_address_counter, meta
 
     latest_timestamp = get_block_timestamp(rpc_url, latest_block)
     statistics_window_start_timestamp: int | None = None
@@ -933,24 +1157,21 @@ def collect_rpc_log_candidates(
         statistics_window_start_timestamp = statistics_window_meta["statistics_window_start_timestamp"]
         statistics_window_end_timestamp = statistics_window_meta["statistics_window_end_timestamp"]
         try:
-            statistics_window_start_block = find_first_block_at_or_after_timestamp(
-                rpc_url,
-                0,
+            statistics_window_start_block = estimate_first_block_at_or_after_timestamp(
                 latest_block,
+                latest_timestamp,
                 statistics_window_start_timestamp,
             )
-            statistics_window_end_block = find_first_block_at_or_after_timestamp(
-                rpc_url,
-                0,
+            statistics_window_end_block = estimate_first_block_at_or_after_timestamp(
                 latest_block,
+                latest_timestamp,
                 statistics_window_end_timestamp,
             )
             for days in (7, 30):
                 period_start_timestamp = max(0, statistics_window_end_timestamp - days * 86_400)
-                period_start_block = find_first_block_at_or_after_timestamp(
-                    rpc_url,
-                    0,
+                period_start_block = estimate_first_block_at_or_after_timestamp(
                     latest_block,
+                    latest_timestamp,
                     period_start_timestamp,
                 )
                 period_windows[days] = {
@@ -984,6 +1205,7 @@ def collect_rpc_log_candidates(
             "rpc_log_statistics_window_end_block": statistics_window_end_block,
             "rpc_log_today_start_timestamp": statistics_window_start_timestamp,
             "rpc_log_today_start_block": statistics_window_start_block,
+            "rpc_log_block_lookup_basis": f"estimated from latest block timestamp using {MARSCHAIN_BLOCK_SECONDS}s MarsChain block interval",
             "rpc_log_chunk_size": chunk_size,
             "rpc_log_workers": rpc_log_workers,
         }
@@ -1000,7 +1222,7 @@ def collect_rpc_log_candidates(
     burned_by_statistics_window = 0
     burned_by_period: dict[int, int] = {7: 0, 30: 0}
 
-    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], dict[str, int], int, dict[int, int], int, int]:
+    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], Counter[str], dict[str, int], int, dict[int, int], int, int]:
         start, end = block_range
         parsed = rpc_call(
             rpc_url,
@@ -1017,6 +1239,7 @@ def collect_rpc_log_candidates(
             raise RuntimeError(f"Unexpected eth_getLogs response: {type(parsed).__name__}")
 
         local_counter: Counter[str] = Counter()
+        local_burn_address_counter: Counter[str] = Counter()
         local_first_seen: dict[str, int] = {}
         local_burned_by_statistics_window = 0
         local_burned_by_period: dict[int, int] = {7: 0, 30: 0}
@@ -1037,6 +1260,10 @@ def collect_rpc_log_candidates(
                         and statistics_window_start_block <= block_number < statistics_window_end_block
                     ):
                         local_burned_by_statistics_window += burned_amount
+                        for topic in topics[1:]:
+                            address = topic_to_probable_address(topic)
+                            if is_probably_user_address(address):
+                                local_burn_address_counter[address] += 1
                     for days, window in period_windows.items():
                         start_block = window.get("start_block")
                         end_block = window.get("end_block")
@@ -1054,7 +1281,15 @@ def collect_rpc_log_candidates(
                         previous = local_first_seen.get(address)
                         if previous is None or block_number < previous:
                             local_first_seen[address] = block_number
-        return local_counter, local_first_seen, local_burned_by_statistics_window, local_burned_by_period, end - start + 1, len(parsed)
+        return (
+            local_counter,
+            local_burn_address_counter,
+            local_first_seen,
+            local_burned_by_statistics_window,
+            local_burned_by_period,
+            end - start + 1,
+            len(parsed),
+        )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_log_workers, 6))) as pool:
         future_map = {pool.submit(fetch_range, block_range): block_range for block_range in ranges}
@@ -1063,6 +1298,7 @@ def collect_rpc_log_candidates(
             try:
                 (
                     batch_counter,
+                    batch_burn_address_counter,
                     batch_first_seen,
                     batch_burned_by_statistics_window,
                     batch_burned_by_period,
@@ -1075,6 +1311,7 @@ def collect_rpc_log_candidates(
                     print(f"[warn] rpc log range {block_range[0]}-{block_range[1]} failed: {exc}", file=sys.stderr)
                 continue
             log_counter.update(batch_counter)
+            burn_address_counter.update(batch_burn_address_counter)
             for address, block_number in batch_first_seen.items():
                 previous = first_seen_block.get(address)
                 if previous is None or block_number < previous:
@@ -1093,6 +1330,9 @@ def collect_rpc_log_candidates(
                 )
 
     meta["rpc_log_addresses_seen"] = len(log_counter)
+    meta["statistics_window_burn_address_count"] = len(burn_address_counter)
+    meta["statistics_window_burn_event_count"] = sum(burn_address_counter.values())
+    meta["statistics_window_burn_address_basis"] = f"wallet addresses indexed by TokensBurned events in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window"
     meta["rpc_log_first_seen_tracked"] = len(first_seen_block)
     if statistics_window_start_block is not None and statistics_window_end_block is not None:
         meta["statistics_window_new_candidate_address_count"] = sum(
@@ -1143,7 +1383,115 @@ def collect_rpc_log_candidates(
             meta[f"{prefix}_burned_display"] = None
         meta[f"{prefix}_new_candidate_address_basis"] = f"first POWER-contract log in the latest completed {days} Beijing statistics days"
         meta[f"{prefix}_burned_basis"] = f"sum TokensBurned event first uint256 amount in the latest completed {days} Beijing statistics days"
-    return log_counter, meta
+    return log_counter, burn_address_counter, meta
+
+
+def collect_burn_event_window_addresses(
+    rpc_url: str,
+    blackhole_address: str,
+    start_timestamp: int,
+    end_timestamp: int,
+    start_block: int | None,
+    end_marker_block: int | None,
+    rpc_log_workers: int,
+    progress: bool,
+) -> tuple[Counter[str], dict[str, Any]]:
+    blackhole = normalize_address(blackhole_address)
+    counter: Counter[str] = Counter()
+    meta: dict[str, Any] = {
+        "blackhole_address": blackhole,
+        "blackhole_scan_source": "power_contract_tokens_burned_event",
+        "blackhole_window_start_timestamp": start_timestamp,
+        "blackhole_window_end_timestamp": end_timestamp,
+        "blackhole_window_start_local": format_beijing_datetime(start_timestamp),
+        "blackhole_window_end_local": format_beijing_datetime(end_timestamp),
+        "blackhole_start_block": start_block,
+        "blackhole_end_marker_block": end_marker_block,
+        "blackhole_blocks_scanned": 0,
+        "blackhole_events_seen": 0,
+        "blackhole_events_in_window": 0,
+        "blackhole_transactions_in_window": 0,
+        "blackhole_sender_count": 0,
+        "blackhole_scan_complete": False,
+        "blackhole_scan_error_count": 0,
+        "blackhole_scan_basis": f"TokensBurned POWER-contract events in the latest completed Beijing {STATISTICS_DAY_START_LABEL} statistics window; indexed wallet address is force-refreshed with two uplines",
+    }
+    if not rpc_url or not blackhole:
+        meta["blackhole_scan_error"] = "missing rpc url or blackhole address"
+        return counter, meta
+    if not isinstance(start_block, int) or not isinstance(end_marker_block, int):
+        meta["blackhole_scan_error"] = "missing statistics window block range"
+        return counter, meta
+    low_block = max(0, start_block)
+    high_block = max(low_block - 1, end_marker_block - 1)
+    meta["blackhole_end_block"] = high_block
+    if high_block < low_block:
+        meta["blackhole_scan_complete"] = True
+        return counter, meta
+
+    chunk_size = 5_000
+    ranges: list[tuple[int, int]] = []
+    current = low_block
+    while current <= high_block:
+        end = min(high_block, current + chunk_size - 1)
+        ranges.append((current, end))
+        current = end + 1
+
+    def fetch_range(block_range: tuple[int, int]) -> tuple[Counter[str], int, int]:
+        start, end = block_range
+        parsed = rpc_call(
+            rpc_url,
+            "eth_getLogs",
+            [
+                {
+                    "fromBlock": hex(start),
+                    "toBlock": hex(end),
+                    "address": POWER_CONTRACT_ADDRESS,
+                    "topics": [TOKENS_BURNED_EVENT_TOPIC],
+                }
+            ],
+        )
+        if not isinstance(parsed, list):
+            raise RuntimeError(f"Unexpected eth_getLogs response: {type(parsed).__name__}")
+        local_counter: Counter[str] = Counter()
+        for log in parsed:
+            if not isinstance(log, dict):
+                continue
+            topics = log.get("topics")
+            if not isinstance(topics, list):
+                continue
+            for topic in topics[1:]:
+                address = topic_to_probable_address(topic)
+                if is_probably_user_address(address):
+                    local_counter[address] += 1
+        return local_counter, end - start + 1, len(parsed)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, min(rpc_log_workers, 4))) as pool:
+        future_map = {pool.submit(fetch_range, block_range): block_range for block_range in ranges}
+        for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
+            block_range = future_map[future]
+            try:
+                batch_counter, blocks_scanned, logs_seen = future.result()
+            except Exception as exc:
+                meta["blackhole_scan_error_count"] += 1
+                if meta["blackhole_scan_error_count"] <= 10:
+                    print(f"[warn] burn event range {block_range[0]}-{block_range[1]} failed: {exc}", file=sys.stderr)
+                continue
+            counter.update(batch_counter)
+            meta["blackhole_blocks_scanned"] += blocks_scanned
+            meta["blackhole_events_seen"] += logs_seen
+            meta["blackhole_events_in_window"] += logs_seen
+            meta["blackhole_transactions_in_window"] += logs_seen
+            if progress and idx % 5 == 0:
+                print(
+                    f"[info] burn event scan: {idx}/{len(ranges)} ranges, "
+                    f"{meta['blackhole_blocks_scanned']} blocks, {meta['blackhole_events_in_window']} events",
+                    file=sys.stderr,
+                )
+
+    meta["blackhole_sender_count"] = len(counter)
+    meta["blackhole_scan_complete"] = meta["blackhole_scan_error_count"] == 0
+    return counter, meta
 
 
 def build_row_from_payload(
@@ -1207,6 +1555,99 @@ def enrich_nodes(address: str) -> int | None:
 def fetch_address_transactions_page(address: str, page: int, limit: int) -> tuple[str, int, dict[str, Any]]:
     payload = request_json(f"/addresses/{address}/transactions", {"page": page, "limit": limit})
     return address, page, payload
+
+
+def tx_timestamp(tx: dict[str, Any]) -> int | None:
+    timestamp = tx.get("timestamp")
+    if isinstance(timestamp, int | float):
+        return int(timestamp)
+    if isinstance(timestamp, str):
+        try:
+            return int(timestamp)
+        except ValueError:
+            return None
+    return None
+
+
+def collect_blackhole_window_senders(
+    blackhole_address: str,
+    start_timestamp: int,
+    end_timestamp: int,
+    limit: int,
+    max_pages: int,
+    progress: bool,
+) -> tuple[Counter[str], dict[str, Any]]:
+    blackhole = normalize_address(blackhole_address)
+    counter: Counter[str] = Counter()
+    meta: dict[str, Any] = {
+        "blackhole_address": blackhole,
+        "blackhole_window_start_timestamp": start_timestamp,
+        "blackhole_window_end_timestamp": end_timestamp,
+        "blackhole_window_start_local": format_beijing_datetime(start_timestamp),
+        "blackhole_window_end_local": format_beijing_datetime(end_timestamp),
+        "blackhole_tx_limit": limit,
+        "blackhole_tx_max_pages": max_pages,
+        "blackhole_tx_pages_scanned": 0,
+        "blackhole_transactions_seen": 0,
+        "blackhole_transactions_in_window": 0,
+        "blackhole_sender_count": 0,
+        "blackhole_scan_complete": False,
+        "blackhole_scan_basis": "address transactions to blackhole address in the latest completed Beijing 08:00 statistics window",
+    }
+    if not blackhole or limit <= 0 or max_pages <= 0:
+        meta["blackhole_scan_error"] = "invalid blackhole scan arguments"
+        return counter, meta
+
+    for page in range(1, max_pages + 1):
+        try:
+            payload = request_json(f"/addresses/{blackhole}/transactions", {"page": page, "limit": limit})
+        except Exception as exc:
+            meta["blackhole_scan_error"] = str(exc)
+            break
+
+        transactions = payload.get("transactions", []) if isinstance(payload, dict) else []
+        if not transactions:
+            meta["blackhole_scan_complete"] = True
+            break
+
+        meta["blackhole_tx_pages_scanned"] += 1
+        meta["blackhole_transactions_seen"] += len(transactions)
+        oldest_timestamp: int | None = None
+
+        for tx in transactions:
+            if not isinstance(tx, dict):
+                continue
+            timestamp = tx_timestamp(tx)
+            if timestamp is None:
+                continue
+            oldest_timestamp = timestamp if oldest_timestamp is None else min(oldest_timestamp, timestamp)
+            if timestamp < start_timestamp:
+                continue
+            if timestamp >= end_timestamp:
+                continue
+            receiver = normalize_address(tx.get("to"))
+            sender = normalize_address(tx.get("from"))
+            status = tx.get("status")
+            if receiver != blackhole or not is_probably_user_address(sender):
+                continue
+            if status not in (None, 1, "1", True):
+                continue
+            counter[sender] += 1
+            meta["blackhole_transactions_in_window"] += 1
+
+        if progress and page % 100 == 0:
+            print(
+                f"[info] blackhole tx scan: page {page}, "
+                f"{meta['blackhole_transactions_in_window']} in-window tx, {len(counter)} senders",
+                file=sys.stderr,
+            )
+
+        if oldest_timestamp is not None and oldest_timestamp < start_timestamp:
+            meta["blackhole_scan_complete"] = True
+            break
+
+    meta["blackhole_sender_count"] = len(counter)
+    return counter, meta
 
 
 def collect_history_counter(
@@ -1508,14 +1949,21 @@ def lookup_power_rows(
     args: argparse.Namespace,
     cache: dict[str, dict[str, Any]],
     progress_label: str,
+    force_refresh: set[str] | None = None,
 ) -> tuple[list[RankedAddress], dict[str, dict[str, Any]], Counter[str], dict[str, str]]:
     rows: list[RankedAddress] = []
     cache_updates: dict[str, dict[str, Any]] = {}
     cache_stats: Counter[str] = Counter()
     cache_status_by_address: dict[str, str] = {}
+    force_refresh = force_refresh or set()
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as pool:
         future_map = {
-            pool.submit(fetch_power_payload, address, cache, args.cache_ttl_seconds): address
+            pool.submit(
+                fetch_power_payload,
+                address,
+                cache,
+                0 if address in force_refresh else args.cache_ttl_seconds,
+            ): address
             for address in addresses
         }
         for idx, future in enumerate(concurrent.futures.as_completed(future_map), start=1):
@@ -1610,6 +2058,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         progress=args.progress,
     )
     log_counter: Counter[str] = Counter()
+    burn_event_counter: Counter[str] = Counter()
     rpc_meta: dict[str, Any] = {}
     rpc_log_meta: dict[str, Any] = {}
     rpc_blocks = getattr(args, "rpc_blocks", 0)
@@ -1628,7 +2077,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
 
     rpc_log_blocks = getattr(args, "rpc_log_blocks", 0)
     if rpc_log_blocks:
-        log_counter, rpc_log_meta = collect_rpc_log_candidates(
+        log_counter, burn_event_counter, rpc_log_meta = collect_rpc_log_candidates(
             rpc_url=getattr(args, "rpc_url", DEFAULT_RPC_URL),
             rpc_log_blocks=rpc_log_blocks,
             rpc_log_start_block=getattr(args, "rpc_log_start_block", None),
@@ -1637,10 +2086,54 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             progress=args.progress,
         )
 
+    blackhole_enabled = not bool(getattr(args, "disable_blackhole_refresh", False))
+    statistics_reference_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
+    if not isinstance(statistics_reference_timestamp, int):
+        statistics_reference_timestamp = int(time.time())
+    statistics_window_meta = build_statistics_window_meta(statistics_reference_timestamp)
+    if blackhole_enabled:
+        blackhole_counter, blackhole_meta = collect_burn_event_window_addresses(
+            getattr(args, "rpc_url", DEFAULT_RPC_URL),
+            getattr(args, "blackhole_address", BLACKHOLE_ADDRESS),
+            int(statistics_window_meta["statistics_window_start_timestamp"]),
+            int(statistics_window_meta["statistics_window_end_timestamp"]),
+            rpc_log_meta.get("rpc_log_statistics_window_start_block") if rpc_log_meta else None,
+            rpc_log_meta.get("rpc_log_statistics_window_end_block") if rpc_log_meta else None,
+            int(getattr(args, "rpc_log_workers", 3)),
+            args.progress,
+        )
+        if burn_event_counter and (not blackhole_meta.get("blackhole_scan_complete") or not blackhole_counter):
+            blackhole_counter = Counter(burn_event_counter)
+            blackhole_meta.update(
+                {
+                    "blackhole_scan_source": "power_contract_tokens_burned_event_fallback_from_full_log_scan",
+                    "blackhole_events_in_window": sum(blackhole_counter.values()),
+                    "blackhole_transactions_in_window": sum(blackhole_counter.values()),
+                    "blackhole_sender_count": len(blackhole_counter),
+                    "blackhole_fallback_used": True,
+                }
+            )
+    else:
+        blackhole_counter = Counter()
+        blackhole_meta = {
+            "blackhole_address": normalize_address(getattr(args, "blackhole_address", BLACKHOLE_ADDRESS)),
+            "blackhole_scan_disabled": True,
+            "blackhole_window_start_timestamp": statistics_window_meta["statistics_window_start_timestamp"],
+            "blackhole_window_end_timestamp": statistics_window_meta["statistics_window_end_timestamp"],
+            "blackhole_window_start_local": statistics_window_meta["statistics_window_start_local"],
+            "blackhole_window_end_local": statistics_window_meta["statistics_window_end_local"],
+            "blackhole_sender_count": 0,
+            "blackhole_transactions_in_window": 0,
+            "blackhole_events_in_window": 0,
+        }
+
     now = int(time.time())
     current_scores = {
-        address: tx_counter[address] * 10 + miner_counter[address] * 20 + log_counter[address] * 15
-        for address in set(tx_counter) | set(miner_counter) | set(log_counter)
+        address: tx_counter[address] * 10
+        + miner_counter[address] * 20
+        + log_counter[address] * 15
+        + blackhole_counter[address] * 100
+        for address in set(tx_counter) | set(miner_counter) | set(log_counter) | set(blackhole_counter)
     }
     current_candidates = sorted(
         current_scores,
@@ -1660,10 +2153,24 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     bootstrap_complete = bool(address_pool_meta.get("bootstrap_complete"))
     add_cache_addresses_to_pool(address_pool, cache, now)
     for address in current_candidates:
-        ensure_address_pool_entry(address_pool, address, now, "current")
+        ensure_address_pool_entry(address_pool, address, now, "blackhole" if address in blackhole_counter else "current")
 
-    if bootstrap_complete:
-        ordered_candidates = select_refresh_candidates(
+    forced_refresh_addresses = set(blackhole_counter)
+
+    if bool(getattr(args, "full_calibration", False)):
+        ordered_candidates = sorted(
+            address_pool,
+            key=lambda addr: (
+                int(address_pool.get(addr, {}).get("source_score_total", 0) or 0),
+                int(address_pool.get(addr, {}).get("last_seen_at", 0) or 0),
+                addr,
+            ),
+            reverse=True,
+        )
+        forced_refresh_addresses = set(ordered_candidates)
+        refresh_mode = "full_calibration"
+    elif bootstrap_complete:
+        selected_candidates = select_refresh_candidates(
             address_pool,
             cache,
             current_scores,
@@ -1671,7 +2178,8 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             args.cache_ttl_seconds,
             now,
         )
-        refresh_mode = "incremental"
+        ordered_candidates = list(dict.fromkeys([*forced_refresh_addresses, *selected_candidates]))
+        refresh_mode = "blackhole_incremental"
     else:
         ordered_candidates = sorted(
             address_pool,
@@ -1684,6 +2192,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
             reverse=True,
         )
         refresh_mode = "bootstrap"
+        forced_refresh_addresses.update(blackhole_counter)
     bootstrap_complete_after = bootstrap_complete or bool(ordered_candidates)
 
     cache_lookup_stats: Counter[str] = Counter()
@@ -1699,6 +2208,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         args,
         cache,
         "initial",
+        force_refresh=forced_refresh_addresses,
     )
     cache_lookup_stats.update(cache_stats)
     cache.update(cache_updates)
@@ -1706,6 +2216,43 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         rows_map[row.address] = row
 
     seen_addresses = set(ordered_candidates)
+    blackhole_upline_counter: Counter[str] = Counter()
+    for address in blackhole_counter:
+        payload = cache.get(address)
+        if not isinstance(payload, dict):
+            continue
+        for candidate in (normalize_address(payload.get("upline1")), normalize_address(payload.get("upline2"))):
+            if is_probably_user_address(candidate):
+                blackhole_upline_counter[candidate] += 1
+
+    if blackhole_upline_counter:
+        upline_counter.update(blackhole_upline_counter)
+        next_addresses = [
+            address
+            for address, _ in blackhole_upline_counter.most_common()
+            if address not in forced_refresh_addresses
+        ]
+        for address in next_addresses:
+            ensure_address_pool_entry(address_pool, address, now, "blackhole_upline")
+        if next_addresses:
+            seen_addresses.update(next_addresses)
+            depth_rows, cache_updates, cache_stats, depth_cache_status = lookup_power_rows(
+                next_addresses,
+                tx_counter,
+                miner_counter,
+                log_counter,
+                upline_counter,
+                args,
+                cache,
+                "blackhole-upline",
+                force_refresh=set(next_addresses),
+            )
+            cache_lookup_stats.update(cache_stats)
+            cache.update(cache_updates)
+            cache_status_by_address.update(depth_cache_status)
+            for row in depth_rows:
+                rows_map[row.address] = row
+
     for depth in range(1, args.upline_depth + 1):
         next_counter: Counter[str] = Counter()
         for row in rows_map.values():
@@ -1794,6 +2341,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         log_counter,
         upline_counter,
         now,
+        blackhole_counter=blackhole_counter,
     )
     save_cache(Path(args.cache_file) if args.cache_file else None, cache)
     pool_meta = {
@@ -1803,6 +2351,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "address_count": len(address_pool),
         "cached_address_count": len(cache),
         "selected_refresh_count": len(ordered_candidates),
+        "forced_refresh_count": len(forced_refresh_addresses),
+        "blackhole_forced_sender_count": len(blackhole_counter),
+        "blackhole_upline_count": len(blackhole_upline_counter),
         "current_candidate_count": len(current_candidates),
         "source_score_total": sum(int(entry.get("source_score_total", 0) or 0) for entry in address_pool.values()),
         "bootstrap_complete": bootstrap_complete_after,
@@ -1853,12 +2404,8 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
     latest_block = rpc_log_meta.get("rpc_log_latest_block") if rpc_log_meta else None
     if latest_block is None:
         latest_block = rpc_meta.get("rpc_latest_block") if rpc_meta else None
-    statistics_reference_timestamp = rpc_log_meta.get("rpc_log_latest_timestamp") if rpc_log_meta else None
-    if not isinstance(statistics_reference_timestamp, int):
-        statistics_reference_timestamp = int(time.time())
-    statistics_window_meta = build_statistics_window_meta(statistics_reference_timestamp)
     emission_meta = build_mars_emission_meta(args.rpc_url, statistics_reference_timestamp, network_total_power)
-    statistics_window_active_meta = collect_statistics_window_active_addresses(
+    statistics_window_active_meta, _, _ = collect_statistics_window_active_addresses(
         args.rpc_url,
         rpc_log_meta.get("rpc_log_latest_block") if rpc_log_meta else None,
         statistics_window_meta["statistics_window_start_timestamp"],
@@ -1866,6 +2413,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         args.rpc_batch_size,
         args.rpc_workers,
         args.progress,
+        None,
+        rpc_log_meta.get("rpc_log_statistics_window_start_block") if rpc_log_meta else None,
+        rpc_log_meta.get("rpc_log_statistics_window_end_block") if rpc_log_meta else None,
     )
 
     daily_power_history_days = 0
@@ -1983,6 +2533,7 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "rpc_log_statistics_window_start_block": rpc_log_meta.get("rpc_log_statistics_window_start_block"),
         "rpc_log_statistics_window_end_block": rpc_log_meta.get("rpc_log_statistics_window_end_block"),
         "rpc_log_error_count": rpc_log_meta.get("rpc_log_error_count", 0),
+        **blackhole_meta,
         **{
             key: rpc_log_meta.get(key)
             for days in (7, 30)
@@ -2043,6 +2594,9 @@ def build_ranking(args: argparse.Namespace) -> tuple[list[RankedAddress], dict[s
         "power_cache_refreshed": cache_lookup_stats.get("refreshed", 0),
         "power_cache_stale_fallbacks": cache_lookup_stats.get("stale_fallback", 0),
         "seed_candidate_count": len(ordered_candidates),
+        "forced_refresh_count": len(forced_refresh_addresses),
+        "blackhole_forced_sender_count": len(blackhole_counter),
+        "blackhole_upline_count": len(blackhole_upline_counter),
         "candidate_count": len(address_pool),
         "address_pool_count": len(address_pool),
         "bootstrap_complete": bootstrap_complete_after,
@@ -2085,6 +2639,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--rpc-log-start-block", type=int, default=None, help="Highest block number for JSON-RPC log scanning; defaults to latest.")
     parser.add_argument("--rpc-log-chunk-size", type=int, default=50_000, help="Blocks per eth_getLogs range.")
     parser.add_argument("--rpc-log-workers", type=int, default=3, help="Concurrent eth_getLogs workers.")
+    parser.add_argument("--blackhole-address", default=BLACKHOLE_ADDRESS, help="Blackhole address used to detect daily burn-triggered power changes.")
+    parser.add_argument("--blackhole-tx-limit", type=int, default=100, help="Transactions per blackhole address page.")
+    parser.add_argument("--blackhole-tx-max-pages", type=int, default=2000, help="Maximum blackhole transaction pages to scan for the completed 08:00 window.")
+    parser.add_argument("--disable-blackhole-refresh", action="store_true", help="Disable blackhole transaction driven forced refresh.")
+    parser.add_argument("--full-calibration", action="store_true", help="Force-refresh every address in the persistent address pool.")
     parser.add_argument("--max-candidates", type=int, default=3000, help="Maximum candidate addresses to power-check.")
     parser.add_argument("--top", type=int, default=100, help="Number of ranked rows to output. Use 0 to output every discovered positive-power row.")
     parser.add_argument("--workers", type=int, default=16, help="Concurrent power lookups.")
