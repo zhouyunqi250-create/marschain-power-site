@@ -99,7 +99,9 @@ jobs:
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python - <<'PY'
           import json
+          import html
           import os
+          import re
           import urllib.request
 
           base = os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com"
@@ -108,7 +110,19 @@ jobs:
               health = json.load(resp)
           with urllib.request.urlopen(f"{base.rstrip('/')}/data/latest.json?v=paid-deploy", timeout=60) as resp:
               payload = json.load(resp)
+          with urllib.request.urlopen(f"{base.rstrip('/')}/index.html?v=paid-deploy", timeout=60) as resp:
+              page = resp.read().decode("utf-8", "replace")
+          meta = payload.get("meta", {})
+          paid_download = meta.get("paid_download") if isinstance(meta, dict) else {}
+          page_api_base = ""
+          match = re.search(r'data-api-base="([^"]*)"', page)
+          if match:
+              page_api_base = html.unescape(match.group(1)).strip().rstrip("/")
           assert len(payload.get("rows", [])) == 100
-          assert payload.get("meta", {}).get("full_ranked_count", 0) >= 100
-          print(json.dumps({"api_base": api_base, "health": health, "public_rows": len(payload.get("rows", [])), "full_ranked_count": payload.get("meta", {}).get("full_ranked_count")}, ensure_ascii=False, indent=2))
+          assert meta.get("full_ranked_count", 0) >= 100
+          assert meta.get("paid_download_api_base") == api_base
+          assert isinstance(paid_download, dict) and paid_download.get("api_base") == api_base
+          assert page_api_base == api_base
+          assert 'data-paid-copy-value="0x0fD038365577215292B44F89C92695C7AC8C3363"' in page
+          print(json.dumps({"api_base": api_base, "page_api_base": page_api_base, "health": health, "public_rows": len(payload.get("rows", [])), "full_ranked_count": meta.get("full_ranked_count")}, ensure_ascii=False, indent=2))
           PY
