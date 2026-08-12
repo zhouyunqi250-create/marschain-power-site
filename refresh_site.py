@@ -17,6 +17,7 @@ from price_data import build_price_payload_from_meta, load_price_file
 
 PUBLIC_RANK_LIMIT = 100
 METRIC_HISTORY_LIMIT = 90
+DEFAULT_PAID_DOWNLOAD_API_BASE = "https://marschadownload-xpbeuxwcln.cn-hangzhou.fcapp.run"
 
 OFFICIAL_FAST_META_KEYS = (
     "network_total_power",
@@ -290,6 +291,7 @@ def build_public_payload(payload: dict, public_rank_limit: int = PUBLIC_RANK_LIM
         os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/")
         or str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
         or str(paid_download_meta.get("api_base") or "").strip().rstrip("/")
+        or DEFAULT_PAID_DOWNLOAD_API_BASE
     )
     if paid_api_base:
         meta["paid_download_api_base"] = paid_api_base

@@ -19,6 +19,7 @@ MARS_PAYMENT_ADDRESS_DISPLAY = "0M0fD038365577215292B44F89C92695C7AC8C3363"
 MARS_PAYMENT_ADDRESS_VERIFY = "0x0fD038365577215292B44F89C92695C7AC8C3363"
 MARS_PAID_DOWNLOAD_PRICE = "1000"
 MARS_PAID_DOWNLOAD_EXPIRES_SECONDS = 3600
+MARSCHAIN_PAID_DOWNLOAD_API_BASE = "https://marschadownload-xpbeuxwcln.cn-hangzhou.fcapp.run"
 
 _OLD_STATISTICS_TIME = "00:00"
 _OLD_STATISTICS_TIME_SECONDS = "00:00:00"
@@ -125,6 +126,7 @@ def load_paid_download_config(meta: dict | None = None) -> dict[str, str]:
         os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/")
         or str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
         or str(paid_download_meta.get("api_base") or "").strip().rstrip("/")
+        or MARSCHAIN_PAID_DOWNLOAD_API_BASE
     )
     return {
         "api_base": api_base,
