@@ -177,23 +177,32 @@ jobs:
         run: |
           SITE_BASE_URL="${ALIYUN_SITE_BASE_URL:-https://www.marschainrank.com}"
           python - <<'PY' >> "$GITHUB_ENV"
-          import html
+          import json
           import os
-          import re
           import urllib.request
 
-          base = (os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com").rstrip("/")
-          try:
-              with urllib.request.urlopen(f"{base}/?v=paid-api-preserve", timeout=30) as resp:
-                  page = resp.read().decode("utf-8", "replace")
-          except Exception:
-              raise SystemExit(0)
-
-          match = re.search(r'data-api-base="([^"]+)"', page)
-          if match:
-              api_base = html.unescape(match.group(1)).strip()
+          api_base = ""
+          candidates = [
+              (os.environ.get("ALIYUN_SITE_BASE_URL") or "https://www.marschainrank.com").rstrip("/"),
+              "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com",
+          ]
+          for base in dict.fromkeys(candidates):
+              try:
+                  with urllib.request.urlopen(f"{base}/data/latest.json?v=paid-api-preserve", timeout=30) as resp:
+                      payload = json.load(resp)
+              except Exception:
+                  continue
+              meta = payload.get("meta") if isinstance(payload, dict) else {}
+              if not isinstance(meta, dict):
+                  continue
+              api_base = str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
+              paid_download = meta.get("paid_download")
+              if not api_base and isinstance(paid_download, dict):
+                  api_base = str(paid_download.get("api_base") or "").strip().rstrip("/")
               if api_base:
-                  print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={api_base}")
+                  break
+          if api_base:
+              print(f"MARSCHAIN_PAID_DOWNLOAD_API_BASE={api_base}")
           PY
 
       - name: Restore public metric history

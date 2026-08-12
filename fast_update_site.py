@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 import urllib.request
 from pathlib import Path
@@ -136,6 +137,19 @@ def fetch_latest_block(rpc_url: str, network_stats: dict | None = None) -> int |
 
 def build_fast_meta(base_meta: dict, origin_history: list[dict], rpc_url: str, max_cutoff_lag_minutes: int) -> dict:
     meta = dict(base_meta)
+    paid_download_meta = meta.get("paid_download")
+    if not isinstance(paid_download_meta, dict):
+        paid_download_meta = {}
+    paid_api_base = (
+        os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/")
+        or str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
+        or str(paid_download_meta.get("api_base") or "").strip().rstrip("/")
+    )
+    if paid_api_base:
+        meta["paid_download_api_base"] = paid_api_base
+        paid_download_meta = dict(paid_download_meta)
+        paid_download_meta["api_base"] = paid_api_base
+        meta["paid_download"] = paid_download_meta
     now = int(time.time())
     window_meta = build_statistics_window_meta(now)
     reference_timestamp = int(window_meta["statistics_window_end_timestamp"])

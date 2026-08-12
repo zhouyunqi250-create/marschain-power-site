@@ -116,9 +116,18 @@ def build_analytics_head() -> str:
     return "".join(scripts)
 
 
-def load_paid_download_config() -> dict[str, str]:
+def load_paid_download_config(meta: dict | None = None) -> dict[str, str]:
+    meta = meta or {}
+    paid_download_meta = meta.get("paid_download") if isinstance(meta, dict) else None
+    if not isinstance(paid_download_meta, dict):
+        paid_download_meta = {}
+    api_base = (
+        os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/")
+        or str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
+        or str(paid_download_meta.get("api_base") or "").strip().rstrip("/")
+    )
     return {
-        "api_base": os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/"),
+        "api_base": api_base,
         "pay_to_display": os.getenv("MARS_PAYMENT_ADDRESS_DISPLAY", MARS_PAYMENT_ADDRESS_DISPLAY).strip(),
         "pay_to_verify": os.getenv("MARS_PAYMENT_ADDRESS_VERIFY", MARS_PAYMENT_ADDRESS_VERIFY).strip(),
         "price_mars": os.getenv("MARS_PAID_DOWNLOAD_PRICE", MARS_PAID_DOWNLOAD_PRICE).strip() or MARS_PAID_DOWNLOAD_PRICE,
@@ -3106,10 +3115,11 @@ const setupPaidDownloadPanel = (panel) => {
   if (copyButton && addressNode) {
     copyButton.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(addressNode.textContent.trim());
+        const copyValue = (addressNode.dataset.copyValue || addressNode.textContent || '').trim();
+        await navigator.clipboard.writeText(copyValue);
         setStatus('收款地址已复制', 'ok');
       } catch (error) {
-        setStatus(addressNode.textContent.trim(), 'ok');
+        setStatus((addressNode.dataset.copyValue || addressNode.textContent || '').trim(), 'ok');
       }
     });
   }
@@ -3835,7 +3845,7 @@ def _build_paid_download_panel(config: dict[str, str], *, mobile: bool = False) 
         <div class="{prefix}-amount"><span>收款金额</span><b>{escape(config["price_mars"])} MARS</b></div>
         <div class="{prefix}-address">
           <span>收款地址</span>
-          <code data-paid-address>{escape(config["pay_to_display"])}</code>
+          <code data-paid-address data-paid-copy-value="{escape(config["pay_to_verify"])}">{escape(config["pay_to_display"])}</code>
           <button type="button" data-paid-copy>{copy_label}</button>
         </div>
         <div class="{prefix}-controls">
@@ -3863,7 +3873,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     title = "MarsChain 算力排行榜"
     subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     analytics_head = build_analytics_head()
-    paid_download_config = load_paid_download_config()
+    paid_download_config = load_paid_download_config(meta)
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
@@ -4690,10 +4700,11 @@ const setupMobilePaidDownloadPanel = (panel) => {
   if (copyButton && addressNode) {
     copyButton.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(addressNode.textContent.trim());
+        const copyValue = (addressNode.dataset.copyValue || addressNode.textContent || '').trim();
+        await navigator.clipboard.writeText(copyValue);
         setStatus('收款地址已复制', 'ok');
       } catch (error) {
-        setStatus(addressNode.textContent.trim(), 'ok');
+        setStatus((addressNode.dataset.copyValue || addressNode.textContent || '').trim(), 'ok');
       }
     });
   }
@@ -6386,7 +6397,7 @@ def build_mobile_html(payload: dict) -> str:
     title = "MarsChain 算力排行榜 · 手机版"
     subtitle = "手机端查看 MarsChain 全网算力、统计日新增地址和头部排行。"
     analytics_head = build_analytics_head()
-    paid_download_config = load_paid_download_config()
+    paid_download_config = load_paid_download_config(meta)
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")

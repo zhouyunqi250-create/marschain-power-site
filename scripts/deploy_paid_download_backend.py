@@ -29,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FUNCTION_NAME = os.getenv("MARS_PAID_FUNCTION_NAME", "marschain-paid-download")
 TRIGGER_NAME = os.getenv("MARS_PAID_TRIGGER_NAME", "http")
 DEFAULT_PAID_PREFIX = "paid-downloads"
+ROUTE_PREFIX = os.getenv("MARS_PAID_ROUTE_PREFIX", "/api").strip()
 
 
 def require_env(name: str) -> str:
@@ -179,7 +180,7 @@ def function_env(
         "MARS_PAID_DOWNLOAD_PRICE_WEI": os.getenv("MARS_PAID_DOWNLOAD_PRICE_WEI", "1000000000000000000000"),
         "MARS_PAID_DOWNLOAD_EXPIRES_SECONDS": os.getenv("MARS_PAID_DOWNLOAD_EXPIRES_SECONDS", "3600"),
         "MARS_PAYMENT_CONFIRMATIONS": os.getenv("MARS_PAYMENT_CONFIRMATIONS", "3"),
-        "MARS_PAID_ROUTE_PREFIX": "/api",
+        "MARS_PAID_ROUTE_PREFIX": ROUTE_PREFIX,
         "MARS_PAID_CORS_ORIGIN": os.getenv("MARS_PAID_CORS_ORIGIN", "https://www.marschainrank.com"),
     }
 
@@ -236,7 +237,11 @@ def deploy_trigger(client: FcClient) -> str:
     url = (body_map.get("httpTrigger") or {}).get("urlInternet")
     if not url:
         raise SystemExit(f"HTTP trigger did not return a public URL: {body_map}")
-    return url.rstrip("/")
+    api_base = url.rstrip("/")
+    route_prefix = ROUTE_PREFIX.strip("/")
+    if route_prefix:
+        api_base = f"{api_base}/{route_prefix}"
+    return api_base
 
 
 def check_health(api_base: str) -> dict[str, Any]:

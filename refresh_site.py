@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import time
 from argparse import Namespace
@@ -282,6 +283,16 @@ def make_args(
 def build_public_payload(payload: dict, public_rank_limit: int = PUBLIC_RANK_LIMIT) -> dict:
     rows = payload.get("rows", [])
     meta = dict(payload.get("meta", {}))
+    paid_download_meta = meta.get("paid_download")
+    if not isinstance(paid_download_meta, dict):
+        paid_download_meta = {}
+    paid_api_base = (
+        os.getenv("MARSCHAIN_PAID_DOWNLOAD_API_BASE", "").strip().rstrip("/")
+        or str(meta.get("paid_download_api_base") or "").strip().rstrip("/")
+        or str(paid_download_meta.get("api_base") or "").strip().rstrip("/")
+    )
+    if paid_api_base:
+        meta["paid_download_api_base"] = paid_api_base
     public_rows = rows[:public_rank_limit]
     meta["full_ranked_count"] = len(rows)
     meta["public_rank_limit"] = public_rank_limit
@@ -293,6 +304,8 @@ def build_public_payload(payload: dict, public_rank_limit: int = PUBLIC_RANK_LIM
         "asset": "MARS",
         "download_expires_seconds": 3600,
     }
+    if paid_api_base:
+        meta["paid_download"]["api_base"] = paid_api_base
     return {"meta": meta, "rows": public_rows}
 
 

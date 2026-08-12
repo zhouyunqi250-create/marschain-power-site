@@ -136,13 +136,17 @@ def write_json_object(bucket: Any, key: str, payload: dict[str, Any]) -> None:
     )
 
 
+def strip_route_prefix(path: str) -> str:
+    if ROUTE_PREFIX and path.startswith(ROUTE_PREFIX + "/"):
+        return path[len(ROUTE_PREFIX) :]
+    if ROUTE_PREFIX and path == ROUTE_PREFIX:
+        return "/"
+    return path
+
+
 def parse_request(environ: dict[str, Any]) -> Request:
     method = (environ.get("REQUEST_METHOD") or "GET").upper()
-    path = environ.get("PATH_INFO") or "/"
-    if ROUTE_PREFIX and path.startswith(ROUTE_PREFIX + "/"):
-        path = path[len(ROUTE_PREFIX) :]
-    elif ROUTE_PREFIX and path == ROUTE_PREFIX:
-        path = "/"
+    path = strip_route_prefix(environ.get("PATH_INFO") or "/")
     length = int(environ.get("CONTENT_LENGTH") or 0)
     raw_body = environ["wsgi.input"].read(length) if length else b""
     body: dict[str, Any] = {}
@@ -166,7 +170,7 @@ def parse_fc_http_event(event: Any) -> Request:
     http = context.get("http") or {}
     method = str(http.get("method") or "GET").upper()
     path = str(http.get("path") or event.get("rawPath") or "/")
-    path = unquote(path)
+    path = strip_route_prefix(unquote(path))
 
     raw_body = event.get("body") or ""
     if event.get("isBase64Encoded"):
