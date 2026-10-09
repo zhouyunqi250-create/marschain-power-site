@@ -2268,6 +2268,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
     linear-gradient(180deg, rgba(22,38,68,.88), rgba(8,15,30,.92));
 }
 .equation-grid .fcard strong { font-size: 46px; margin: 36px 0 10px; }
+.equation-grid .fcard .oracle-countdown-value { font-size: clamp(25px, 2.45vw, 36px); letter-spacing: -.055em; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .burn-calculator {
   margin-top: 18px;
   display: grid;
@@ -2753,6 +2754,7 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   .fcard label { font-size: 13px; }
   .fcard strong { font-size: 40px; margin: 26px 0 10px; }
   .equation-grid .fcard strong { font-size: 40px; margin: 26px 0 10px; }
+  .equation-grid .fcard .oracle-countdown-value { font-size: 38px; }
   .fcard small { font-size: 12px; }
   .arrow { height: 28px; opacity: .75; }
   .rank-grid { grid-template-columns: 1fr; gap: 10px; }
@@ -4134,6 +4136,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <article class="fcard reveal"><label>当前实际系数<span>算力倍增</span></label><strong>20x</strong><small>当前 04 方程采用的实际膨胀倍数。</small></article>
       <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>圣诞方程与预言机方程按 8 天窗口执行。</small></article>
       <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制说明中每轮方程触发的流通量销毁比例。</small></article>
+      <article class="fcard reveal"><label>预言机方程式<span>实时倒计时</span></label><strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong><small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>
     """
     burn_estimate = _build_burn_estimate(meta)
     burn_calculator = _build_burn_calculator(burn_estimate)
@@ -4286,6 +4289,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
 <script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{SCROLL_DASHBOARD_JS}
 {LIVE_PRICE_JS}
+{ORACLE_COUNTDOWN_JS}
 {SHARE_POSTER_JS}
 {METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
@@ -4485,6 +4489,7 @@ a { color: inherit; }
 .m-flow-card { border: 1px solid var(--line); border-radius: 22px; padding: 17px; background: var(--panel); }
 .m-flow-card label { display: flex; justify-content: space-between; gap: 10px; color: #b8c8df; font-size: 13px; font-weight: 950; }
 .m-flow-card strong { display: block; margin-top: 20px; font-size: 38px; line-height: 1; letter-spacing: -.06em; }
+.m-flow-card .oracle-countdown-value { font-size: clamp(28px, 8.2vw, 36px); letter-spacing: -.055em; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .m-flow-card small { display: block; margin-top: 10px; color: #8798b2; font-size: 12px; line-height: 1.55; }
 .m-burn-calculator {
   display: grid;
@@ -4881,6 +4886,44 @@ LIVE_PRICE_JS = r"""
   window.setInterval(refresh, intervalMs);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refresh();
+  });
+})();
+"""
+
+
+ORACLE_COUNTDOWN_JS = r"""
+(() => {
+  const nodes = Array.from(document.querySelectorAll('[data-oracle-countdown]'));
+  if (!nodes.length) return;
+  const deadline = Date.parse('2026-10-21T08:00:00+08:00');
+  const pad = (value) => String(value).padStart(2, '0');
+  const update = () => {
+    const remaining = Math.max(0, deadline - Date.now());
+    const days = Math.floor(remaining / 86400000);
+    const hours = Math.floor((remaining % 86400000) / 3600000);
+    const minutes = Math.floor((remaining % 3600000) / 60000);
+    const seconds = Math.floor((remaining % 60000) / 1000);
+    const isEnglish = document.documentElement.lang === 'en';
+    const value = `${days}${isEnglish ? 'd' : '天'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    nodes.forEach((node) => {
+      node.textContent = value;
+      node.setAttribute('aria-label', isEnglish
+        ? `${days} days ${hours} hours ${minutes} minutes ${seconds} seconds remaining`
+        : `剩余${days}天${hours}小时${minutes}分${seconds}秒`);
+    });
+    document.querySelectorAll('[data-oracle-countdown-note]').forEach((node) => {
+      node.textContent = remaining > 0
+        ? (isEnglish
+          ? 'Next power cycle starts · Deadline: Oct 21, 2026, 08:00 GMT+8'
+          : '开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00')
+        : (isEnglish ? 'The next power cycle is starting' : '算力新周期启动时间已到');
+    });
+  };
+  update();
+  window.setInterval(update, 1000);
+  window.addEventListener('focus', update);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) update();
   });
 })();
 """
@@ -5983,6 +6026,9 @@ LANGUAGE_TOGGLE_JS = r"""
     '展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。': 'Shows public expansion parameters in the MarsChain dual-equation mechanism, including power multiplier, period, and burn ratio.',
     '当前起始系数': 'Starting Factor',
     '当前实际系数': 'Current Actual Factor',
+    '预言机方程式': 'Oracle Equation',
+    '实时倒计时': 'Live Countdown',
+    '开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00': 'Next power cycle starts · Deadline: Oct 21, 2026, 08:00 GMT+8',
     '算力倍增': 'Power Multiplier',
     '官方机制说明中的方程膨胀起始倍数。': 'Starting expansion multiplier in the official mechanism notes.',
     '当前 04 方程采用的实际膨胀倍数。': 'Actual expansion multiplier used by Equation 04.',
@@ -6572,6 +6618,10 @@ def build_mobile_html(payload: dict) -> str:
             ("执行周期", "单轮", "8 天", "圣诞方程与预言机方程按 8 天窗口执行。"),
             ("销毁比例", "流通量", "35%", "机制说明中每轮方程触发的流通量销毁比例。"),
         ]
+    ) + (
+        '<article class="m-flow-card m-reveal"><label>预言机方程式<span>实时倒计时</span></label>'
+        '<strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong>'
+        '<small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>'
     )
     burn_estimate = _build_burn_estimate(meta)
     burn_calculator = _build_burn_calculator(burn_estimate, mobile=True)
@@ -6697,6 +6747,7 @@ def build_mobile_html(payload: dict) -> str:
 <script id="metricTrendData" type="application/json">{metric_trend_payload}</script>
 <script>{MOBILE_DASHBOARD_JS}
 {LIVE_PRICE_JS}
+{ORACLE_COUNTDOWN_JS}
 {SHARE_POSTER_JS}
 {METRIC_TREND_JS}
 {LANGUAGE_TOGGLE_JS}</script>
