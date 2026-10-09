@@ -3875,7 +3875,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     title = "MarsChain 算力排行榜"
     subtitle = "追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。"
     analytics_head = build_analytics_head()
-    paid_download_config = load_paid_download_config(meta)
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
@@ -4133,7 +4132,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     """
     equation_cards = """
       <article class="fcard reveal"><label>当前实际系数<span>算力倍增</span></label><strong>20x</strong><small>当前 04 方程采用的实际膨胀倍数。</small></article>
-      <article class="fcard reveal"><label>最高膨胀系数<span>上限</span></label><strong>160x</strong><small>方程膨胀系数逐级放大时的公开说明上限。</small></article>
       <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>圣诞方程与预言机方程按 8 天窗口执行。</small></article>
       <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制说明中每轮方程触发的流通量销毁比例。</small></article>
     """
@@ -4144,7 +4142,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
     rank_first_page_end = min(rank_page_size, rank_total_count)
     rank_cards = _build_rank_cards(rows, limit=100, page_size=rank_page_size)
-    paid_download_panel = _build_paid_download_panel(paid_download_config)
+    paid_download_panel = ""
     rank_page_buttons = "".join(
         '<button class="rank-page-button%s" type="button" data-rank-page="%d" aria-current="%s">%d</button>'
         % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
@@ -4266,7 +4264,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     </div>
     <div class="equation-grid">{equation_cards}</div>
     {burn_calculator}
-    <p class="equation-note">当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
+    <p class="equation-note">本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
   </section>
   <section id="risk" class="section">
     <div class="section-head reveal">
@@ -5988,7 +5986,6 @@ LANGUAGE_TOGGLE_JS = r"""
     '算力倍增': 'Power Multiplier',
     '官方机制说明中的方程膨胀起始倍数。': 'Starting expansion multiplier in the official mechanism notes.',
     '当前 04 方程采用的实际膨胀倍数。': 'Actual expansion multiplier used by Equation 04.',
-    '最高膨胀系数': 'Maximum Expansion Factor',
     '上限': 'Cap',
     '方程膨胀系数逐级放大时的公开说明上限。': 'Published cap for the stepped equation expansion factor.',
     '执行周期': 'Execution Period',
@@ -5997,7 +5994,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '圣诞方程与预言机方程按 8 天窗口执行。': 'The Christmas Equation and Oracle Equation run in an 8-day window.',
     '销毁比例': 'Burn Ratio',
     '机制说明中每轮方程触发的流通量销毁比例。': 'Circulation burn ratio described for each equation round.',
-    '当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。': 'The current actual factor for Equation 04 is 20x, with a mechanism cap that can step up to 160x. This is a mechanism note, not a real-time earnings promise.',
+    '本区块属于机制口径展示，不等同于当前实时收益承诺。': 'This is a mechanism note, not a real-time earnings promise.',
     '算力销毁测算': 'Power Burn Calculator',
     '按当前全网流通量 × 35% ÷ 全网总算力计算。': 'Calculated as current global circulation x 35% / total network power.',
     '按“全网流通量 × 35% ÷ 全网总算力”计算，得到每 1 算力对应的销毁数量；输入任意算力即可换算需要销毁多少 MARS。': 'Calculated as global circulation x 35% / total network power to get burn amount per unit of power. Enter any power amount to estimate required MARS burn.',
@@ -6399,7 +6396,6 @@ def build_mobile_html(payload: dict) -> str:
     title = "MarsChain 算力排行榜 · 手机版"
     subtitle = "手机端查看 MarsChain 全网算力、统计日新增地址和头部排行。"
     analytics_head = build_analytics_head()
-    paid_download_config = load_paid_download_config(meta)
 
     generated_at = _format_generated_at_from_meta(meta)
     statistics_window_label = str(meta.get("statistics_window_label") or "北京时间 08:00 至次日 08:00")
@@ -6573,7 +6569,6 @@ def build_mobile_html(payload: dict) -> str:
     equation_cards = _build_mobile_flow_cards(
         [
             ("当前实际系数", "算力倍增", "20x", "当前 04 方程采用的实际膨胀倍数。"),
-            ("最高膨胀系数", "上限", "160x", "方程膨胀系数逐级放大时的公开说明上限。"),
             ("执行周期", "单轮", "8 天", "圣诞方程与预言机方程按 8 天窗口执行。"),
             ("销毁比例", "流通量", "35%", "机制说明中每轮方程触发的流通量销毁比例。"),
         ]
@@ -6585,7 +6580,7 @@ def build_mobile_html(payload: dict) -> str:
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
     rank_first_page_end = min(rank_page_size, rank_total_count)
     rank_cards = _build_mobile_rank_cards(rows, limit=100, page_size=rank_page_size)
-    paid_download_panel = _build_paid_download_panel(paid_download_config, mobile=True)
+    paid_download_panel = ""
     rank_page_buttons = "".join(
         '<button class="m-rank-page-button%s" type="button" data-mobile-rank-page="%d" aria-current="%s">%d</button>'
         % (" is-active" if page == 1 else "", page, "page" if page == 1 else "false", page)
@@ -6688,7 +6683,7 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-section-head"><div><span class="m-kicker">03 / EQUATION</span><h2>方程膨胀系数</h2></div><p>机制参数展示。</p></div>
       <div class="m-list">{equation_cards}</div>
       {burn_calculator}
-      <p class="m-note">当前 04 方程实际系数为 20x，后续最高可按机制说明逐级放大至 160x；本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
+      <p class="m-note">本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
     </section>
     <section id="risk" class="m-section">
       <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
