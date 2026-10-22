@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarsChain 节点状态</title>
+<style>
+:root{color-scheme:dark;--bg:#080b16;--panel:#111629;--line:#242c45;--muted:#9ba6c4;--text:#f3f5ff;--accent:#a889ff;--green:#42d6a1;--blue:#67a8ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 50% -20%,#292150 0,transparent 52%),var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;min-height:100vh}
+main{max-width:940px;margin:auto;padding:36px 22px 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}.brand{display:flex;align-items:center;gap:14px}.logo{width:46px;height:46px;border-radius:15px;background:linear-gradient(140deg,#bd7cff,#6a58ff 60%,#20dca7);display:grid;place-items:center;font-weight:900;font-size:23px;color:#101322}.brand h1{font-size:22px;margin:0}.brand p{color:var(--muted);font-size:13px;margin:2px 0 0}.pill{padding:7px 12px;border:1px solid var(--line);border-radius:99px;color:var(--muted);font-size:13px}.hero,.card{background:linear-gradient(155deg,rgba(24,30,53,.96),rgba(15,19,35,.96));border:1px solid var(--line);border-radius:22px;box-shadow:0 18px 55px #0003}.hero{padding:27px;margin-bottom:16px}.herohead{display:flex;justify-content:space-between;align-items:center;gap:18px}.label{color:var(--muted);font-size:14px}.state{display:inline-flex;align-items:center;gap:8px;color:var(--green);font-size:14px}.dot{width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 14px currentColor}.percent{font-size:clamp(42px,8vw,74px);font-weight:750;letter-spacing:-3px;margin:14px 0 0}.subline{color:var(--muted);font-size:14px;margin-top:3px}.track{height:12px;background:#252b42;border-radius:99px;margin:22px 0 10px;overflow:hidden}.fill{height:100%;width:0;background:linear-gradient(90deg,#8a68ff,#3fd7b2);border-radius:99px;transition:width .5s}.syncnumbers{display:flex;justify-content:space-between;color:var(--muted);font-size:13px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.card{padding:20px}.card .label{margin-bottom:11px}.value{font-size:26px;font-weight:700;word-break:break-word}.small{font-size:13px;color:var(--muted);margin-top:4px}.statusbox{padding:18px;border-radius:16px;background:#171d32;color:var(--muted);margin-top:18px}.foot{display:flex;justify-content:space-between;align-items:center;margin:18px 4px 0;color:#7c86a4;font-size:12px}.error{color:#ff9d9d}.spin{display:inline-block;width:13px;height:13px;border:2px solid #ffffff30;border-top-color:currentColor;border-radius:50%;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:600px){main{padding:22px 14px}.grid{grid-template-columns:1fr}.hero{padding:20px}.herohead{align-items:flex-start;flex-direction:column}.foot{gap:8px;flex-direction:column;align-items:flex-start}}
+.sectiontitle{font-size:18px;margin:28px 2px 12px}.collector{margin-top:18px}.collector .track{margin-top:16px}.collector-note{color:#e3c77c;font-size:13px;margin-top:14px;line-height:1.65}.collector .grid{margin-top:16px}.collector .value{font-variant-numeric:tabular-nums}.tag{display:inline-block;padding:4px 9px;border-radius:99px;background:#28223f;color:#c9b8ff;font-size:12px}
+</style>
+</head>
+<body><main>
+<header class="top"><div class="brand"><div class="logo">M</div><div><h1>MarsChain 节点</h1><p>本机运行状态与同步进度</p></div></div><div class="pill"><span class="spin"></span> 每 5 秒更新</div></header>
+<section class="hero">
+ <div class="herohead"><div><div class="label">区块同步进度</div><div class="percent" id="percent">读取中…</div><div class="subline" id="syncText">正在连接节点</div></div><div class="state" id="state"><span class="dot"></span>检查中</div></div>
+ <div class="track"><div class="fill" id="fill"></div></div><div class="syncnumbers"><span id="current">当前区块 —</span><span id="highest">目标区块 —</span></div>
+</section>
+<section class="grid">
+ <article class="card"><div class="label">节点服务</div><div class="value" id="service">读取中…</div><div class="small" id="since">启动时间 —</div></article>
+ <article class="card"><div class="label">连接节点数</div><div class="value" id="peers">—</div><div class="small">正在与其他 MarsChain 节点通信</div></article>
+ <article class="card"><div class="label">当前处理区块</div><div class="value" id="block">—</div><div class="small">同步时显示当前进度；完成后显示最新区块</div></article>
+ <article class="card"><div class="label">数据盘剩余空间</div><div class="value" id="disk">—</div><div class="small">节点数据所在磁盘可用容量</div></article>
+</section>
+<h2 class="sectiontitle">排行榜数据采集</h2>
+<section class="hero collector">
+ <div class="herohead"><div><div class="label">新区块增量采集</div><div class="value" id="collectorState">读取中…</div><div class="subline" id="collectorBlock">扫描区块 —</div></div><div class="tag" id="collectorTimer">定时器 —</div></div>
+ <div class="track"><div class="fill" id="collectorFill"></div></div>
+ <div class="syncnumbers"><span id="collectorProcessed">已处理 —</span><span id="collectorHead">节点最新 —</span></div>
+ <div class="grid">
+  <article class="card"><div class="label">已发现地址</div><div class="value" id="addressCount">—</div><div class="small" id="coverageText">地址覆盖参考 —</div></article>
+  <article class="card"><div class="label">算力 / 余额记录</div><div class="value" id="metricCounts">—</div><div class="small" id="failureCounts">待处理错误 —</div></article>
+  <article class="card"><div class="label">最近采集</div><div class="value" id="lastRun">—</div><div class="small" id="csvUpdate">CSV 更新时间 —</div></article>
+  <article class="card"><div class="label">初始扫描进度</div><div class="value" id="historicalBlock">—</div><div class="small">从历史区块读取交易与 POWER 合约日志</div></article>
+ </div>
+ <div class="collector-note">地址覆盖率仅按浏览器最近一次记录作对比，并不代表地址清单完整。历史内部调用地址仍需单独补扫。</div>
+</section>
+<div class="statusbox" id="details">正在读取节点信息…</div>
+<footer class="foot"><span id="client">客户端 —</span><span id="updated">最后更新 —</span></footer>
+</main>
+<script>
+const fmt=n=>Number(n).toLocaleString("zh-CN");
+async function refresh(){
+ try{
+  const r=await fetch("/api/status",{cache:"no-store"}); const d=await r.json();
+  if(!d.ok) throw new Error(d.error||"节点暂不可用");
+  document.getElementById("service").textContent=d.service==="active"?"运行中":"未运行";
+  document.getElementById("since").textContent="启动时间 "+(d.since||"未知");
+  document.getElementById("peers").textContent=fmt(d.peers);
+  document.getElementById("block").textContent=fmt(d.sync ? d.sync.current : d.block);
+  document.getElementById("disk").textContent=d.diskFreeGiB+" GB";
+  document.getElementById("client").textContent="客户端 "+d.client+" · 网络 ID "+d.chainId;
+  const state=document.getElementById("state");
+  if(d.sync){
+   document.getElementById("percent").textContent=d.sync.percent.toFixed(2)+"%";
+   document.getElementById("syncText").textContent="节点正在下载并整理链上数据，初次同步可能需要较长时间";
+   document.getElementById("current").textContent="当前 "+fmt(d.sync.current);
+   document.getElementById("highest").textContent="目标 "+fmt(d.sync.highest);
+   document.getElementById("fill").style.width=d.sync.percent+"%";
+   state.innerHTML='<span class="dot"></span>正在同步';
+   document.getElementById("details").textContent="节点正常工作。同步过程中进度可能暂时停留，这是在整理已下载的数据。";
+  }else{
+   document.getElementById("percent").textContent="100%";
+   document.getElementById("syncText").textContent="已追上当前网络区块";
+   document.getElementById("current").textContent="最新区块 "+fmt(d.block);
+   document.getElementById("highest").textContent="同步完成";
+   document.getElementById("fill").style.width="100%";
+   state.innerHTML='<span class="dot"></span>已同步';
+   document.getElementById("details").textContent="节点已经完成同步，正在保持运行并等待新区块。";
+  }
+  document.getElementById("updated").textContent="最后更新 "+new Date().toLocaleTimeString("zh-CN");
+ }catch(e){
+  document.getElementById("percent").textContent="—";
+  document.getElementById("state").innerHTML='<span class="dot"></span>无法连接';
+  document.getElementById("state").style.color="#ff9d9d";
+  document.getElementById("details").innerHTML='<span class="error">暂时读不到节点信息：'+String(e.message).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]))+'</span>。检查节点服务是否正在运行。';
+  document.getElementById("service").textContent="检查中";
+ }
+}
+refresh();setInterval(refresh,5000);
+const ago=ts=>{if(!ts)return "尚未运行";const s=Math.max(0,Math.floor(Date.now()/1000-ts));return s<60?s+" 秒前":s<3600?Math.floor(s/60)+" 分钟前":new Date(ts*1000).toLocaleString("zh-CN");};
+async function refreshCollector(){
+ try{
+  const r=await fetch("/api/collector",{cache:"no-store"});const d=await r.json();if(!d.ok)throw new Error(d.error||"采集状态不可用");
+  const active=d.timer==="active";document.getElementById("collectorState").textContent=active?(d.service==="active"?"正在采集":"自动运行中"):"定时器未启动";
+  document.getElementById("collectorTimer").textContent="定时器 "+(active?"已启用":"未启用");
+  const safe=Math.max(0,d.headBlock-6),done=Math.min(safe,d.lastBlock||0),pct=safe?Math.min(100,done/safe*100):0;
+  document.getElementById("collectorFill").style.width=pct+"%";
+  document.getElementById("collectorBlock").textContent="新区块采集 · 保留 6 个确认";
+  document.getElementById("collectorProcessed").textContent="已处理 "+fmt(done);
+  document.getElementById("collectorHead").textContent="安全目标 "+fmt(safe);
+  document.getElementById("addressCount").textContent=fmt(d.addresses);
+  document.getElementById("coverageText").textContent=d.coveragePercent==null?"浏览器地址总数暂不可用":"浏览器上次记录约 "+fmt(d.networkAddresses)+" 个 · 对比 "+d.coveragePercent.toFixed(2)+"%";
+  document.getElementById("metricCounts").textContent=fmt(d.powers)+" / "+fmt(d.balances);
+  document.getElementById("failureCounts").textContent="算力失败 "+fmt(d.powerFailures)+" · 余额失败 "+fmt(d.balanceFailures);
+  document.getElementById("lastRun").textContent=ago(d.lastRun);
+  document.getElementById("csvUpdate").textContent="CSV 更新 "+ago(d.csvUpdated);
+  document.getElementById("historicalBlock").textContent=fmt((d.historicalNext||1)-1);
+ }catch(e){document.getElementById("collectorState").textContent="暂时读不到";document.getElementById("collectorTimer").textContent=String(e.message);}
+}
+refreshCollector();setInterval(refreshCollector,15000);
+</script></body></html>

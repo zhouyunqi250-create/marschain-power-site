@@ -1,0 +1,12 @@
+[Unit]
+Description=Run MarsChain incremental collection once per minute
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=5s
+Persistent=true
+Unit=marschain-incremental.service
+
+[Install]
+WantedBy=timers.target

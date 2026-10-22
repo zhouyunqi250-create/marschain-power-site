@@ -1,0 +1,13 @@
+[Unit]
+Description=MarsChain incremental address, power and balance collector
+After=marschain.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-node
+ExecStart=/usr/bin/python3 %h/marschain-node/incremental_collector.py
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
