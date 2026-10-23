@@ -1,0 +1,19 @@
+[Unit]
+Description=MarsChain node-only preview incremental power collector
+After=marschain.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.collector --db %h/marschain-rank-preview/state/preview.sqlite3 --loop --interval 15 --max-seconds 12 --calibration-limit 20000
+Restart=on-failure
+RestartSec=10
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

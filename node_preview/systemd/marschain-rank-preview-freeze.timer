@@ -1,0 +1,11 @@
+[Unit]
+Description=Freeze the Beijing 08:00 ranking after six confirmation blocks
+
+[Timer]
+OnCalendar=*-*-* 00:00:35 UTC
+AccuracySec=1s
+Persistent=true
+Unit=marschain-rank-preview-freeze.service
+
+[Install]
+WantedBy=timers.target

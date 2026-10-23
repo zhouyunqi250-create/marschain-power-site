@@ -1,0 +1,17 @@
+[Unit]
+Description=MarsChain local ranking preview minute snapshot publisher
+After=marschain-rank-preview-collector.service
+Wants=marschain-rank-preview-collector.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.publisher --root %h/marschain-rank-preview --loop --interval 60 --rebuild
+Restart=on-failure
+RestartSec=10
+Nice=10
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

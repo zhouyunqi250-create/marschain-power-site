@@ -1,0 +1,15 @@
+[Unit]
+Description=MarsChain isolated ranking preview web server
+After=marschain.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.server --root %h/marschain-rank-preview --port 18880
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+UMask=0077
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,18 @@
+[Unit]
+Description=MarsChain immutable Beijing 08:00 local ranking snapshot
+After=marschain.service marschain-rank-preview-collector.service
+StartLimitIntervalSec=10min
+StartLimitBurst=8
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.freeze --root %h/marschain-rank-preview
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+UMask=0077
+TimeoutStartSec=10min
+Restart=on-failure
+RestartSec=45

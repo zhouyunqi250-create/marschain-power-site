@@ -1,0 +1,112 @@
+"""Loopback-only preview web server. Private state is outside its document root."""
+from __future__ import annotations
+
+import argparse
+import gzip
+import hashlib
+import json
+import sqlite3
+import time
+from functools import partial
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from urllib.parse import urlsplit
+
+
+def status(root: Path) -> dict:
+    from node_preview.collector import read_status
+    database = root / "state/preview.sqlite3"
+    result = {"preview": True, "production_writes": False, "generated_at": int(time.time())}
+    if database.exists():
+        with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=3) as db:
+            result["collector"] = read_status(db)
+    for name in ("publisher-status", "bootstrap-status", "freezer-status", "observations-status"):
+        path = root / f"state/{name}.json"
+        try:
+            result[name.replace("-status", "")] = json.loads(path.read_text())
+        except (OSError, ValueError):
+            result[name.replace("-status", "")] = None
+    result["snapshot_archives"] = len(list((root / "archives").glob("*/manifest.json")))
+    return result
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *args, root: Path, **kwargs):
+        self.preview_root = root
+        super().__init__(*args, directory=str(root / "site"), **kwargs)
+
+    def list_directory(self, path):
+        self.send_error(403, "Directory listings are disabled")
+        return None
+
+    def snapshot(self, send_body=True):
+        try:
+            body = (self.preview_root / "site/data/latest.json").read_bytes()
+        except OSError:
+            self.send_error(503, "The first checked snapshot is not ready")
+            return
+        etag = '"' + hashlib.sha256(body).hexdigest() + '"'
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.end_headers()
+            return
+        compressed = "gzip" in self.headers.get("Accept-Encoding", "")
+        if compressed:
+            body = gzip.compress(body, compresslevel=5, mtime=0)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("ETag", etag)
+        self.send_header("Vary", "Accept-Encoding")
+        if compressed:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if send_body:
+            self.wfile.write(body)
+
+    def do_HEAD(self):
+        if urlsplit(self.path).path == "/data/latest.json":
+            self.snapshot(send_body=False)
+            return
+        super().do_HEAD()
+
+    def do_GET(self):
+        if urlsplit(self.path).path == "/data/latest.json":
+            self.snapshot()
+            return
+        if urlsplit(self.path).path == "/api/status":
+            try:
+                payload = status(self.preview_root)
+                body = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode()
+                self.send_response(200)
+            except Exception as exc:
+                body = json.dumps({"ok": False, "error": str(exc)}).encode()
+                self.send_response(503)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        super().do_GET()
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store, max-age=0")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        super().end_headers()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument("--port", type=int, default=18880)
+    args = parser.parse_args()
+    root = args.root.resolve()
+    (root / "site").mkdir(parents=True, exist_ok=True)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), partial(Handler, root=root))
+    print(f"Preview: http://127.0.0.1:{args.port}/", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
