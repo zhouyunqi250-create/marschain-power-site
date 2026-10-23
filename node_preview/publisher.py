@@ -78,7 +78,10 @@ def compose(root: Path, seeds: dict, metrics: MetricStore) -> tuple[dict, dict]:
         if not last_success or now - last_success > 180 or not block_time or now - block_time > 240:
             raise SnapshotPending("Chain collection is delayed; preserving the last successful block and data time")
     state = str(status.get("state") or "calibrating")
-    if warmed and state in {"ready", "running", "live"}:
+    # A reader can observe the final committed batch in the few milliseconds
+    # before the collector writes its end-of-run label. Structural checks above
+    # already establish that discovery and state reads cover the same tip.
+    if warmed and state in {"ready", "running", "live", "collecting", "catching_up"}:
         state = "ready"
     source_error = status.get("last_error")
     preview = {"state": state, "mode": "local_preview", "source_block": source_block,

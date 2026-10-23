@@ -90,6 +90,14 @@ class PublicationTests(unittest.TestCase):
         self.assertFalse(payload["meta"]["paid_download"]["enabled"])
         self.assertNotIn("PRIVATE_MARS_BALANCE", str(payload))
 
+    @patch("node_preview.publisher.RPC", Node)
+    def test_fully_committed_collecting_label_is_reported_as_ready(self):
+        with self.db:
+            meta_set(self.db, "state", "collecting")
+        payload, report = compose(self.root, self.seeds, Metrics())
+        self.assertEqual(report["state"], "ready")
+        self.assertEqual(payload["meta"]["node_preview"]["state"], "ready")
+
 
 if __name__ == "__main__":
     unittest.main()
