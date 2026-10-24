@@ -156,7 +156,8 @@ def public_payload(payload: dict) -> dict:
 def _power_source_note(meta: dict) -> str:
     source = (meta.get("preview_metric_sources") or {}).get("network_total_power") or {}
     if source.get("source") == "local_rpc_power_contract":
-        return "本机节点 POWER 合约" + (" · 最近成功值" if source.get("status") != "ok" else "")
+        label = "自建节点 POWER 合约" if meta.get("node_preview", {}).get("mode") == "node_production" else "本机节点 POWER 合约"
+        return label + (" · 最近成功值" if source.get("status") != "ok" else "")
     if source.get("source") and "explorer.marschain.net" in str(source.get("source")):
         return "官方浏览器 POWER 统计（回退）"
     return "官网已发布算力快照（校准中）"
@@ -199,7 +200,7 @@ _PREVIEW_BANNER = """
 </aside>"""
 
 
-def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
+def _adapt_html(html: str, *, mobile: bool, power_note: str, production: bool = False) -> str:
     # Original pagination captures the first cards forever. Use one runtime-owned
     # paginator so replacements preserve the reader's current page.
     if mobile:
@@ -233,7 +234,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
     html = _once(html, trend_marker, trend_update + trend_marker)
     # Avoid analytics and any existing production account bootstrap in the preview.
     analytics = dashboard.build_analytics_head()
-    if analytics:
+    if analytics and not production:
         html = _once(html, analytics, "")
     html = _once(html, "</head>", _PREVIEW_STYLE + "\n</head>")
     # JSON script bodies need case-insensitive HTML parser safety, including
@@ -244,7 +245,8 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
         return match.group(1) + safe + match.group(3)
     html = re.sub(r'(<script id="(?:rankData|metricTrendData)" type="application/json">)(.*?)(</script>)', safe_json, html, flags=re.S)
     shell_marker = '<div class="m-shell">' if mobile else '<div class="shell">'
-    html = _once(html, shell_marker, shell_marker + _PREVIEW_BANNER)
+    banner = _PREVIEW_BANNER.replace("节点排行榜 · 预览版", "节点排行榜 · 每分钟更新") if production else _PREVIEW_BANNER
+    html = _once(html, shell_marker, shell_marker + banner)
     # Apply copy changes only to visible markup. The production language bundle
     # and JSON source payload remain intact for compatibility.
     markup, scripts = html.split('<script id="rankData"', 1)
@@ -258,7 +260,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
     metric_pattern = r'(<article\b[^>]*data-label="全网总算力"[^>]*>)(.*?)(</article>)'
     markup = re.sub(metric_pattern, lambda match: match.group(1) + _replace_power_note(match.group(2), power_note) + match.group(3), markup, flags=re.S)
     risk_prefix = "榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。"
-    risk_source = "本预览版从本机节点 POWER 合约读取算力和累计销毁，价格、全网地址数及流通量来自官方浏览器统计。"
+    risk_source = ("本排行榜从自建节点" if production else "本预览版从本机节点") + " POWER 合约读取算力和累计销毁，价格、全网地址数及流通量来自官方浏览器统计。"
     markup = markup.replace(risk_prefix, risk_source)
     markup = markup.replace("榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。", risk_source + "榜单仅覆盖已发现地址，是 best effort 结果。")
     markup = markup.replace("公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。", "节点同步延迟、未收录地址、合约事件遗漏或官方接口缓存回退，都可能造成与官方后台的差异。")
@@ -269,6 +271,8 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
         "算力覆盖率": "Power Coverage",
         "本机节点 POWER 合约": "Local node POWER contract",
         "本机节点 POWER 合约 · 最近成功值": "Local node POWER contract · Last successful value",
+        "自建节点 POWER 合约": "Self-hosted node POWER contract",
+        "自建节点 POWER 合约 · 最近成功值": "Self-hosted node POWER contract · Last successful value",
         "官方浏览器 POWER 统计（回退）": "Official explorer POWER statistics (fallback)",
         "官网已发布算力快照（校准中）": "Published ranking snapshot (calibrating)",
     }
@@ -277,6 +281,8 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
     html = html.replace(r"/^覆盖率\s+(.+)$/", r"/^(?:算力)?覆盖率\s+(.+)$/")
     html = html.replace("return `Coverage ${match[1]}`;", "return `Power coverage ${match[1]}`;")
     html = html.replace("数据已加载 · 北京时间 08:00 每日采集", "节点预览 · 每分钟增量采集 · 08:00 日结")
+    if production:
+        html = html.replace("节点预览 · 每分钟增量采集 · 08:00 日结", "节点更新 · 每分钟增量采集 · 08:00 日结")
     html = html.replace("全网算力、钱包地址", "全网算力指标、已发现地址")
     # Accurate expired state: do not claim a new cycle occurred from a clock alone.
     html = _once(html, "算力新周期启动时间已到", "本期倒计时已结束 · 等待官方公布下一期")
@@ -289,12 +295,13 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str) -> str:
     return html
 
 
-def build_preview(payload: dict, output_dir: str | Path) -> dict[str, str]:
+def build_preview(payload: dict, output_dir: str | Path, *, production: bool = False) -> dict[str, str]:
     """Write deployment artifacts once; leave latest.json publication to caller."""
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(dashboard.__file__))
-    code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)).hexdigest()
+    code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
+        + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -305,8 +312,8 @@ def build_preview(payload: dict, output_dir: str | Path) -> dict[str, str]:
     public = public_payload(payload)
     (root / "m").mkdir(exist_ok=True)
     artifacts = {
-        "index.html": _adapt_html(dashboard.build_html(public), mobile=False, power_note=_power_source_note(public["meta"])),
-        "m/index.html": _adapt_html(dashboard.build_mobile_html(public), mobile=True, power_note=_power_source_note(public["meta"])),
+        "index.html": _adapt_html(dashboard.build_html(public), mobile=False, power_note=_power_source_note(public["meta"]), production=production),
+        "m/index.html": _adapt_html(dashboard.build_mobile_html(public), mobile=True, power_note=_power_source_note(public["meta"]), production=production),
         "live_preview.js": RUNTIME.read_text(encoding="utf-8"),
     }
     result = {}

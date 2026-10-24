@@ -20,7 +20,8 @@ def status(root: Path) -> dict:
     if database.exists():
         with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=3) as db:
             result["collector"] = read_status(db)
-    for name in ("publisher-status", "bootstrap-status", "freezer-status", "observations-status"):
+    for name in ("publisher-status", "bootstrap-status", "freezer-status", "observations-status",
+                 "cloud-publish-status", "github-backup-status"):
         path = root / f"state/{name}.json"
         try:
             result[name.replace("-status", "")] = json.loads(path.read_text())

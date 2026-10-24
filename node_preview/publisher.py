@@ -35,7 +35,7 @@ def ranking(db: sqlite3.Connection) -> tuple[list[dict], dict]:
                   "last_checked_block": max((row[6] for row in values), default=None)}
 
 
-def compose(root: Path, seeds: dict, metrics: MetricStore) -> tuple[dict, dict]:
+def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool = False) -> tuple[dict, dict]:
     start = time.monotonic()
     database = root / "state/preview.sqlite3"
     with sqlite3.connect(f"file:{database}?mode=ro", uri=True, timeout=15) as db:
@@ -84,7 +84,7 @@ def compose(root: Path, seeds: dict, metrics: MetricStore) -> tuple[dict, dict]:
     if warmed and state in {"ready", "running", "live", "collecting", "catching_up"}:
         state = "ready"
     source_error = status.get("last_error")
-    preview = {"state": state, "mode": "local_preview", "source_block": source_block,
+    preview = {"state": state, "mode": "node_production" if production else "local_preview", "source_block": source_block,
                "source_block_hash": status.get("checkpoint_hash"),
                "source_block_timestamp": status.get("checkpoint_timestamp"),
                "generated_at": now, "known_addresses": known,
@@ -130,17 +130,17 @@ def compose(root: Path, seeds: dict, metrics: MetricStore) -> tuple[dict, dict]:
     return payload, report
 
 
-def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuild: bool) -> None:
+def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuild: bool, *, production: bool = False) -> None:
     store = MetricStore(root / "state/preview.sqlite3", rpc_url=rpc_url, seed_dir=root / "state")
     seeds = store.bootstrap(origin=origin)
     built = False
     while True:
         began = time.monotonic()
         try:
-            payload, report = compose(root, seeds, store)
+            payload, report = compose(root, seeds, store, production=production)
             site = root / "site"
             if not built and (rebuild or not (site / "index.html").exists()):
-                build_preview(payload, site)
+                build_preview(payload, site, production=production)
             built = True
             # Only this compact file changes on ordinary publication cycles.
             atomic_json(site / "data/latest.json", payload)
@@ -171,8 +171,9 @@ def main():
     parser.add_argument("--interval", type=int, default=60)
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--rebuild", action="store_true")
+    parser.add_argument("--production", action="store_true", help="Build the approved public node-powered site shell")
     args = parser.parse_args()
-    run(args.root.resolve(), args.rpc, args.origin, args.interval, args.loop, args.rebuild)
+    run(args.root.resolve(), args.rpc, args.origin, args.interval, args.loop, args.rebuild, production=args.production)
 
 
 if __name__ == "__main__":

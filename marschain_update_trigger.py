@@ -21,6 +21,7 @@ BRANCH = os.getenv("MARSCHAIN_GITHUB_BRANCH", "main")
 FAST_WORKFLOW = os.getenv("MARSCHAIN_FAST_WORKFLOW", "fast-update-marschain-site.yml")
 FULL_WORKFLOW = os.getenv("MARSCHAIN_FULL_WORKFLOW", "update-marschain-site.yml")
 GITHUB_TOKEN = os.getenv("MARSCHAIN_GITHUB_TOKEN", "").strip()
+PUBLISHER_MODE = os.getenv("MARSCHAIN_PUBLISHER_MODE", "legacy").strip().lower() or "legacy"
 
 
 def json_request(url: str, *, timeout: int = 45, headers: dict[str, str] | None = None) -> Any:
@@ -117,6 +118,15 @@ def dispatch(workflow_file: str, *, inputs: dict[str, str] | None = None) -> dic
 
 
 def run(mode: str) -> dict[str, Any]:
+    if PUBLISHER_MODE == "node":
+        return {
+            "mode": "node",
+            "requested_mode": mode,
+            "status": "disabled_for_node_publisher",
+            "repo": REPO,
+            "branch": BRANCH,
+            "actions": [],
+        }
     expected_ts = expected_window_end_ts()
     meta = load_latest_meta()
     result: dict[str, Any] = {

@@ -139,19 +139,20 @@ def deploy_function(client: FcClient, body: fc_models.CreateFunctionInput) -> No
     client.update_function(FUNCTION_NAME, fc_models.UpdateFunctionRequest(body=update_body))
 
 
-def trigger_config(cron_expression: str, payload: dict[str, str]) -> str:
+def trigger_config(cron_expression: str, payload: dict[str, str], *, enabled: bool = True) -> str:
     return json.dumps(
         {
             "cronExpression": cron_expression,
-            "enable": True,
+            "enable": enabled,
             "payload": json.dumps(payload, separators=(",", ":")),
         },
         separators=(",", ":"),
     )
 
 
-def deploy_timer_trigger(client: FcClient, name: str, cron_expression: str, payload: dict[str, str]) -> None:
-    config = trigger_config(cron_expression, payload)
+def deploy_timer_trigger(client: FcClient, name: str, cron_expression: str, payload: dict[str, str],
+                         *, enabled: bool = True) -> None:
+    config = trigger_config(cron_expression, payload, enabled=enabled)
     body = fc_models.CreateTriggerInput(
         trigger_name=name,
         trigger_type="timer",
@@ -168,9 +169,11 @@ def deploy_timer_trigger(client: FcClient, name: str, cron_expression: str, payl
 
 
 def main() -> int:
+    publisher_mode = os.getenv("MARSCHAIN_PUBLISHER_MODE", "legacy").strip().lower() or "legacy"
+    timers_enabled = publisher_mode != "node"
     access_key_id = require_env("ALIBABA_CLOUD_ACCESS_KEY_ID")
     access_key_secret = require_env("ALIBABA_CLOUD_ACCESS_KEY_SECRET")
-    github_token = require_env("MARSCHAIN_GITHUB_TOKEN")
+    github_token = require_env("MARSCHAIN_GITHUB_TOKEN") if timers_enabled else ""
     site_bucket = require_env("ALIYUN_OSS_BUCKET")
     site_endpoint = normalize_endpoint(require_env("ALIYUN_OSS_ENDPOINT"))
     region_id = os.getenv("ALIYUN_REGION_ID", "").strip() or region_from_oss_endpoint(site_endpoint)
@@ -181,6 +184,7 @@ def main() -> int:
     client = fc_client(region_id, account_id, access_key_id, access_key_secret)
     code = fc_models.InputCodeLocation(oss_bucket_name=site_bucket, oss_object_name=code_object)
     env = {
+        "MARSCHAIN_PUBLISHER_MODE": publisher_mode,
         "MARSCHAIN_GITHUB_TOKEN": github_token,
         "MARSCHAIN_GITHUB_REPO": os.getenv("MARSCHAIN_GITHUB_REPO", DEFAULT_REPO),
         "MARSCHAIN_GITHUB_BRANCH": os.getenv("MARSCHAIN_GITHUB_BRANCH", "main"),
@@ -205,7 +209,7 @@ def main() -> int:
     )
     deploy_function(client, body)
     for name, cron_expression, payload in TIMER_TRIGGERS:
-        deploy_timer_trigger(client, name, cron_expression, payload)
+        deploy_timer_trigger(client, name, cron_expression, payload, enabled=timers_enabled)
 
     print(
         json.dumps(
@@ -214,8 +218,10 @@ def main() -> int:
                 "region_id": region_id,
                 "function_name": FUNCTION_NAME,
                 "code_object": code_object,
+                "publisher_mode": publisher_mode,
+                "timers_enabled": timers_enabled,
                 "triggers": [
-                    {"name": name, "cron_utc": cron_expression, "payload": payload}
+                    {"name": name, "cron_utc": cron_expression, "payload": payload, "enabled": timers_enabled}
                     for name, cron_expression, payload in TIMER_TRIGGERS
                 ],
             },

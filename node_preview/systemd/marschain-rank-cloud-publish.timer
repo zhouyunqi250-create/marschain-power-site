@@ -1,0 +1,11 @@
+[Unit]
+Description=MarsChain minute OSS publication independent of collection
+
+[Timer]
+OnCalendar=*-*-* *:*:20
+AccuracySec=1
+Persistent=true
+Unit=marschain-rank-cloud-publish.service
+
+[Install]
+WantedBy=timers.target

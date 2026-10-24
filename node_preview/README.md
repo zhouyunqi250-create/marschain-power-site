@@ -1,6 +1,7 @@
 # 节点排行榜预览
 
-此目录提供独立的服务器预览，不会上传正式 OSS、提交 GitHub 或改动原有采集数据库。
+此目录提供节点采集、服务器预览及可独立启用的正式 OSS 发布与 GitHub 日结备份。
+采集与本地预览默认不上传；云端上传由单独的服务和授权控制，不改动原有采集数据库。
 现有桌面、手机板块沿用原站，公开文件最多包含 100 行地址和算力，不含账户余额。
 
 ## 服务器上的运行位置
@@ -62,11 +63,29 @@ Mac 关闭时服务器仍运行；在服务器桌面可直接访问同一 URL。
 区块哈希不一致时采集进入 `needs_reconcile` 并停止推进，发布保留最近有效版本。
 不要简单删除断点绕过该状态；应检查分叉范围并重新核对受影响状态。
 
-## 仍待验收的正式接入
+## 正式发布与每日备份
 
-此预览**没有** GitHub 写入凭据或阿里云上传凭据，也不修改原站定时任务。
-08:00 归档目前只冻结本机，不能据此称为云端备份已完成。
-正式切换时仍需配置最小发布授权、验证上传、确定私有备份位置，并统一旧工作流的发布角色。
+两个云端适配器独立运行，不依赖 Mac、浏览器登录或 SSH 窗口：
+
+- `cloud_publish` 只上传桌面、手机入口、版本化运行时和 `data/latest.json`。
+  使用私有的 `~/.config/marschainrank/publish.env`（0600），仅需指定 OSS 对象的 GetObject/PutObject。
+  不列举或删除 Bucket 对象。`.path` 在新快照生成后触发上传，分钟 timer 作为重试入口。
+  首次切换先准备兼容运行时和数据，再切入口。后续版本原子更新 JSON，拒绝陈旧或倒退区块。
+- `github_backup` 将每日归档中的原始 `public.json`、`manifest.json` 保存至独立的
+  `node-snapshots` 分支。完整地址文件、余额、数据库不会上传公开仓库。
+  使用 `~/.config/marschain-rank/github-backup.env` 和服务器自己的仓库部署密钥。
+  日结服务成功后立即触发备份；五分钟 timer 重试尚未成功的固定快照，校验远端字节后记录回执。
+- 工作数据库与完整归档继续保留在服务器私有目录。GitHub 公共快照不能替代采集数据库。
+- 正式模式使用 `systemd/production/` 的 publisher drop-in，保留原有百度统计配置，去掉预览标签。
+  `MARSCHAIN_PUBLISHER_MODE=node` 仓库变量门控旧整站、价格、Pages 工作流；更新后的 FC 关闭旧定时器。
+  切换前必须排空旧运行。回滚需要先停止新上传服务，再恢复旧发布角色和保存的站点文件。
+
+可查 `state/cloud-publish-status.json`、`state/github-backup-status.json` 和
+私有 `/api/status` 中的 `cloud-publish`、`github-backup`，分别确认两种上传的实际成功状态。
+
+一次性 RAM 授权流程在 `scripts/provision_node_publisher.py` 和对应手动工作流中。
+Actions 中的旧凭据只用于建立受限的新用户，新密钥加密到 Ubuntu 的公开证书后才生成 Artifact。
+解密私钥始终只留在服务器；任何凭据、环境文件、私钥都不得提交 Git。
 
 ## 验证
 

@@ -15,6 +15,7 @@ concurrency:
 
 jobs:
   update-price:
+    if: ${{ vars.MARSCHAIN_PUBLISHER_MODE != 'node' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

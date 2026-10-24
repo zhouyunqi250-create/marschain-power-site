@@ -2,13 +2,6 @@ name: Provision Scoped Node Publisher Credential
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - codex/node-ranking-preview
-    paths:
-      - .github/workflows/provision-node-publisher.yml
-      - scripts/provision_node_publisher.py
-      - node_preview/provisioning/node-encryption-cert.pem
 
 permissions:
   contents: read

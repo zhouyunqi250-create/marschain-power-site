@@ -1,0 +1,11 @@
+[Unit]
+Description=Retry queued immutable MarsChain daily snapshots every five minutes
+
+[Timer]
+OnCalendar=*-*-* *:00/5:30
+AccuracySec=5s
+Persistent=true
+Unit=marschain-rank-preview-github-backup.service
+
+[Install]
+WantedBy=timers.target

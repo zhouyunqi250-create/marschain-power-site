@@ -1,0 +1,17 @@
+[Unit]
+Description=MarsChain checked minute ranking upload to OSS
+After=network-online.target marschain-rank-preview-publisher.service
+Wants=network-online.target
+ConditionPathExists=%h/.config/marschainrank/publish.env
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-rank-preview/app
+EnvironmentFile=%h/.config/marschainrank/publish.env
+ExecStart=/usr/bin/python3 -m node_preview.cloud_publish --root %h/marschain-rank-preview --env-file %h/.config/marschainrank/publish.env --once --interval 60 --max-age 300 --allow-bucket-root
+SuccessExitStatus=75
+TimeoutStartSec=240
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

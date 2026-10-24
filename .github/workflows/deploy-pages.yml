@@ -25,6 +25,7 @@ concurrency:
 
 jobs:
   deploy:
+    if: ${{ vars.MARSCHAIN_PUBLISHER_MODE != 'node' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

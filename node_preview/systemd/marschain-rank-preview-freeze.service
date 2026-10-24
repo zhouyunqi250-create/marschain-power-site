@@ -1,4 +1,5 @@
 [Unit]
+OnSuccess=marschain-rank-preview-github-backup.service
 Description=MarsChain immutable Beijing 08:00 local ranking snapshot
 After=marschain.service marschain-rank-preview-collector.service
 StartLimitIntervalSec=10min

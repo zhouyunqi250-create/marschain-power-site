@@ -1,0 +1,9 @@
+[Unit]
+Description=Publish a completed MarsChain minute snapshot promptly
+
+[Path]
+PathChanged=%h/marschain-rank-preview/site/data/latest.json
+Unit=marschain-rank-cloud-publish.service
+
+[Install]
+WantedBy=default.target

@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   deploy-paid-download:
+    if: ${{ vars.MARSCHAIN_PUBLISHER_MODE != 'node' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     env:
