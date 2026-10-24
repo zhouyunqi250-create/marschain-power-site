@@ -178,15 +178,36 @@ def _public_meta(value: dict) -> dict:
     return meta
 
 
-def _period_note(meta: dict, days: int) -> str:
-    stamp = meta.get(f"period_{days}d_end_timestamp")
+def _beijing_stamp(stamp: Any) -> str | None:
     try:
-        cutoff = int(stamp)
-        label = datetime.fromtimestamp(cutoff, timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+        return datetime.fromtimestamp(int(stamp), timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError, OSError, OverflowError):
-        return "截止时间待核验"
-    behind = cutoff < int(meta.get("statistics_window_end_timestamp") or cutoff)
-    return f"截至 {label} 北京时间" + (" · 沿用历史快照" if behind else "")
+        return None
+
+
+def _window_note(meta: dict, prefix: str) -> str:
+    start = _beijing_stamp(meta.get(f"{prefix}_start_timestamp"))
+    end = _beijing_stamp(meta.get(f"{prefix}_end_timestamp"))
+    if start and end:
+        return f"{start} 至 {end}"
+    return f"截至 {end}" if end else "统计时间待核验"
+
+
+def _period_state(meta: dict, days: int) -> str:
+    end = meta.get(f"period_{days}d_end_timestamp")
+    if not _beijing_stamp(end):
+        return "统计时间待核验"
+    daily_end = meta.get("statistics_window_end_timestamp")
+    try:
+        if daily_end and int(end) < int(daily_end):
+            return "保留上次统计"
+    except (TypeError, ValueError):
+        return "统计时间待核验"
+    return "" if meta.get(f"period_{days}d_complete") is not False else "部分数据待补齐"
+
+
+def _period_note(meta: dict, days: int) -> str:
+    return _window_note(meta, f"period_{days}d") + "（北京时间）"
 
 
 def _annotate_period_cards(markup: str, meta: dict) -> str:
@@ -198,8 +219,50 @@ def _annotate_period_cards(markup: str, meta: dict) -> str:
         if not period:
             return match.group(0)
         days = int(next(group for group in period.groups() if group))
+        state = _period_state(meta, days)
+        badge = (f'<div class="node-period-state" data-node-period-state="{days}"'
+                 + ("" if state else " hidden") + f'>{escape(state)}</div>')
         note = f'<small class="node-period-cutoff" data-node-period-cutoff="{days}">{escape(_period_note(meta, days))}</small>'
-        return opening + inner + note + closing
+        return opening + badge + inner + note + closing
+    return re.sub(r'(<article\b[^>]*>)(.*?)(</article>)', card, markup, flags=re.S)
+
+
+_CARD_DAILY_FIELDS = {
+    "全网总算力": ("每日新增算力", ("statistics_window_new_power",)),
+    "全网流通量": ("日销毁统计", ("statistics_window_burned_tokens",)),
+    "钱包地址": ("新增 / 活跃地址统计", ("statistics_window_new_candidate_address_count", "statistics_window_active_wallet_address_count")),
+    "每日交易币量": ("交易日统计", ("statistics_window_transaction_volume_wei", "statistics_window_active_transactions_seen")),
+}
+
+
+def _daily_state(meta: dict, fields: tuple[str, ...]) -> str:
+    daily = meta.get("preview_daily_status") or {}
+    try:
+        if int(daily.get("expected_end_timestamp") or 0) > int(meta.get("statistics_window_end_timestamp") or 0):
+            return "保留上次日统计"
+    except (TypeError, ValueError):
+        pass
+    return "部分日统计待补齐" if any(meta.get(field) is None for field in fields) else ""
+
+
+def _annotate_metric_cards(markup: str, meta: dict) -> str:
+    def card(match):
+        opening, inner, closing = match.groups()
+        label = re.search(r'data-label="([^"]+)"', opening)
+        if not label:
+            return match.group(0)
+        name = label.group(1)
+        if name in _CARD_DAILY_FIELDS:
+            caption, fields = _CARD_DAILY_FIELDS[name]
+            state = _daily_state(meta, fields)
+            note = ('<div class="node-daily-window" data-node-daily-window>'
+                    + f'<span>{escape(caption)} · 北京时间</span>'
+                    + f'<span>{escape(_window_note(meta, "statistics_window"))}</span>'
+                    + (f'<em data-node-daily-state>{escape(state)}</em>' if state else '') + '</div>')
+            # Place the time next to the daily values, before their trend charts.
+            chart = re.search(r'<div class="(?:metric-trend|power-mini-pair)', inner)
+            inner = inner[:chart.start()] + note + inner[chart.start():] if chart else inner + note
+        return opening + inner + closing
     return re.sub(r'(<article\b[^>]*>)(.*?)(</article>)', card, markup, flags=re.S)
 
 
@@ -235,7 +298,7 @@ def public_payload(payload: dict) -> dict:
     view = {
         "schema": VIEW_SCHEMA,
         "desktop": {
-            "metrics": _metric_views(_address_missing_copy(desktop["metric_cards"], meta)),
+            "metrics": _metric_views(_annotate_metric_cards(_address_missing_copy(desktop["metric_cards"], meta), meta)),
             "growth": _annotate_period_cards(desktop["growth_cards"], meta),
             "timeline": _address_missing_copy(desktop["timeline_rows"], meta),
             "marquee": _address_missing_copy(desktop["marquee_html"], meta),
@@ -243,7 +306,7 @@ def public_payload(payload: dict) -> dict:
             "warning": desktop["warning_html"],
         },
         "mobile": {
-            "metrics": _metric_views(_annotate_period_cards(_address_missing_copy(mobile["key_cards"] + mobile["growth_cards"], meta), meta)),
+            "metrics": _metric_views(_annotate_metric_cards(_annotate_period_cards(_address_missing_copy(mobile["key_cards"] + mobile["growth_cards"], meta), meta), meta)),
             "timeline": _address_missing_copy(mobile["meta_rows"], meta),
             "trends": json.loads(mobile["metric_trend_payload"]),
             "warning": mobile["warning_html"],
@@ -308,6 +371,12 @@ _PREVIEW_STYLE = """
 .node-data-notes{margin:0 auto 16px;max-width:1380px;padding:0 16px;color:#90abc4;font:12px/1.7 var(--font,sans-serif)}
 .node-data-notes summary{cursor:pointer;color:#afc9df;width:max-content}.node-data-notes p{margin:7px 0}
 .node-period-cutoff{display:block!important;font-size:11px!important;line-height:1.65!important;color:#b0bed1!important;margin-top:12px!important;overflow-wrap:anywhere}
+.node-period-state{display:block;width:fit-content;max-width:100%;margin:0 0 10px;padding:5px 9px;border:1px solid rgba(255,190,100,.35);border-radius:8px;background:rgba(255,169,65,.09);color:#ffd39a;font:600 11px/1.5 var(--font,sans-serif);letter-spacing:0;overflow-wrap:anywhere}
+.node-period-state[hidden]{display:none!important}
+.node-daily-window{margin:12px 0 0;padding:9px 0 0;border-top:1px solid rgba(143,183,216,.15);font:11px/1.65 var(--font,sans-serif);letter-spacing:0;color:#b0bed1}
+.node-daily-window span{display:block!important;margin:0!important;font:inherit!important;letter-spacing:0!important;color:inherit!important}
+.node-daily-window span:first-child{font-size:10px!important;color:#91a9bf!important}
+.node-daily-window em{display:block;margin-top:4px;font-size:10px;font-style:normal;color:#ffd39a}
 .node-rank-actions{display:flex;align-items:center;gap:12px;margin:10px 0 2px;font:11px/1.5 var(--font,sans-serif)}
 .node-rank-actions a,.node-rank-actions button{color:#9dcbd8;background:none;border:0;padding:2px 0;font:inherit;cursor:pointer;text-decoration:none}
 .node-rank-actions a:hover,.node-rank-actions button:hover{color:#68f6e8}
@@ -483,7 +552,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     markup = markup.replace("<span class=\"btn hot\">覆盖率 ", "<span class=\"btn hot\">算力覆盖率 ")
     markup = markup.replace("<span>覆盖率<b", "<span>算力覆盖率<b")
     markup = markup.replace("本轮覆盖率", "本轮算力覆盖率")
-    markup = _annotate_period_cards(_address_missing_copy(markup, public_meta), public_meta)
+    markup = _annotate_metric_cards(_annotate_period_cards(_address_missing_copy(markup, public_meta), public_meta), public_meta)
     # Wrap seed warnings with a stable slot, including when they are empty.
     warning_pattern = r'<div class="(?:alert|m-note)">本轮算力覆盖率.*?</div>'
     markup = re.sub(warning_pattern, lambda match: '<div data-preview-coverage-warning>' + match.group(0) + '</div>', markup, flags=re.S)
@@ -499,6 +568,15 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     html = markup + '<script id="rankData"' + scripts
     language_marker = "  const zhToEn = {"
     extra_translations = {
+        "保留上次统计": "Previous statistics retained",
+        "保留上次日统计": "Previous daily statistics retained",
+        "部分数据待补齐": "Some statistics are pending",
+        "部分日统计待补齐": "Some daily statistics are pending",
+        "统计时间待核验": "Statistics time pending verification",
+        "每日新增算力 · 北京时间": "Daily power growth · Beijing time",
+        "日销毁统计 · 北京时间": "Daily burns · Beijing time",
+        "新增 / 活跃地址统计 · 北京时间": "New / active addresses · Beijing time",
+        "交易日统计 · 北京时间": "Daily transactions · Beijing time",
         "12.25 · 场景参考": "12.25 · Scenario reference",
         "圣诞情景测算": "Christmas Scenario Estimate",
         "参考时点 · 12月25日": "Reference · Dec 25",
@@ -594,6 +672,11 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     # Translate adapter-owned cutoff labels while preserving the original date.
     dynamic_marker = "  const translateDynamic = (text) => {"
     dynamic_extra = """
+    const dailyWindow = text.match(/^(\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}) 至 (\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2})(（北京时间）)?$/);
+    if (dailyWindow) return `${dailyWindow[1]} to ${dailyWindow[2]}${dailyWindow[3] ? ' (Beijing time)' : ''}`;
+    const periodCutoff = text.match(/^截至 (.+?)（北京时间）$/);
+    if (periodCutoff) return `Through ${periodCutoff[1]} (Beijing time)`;
+    if (text === '统计时间待核验（北京时间）') return 'Statistics time pending verification (Beijing time)';
     const approxBurn = text.match(/^(当前)?约\s+([\d,.]+)(?:\s+(MARS))?$/);
     if (approxBurn) return `${approxBurn[1] ? 'Currently approx.' : 'Approx.'} ${approxBurn[2]}${approxBurn[3] ? ' MARS' : ''}`;
     const inputShare = text.match(/^按现有 (.+) 算力占比测算。$/);
