@@ -1,0 +1,63 @@
+name: Configure Node Website Subdirectory Index
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Enable SupportSubDir only; preserve the existing index, error page and routing rules"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-node-website-configuration
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    if: ${{ github.repository == 'zhouyunqi250-create/marschain-power-site' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout configuration helper
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install official OSS SDK
+        run: python -m pip install 'oss2>=2.19,<3'
+
+      - name: Read, preserve and optionally update website configuration
+        env:
+          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_ID }}
+          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIBABA_CLOUD_ACCESS_KEY_SECRET }}
+          ALIYUN_OSS_BUCKET: ${{ secrets.ALIYUN_OSS_BUCKET }}
+          ALIYUN_OSS_ENDPOINT: ${{ secrets.ALIYUN_OSS_ENDPOINT }}
+          APPLY_WEBSITE_CONFIGURATION: ${{ inputs.apply }}
+        run: |
+          if [ "$APPLY_WEBSITE_CONFIGURATION" = "true" ]; then
+            python scripts/configure_node_website.py --apply
+          else
+            python scripts/configure_node_website.py
+          fi
+
+      - name: Save sanitized result and encrypted configuration backups
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: marschain-node-website-${{ github.run_id }}
+          path: |
+            output/node-website-migration/website-result.json
+            output/node-website-migration/website-before.xml.cms
+            output/node-website-migration/website-after.xml.cms
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 0

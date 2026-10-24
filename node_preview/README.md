@@ -79,6 +79,9 @@ Mac 关闭时服务器仍运行；在服务器桌面可直接访问同一 URL。
 - 正式模式使用 `systemd/production/` 的 publisher drop-in，保留原有百度统计配置，去掉预览标签。
   `MARSCHAIN_PUBLISHER_MODE=node` 仓库变量门控旧整站、价格、Pages 工作流；更新后的 FC 关闭旧定时器。
   切换前必须排空旧运行。回滚需要先停止新上传服务，再恢复旧发布角色和保存的站点文件。
+- OSS 静态托管应启用 `IndexDocument/SupportSubDir=true`，保证 `/m/` 返回手机首页。
+  `Configure Node Website Subdirectory Index` 手动工作流只调整该字段并保留其余配置，
+  原始配置备份加密给服务器；常驻上传密钥不获得 Bucket 配置管理权限。
 
 可查 `state/cloud-publish-status.json`、`state/github-backup-status.json` 和
 私有 `/api/status` 中的 `cloud-publish`、`github-backup`，分别确认两种上传的实际成功状态。
