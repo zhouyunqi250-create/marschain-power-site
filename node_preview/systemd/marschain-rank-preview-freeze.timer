@@ -1,8 +1,8 @@
 [Unit]
-Description=Freeze the Beijing 08:00 ranking after six confirmation blocks
+Description=Retry current Beijing 08:00 freeze every five minutes and report missing days
 
 [Timer]
-OnCalendar=*-*-* 00:00:35 UTC
+OnCalendar=*-*-* *:00/5:35 UTC
 AccuracySec=1s
 Persistent=true
 Unit=marschain-rank-preview-freeze.service

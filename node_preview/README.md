@@ -90,7 +90,27 @@ Mac 关闭时服务器仍运行；在服务器桌面可直接访问同一 URL。
 Actions 中的旧凭据只用于建立受限的新用户，新密钥加密到 Ubuntu 的公开证书后才生成 Artifact。
 解密私钥始终只留在服务器；任何凭据、环境文件、私钥都不得提交 Git。
 
-## 验证
+## 隔离修改预览
+
+审查修订版运行于 `~/marschain-rank-review-preview`。它通过
+`publisher --source-root ~/marschain-rank-preview` 只读正式采集库，
+指标缓存、日结采样与网页都写入独立预览目录。预览目录未安装云端凭据或上传服务。
+
+- 桌面预览：`http://127.0.0.1:18882/`
+- 手机预览：`http://127.0.0.1:18882/m/`
+- 私有状态页：`http://127.0.0.1:18882/admin/`，仅本机或 SSH 通道访问，不在云发布白名单内。
+- 独立服务：`marschain-rank-review-publisher.service`、`marschain-rank-review-web.service`。
+- Mac 转发：`com.marschainrank.review-preview-tunnel`，不影响原 18880 通道。
+
+修订后的公开元数据使用字段白名单；上传前的校准、算力总和与源状态门槛从私有
+`publisher-status.json` 获取。未核验历史不合成折线；官方日结采样明确记录实际时间与
+近截点性质，历史缺项不由当前数据补填。
+
+冻结与 GitHub 备份修订包含缺日检查、五分钟重试和周期性远端核验。
+已有固定快照的错误通过独立 corrections 修订记录说明，原归档保持可追溯。
+完整数据库异机备份、独立告警和地址库统一仍是后续部署事项。
+
+## 既有测试说明
 
 ```bash
 python3 -m unittest discover -s node_preview -t . -p 'test_*.py'

@@ -28,6 +28,14 @@ POWER_CONTRACT = "0x0000000000000000000000000000000000001001"
 VIEW_POWER = "0xb2dbd84e" + "0" * 64
 TOTAL_BURNED = "0x555f323a"
 CONTRACT_SOURCE = "https://github.com/marschain-protocol/mars_contracts/blob/main/contracts/PowerContractUpgradeable.sol"
+TREND_KEYS = (
+    "network_total_power", "network_total_circulation", "network_current_price", "latest_block",
+    "total_supply", "daily_emission", "total_burned", "total_wallets", "positive_power_addresses",
+    "daily_active_addresses", "daily_new_addresses", "daily_new_power", "daily_burned",
+    "daily_transaction_volume", "daily_transaction_count", "period_7d_new_power", "period_7d_new_addresses",
+    "period_7d_burned", "period_30d_new_power", "period_30d_new_addresses", "period_30d_burned",
+    "power_per_coin", "one_yi_power_output",
+)
 
 
 def _ipv4_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None, **kwargs):
@@ -141,16 +149,15 @@ def _is_daily(key: str) -> bool:
 
 
 def _daily_trends(meta: dict, history: list[dict]) -> dict:
-    """Build display curves from frozen days, never the current minute values.
+    """Use one cutoff clock; legacy partial-day snapshots are not daily facts.
 
-    Keep published contract-history power points as the baseline. A verified
-    node cutoff overrides the point for its date, so a retained seed history
-    cannot mask a later node day. Imported published snapshots fill other
-    metrics and missing baseline power dates. Integer wei values stay exact.
+    A contract entry for UTC day D is the *end* of D, i.e. Beijing 08:00
+    on D+1. Verified node snapshots already identify that cutoff directly.
+    Unknown historical fields remain gaps instead of synthetic averages.
     """
     cutoff = _integer(meta.get("statistics_window_end_timestamp"))
-    points: dict[str, dict[int, dict]] = {}
-    verified_power = False
+    points: dict[str, dict[int, dict]] = {key: {} for key in TREND_KEYS}
+    sampled_keys: set[str] = set()
 
     def number(value):
         exact = _integer(value)
@@ -162,15 +169,17 @@ def _daily_trends(meta: dict, history: list[dict]) -> dict:
         except (TypeError, ValueError, OverflowError):
             return None
 
-    power_points = points.setdefault("network_total_power", {})
+    power_points = points["network_total_power"]
     for row in meta.get("daily_total_power_history") or []:
         if not isinstance(row, dict):
             continue
         day, value = _integer(row.get("day")), number(row.get("value"))
         if day is None or value is None:
             continue
-        timestamp = day * 86400
-        if cutoff is not None and timestamp > cutoff:
+        timestamp = (day + 1) * 86400
+        # A seed saved during D must never be mistaken for its completed value.
+        completed_through = _integer(meta.get("daily_power_history_completed_through"))
+        if completed_through is None or timestamp > completed_through or (cutoff is not None and timestamp > cutoff):
             continue
         power_points[timestamp] = {"label": _local(timestamp)[:10], "value": value}
 
@@ -179,28 +188,39 @@ def _daily_trends(meta: dict, history: list[dict]) -> dict:
         source = snapshot.get("source")
         if timestamp is None or timestamp % 86400 or (cutoff is not None and timestamp > cutoff):
             continue
-        if source not in (None, "", "verified_node_window"):
+        if source != "verified_node_window":
             continue
         values = snapshot.get("values")
         if not isinstance(values, dict):
             continue
-        verified = source == "verified_node_window"
+        field_sources = snapshot.get("field_sources") or {}
         for key, raw_value in values.items():
             value = number(raw_value)
             if value is None:
                 continue
-            metric_points = points.setdefault(key, {})
+            if key not in points:
+                continue
+            metric_points = points[key]
             point = {"label": _local(timestamp)[:10], "value": value}
-            if key == "network_total_power" and not verified:
-                metric_points.setdefault(timestamp, point)
-            else:
-                metric_points[timestamp] = point
-                verified_power = verified_power or (key == "network_total_power" and verified)
+            provenance = field_sources.get(key) or {}
+            if provenance.get("timing_status") == "sampled_near_cutoff":
+                sampled_keys.add(key)
+                point["sample"] = provenance
+            metric_points[timestamp] = point
 
-    return {key: {"source": ("POWER 合约历史与节点核验日结" if verified_power else "POWER 合约日趋势")
-                  if key == "network_total_power" else "已保存日结",
-                  "values": [dated[timestamp] for timestamp in sorted(dated)[-30:]]}
-            for key, dated in points.items() if dated}
+    # Derive daily growth from the same adjacent completed cutoffs as the total
+    # curve. Old seed 'daily_new_power' values used partial days and are excluded.
+    for timestamp, point in power_points.items():
+        previous = power_points.get(timestamp - 86400)
+        if previous is not None:
+            points["daily_new_power"][timestamp] = {"label": point["label"], "value": point["value"] - previous["value"]}
+
+    return {key: {"source": "官方 08:00 附近实际采样（非精确截点）" if key in sampled_keys else
+                         "已完成合约日与节点核验日结" if key in ("network_total_power", "daily_new_power") else "已核验或注明采样时间的日结",
+                  "values": [dated[timestamp] for timestamp in sorted(dated)[-30:]],
+                  "available": bool(dated), "allow_synthetic_fallback": False,
+                  "missing_reason": None if dated else "历史缺少同一截止口径的可靠采样，保留缺失；不以均值补造趋势"}
+            for key, dated in points.items()}
 
 
 class MetricStore:
@@ -214,9 +234,14 @@ class MetricStore:
     """
 
     def __init__(self, db_path: str | Path, rpc_url: str = "http://127.0.0.1:18555", seed_dir: str | Path | None = None,
-                 fetcher: Callable = fetch_json, timeout: float = 10, cache_seconds: int = 50):
+                 fetcher: Callable = fetch_json, timeout: float = 10, cache_seconds: int = 50,
+                 observation_database: str | Path | None = None, boundary_sample_tolerance_seconds: int = 90):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.observation_database = Path(observation_database) if observation_database is not None else self.db_path
+        if not 0 <= boundary_sample_tolerance_seconds <= 300:
+            raise ValueError("Boundary sample tolerance must be between 0 and 300 seconds")
+        self.boundary_sample_tolerance_seconds = boundary_sample_tolerance_seconds
         self.rpc_url, self.fetcher, self.timeout, self.cache_seconds = rpc_url, fetcher, timeout, cache_seconds
         self.seed_dir = Path(seed_dir) if seed_dir is not None else self.db_path.parent / "seed"
         with self._db() as conn:
@@ -224,11 +249,19 @@ class MetricStore:
                 CREATE TABLE IF NOT EXISTS preview_metric_state (key TEXT PRIMARY KEY,value TEXT NOT NULL);
                 CREATE TABLE IF NOT EXISTS preview_metric_cache (key TEXT PRIMARY KEY,payload TEXT,fetched_at INTEGER,checked_at INTEGER,error TEXT);
                 CREATE TABLE IF NOT EXISTS preview_metric_boundaries (timestamp INTEGER PRIMARY KEY,block_number INTEGER NOT NULL,block_hash TEXT,power TEXT NOT NULL,burned TEXT NOT NULL,created_at INTEGER NOT NULL);
+                CREATE TABLE IF NOT EXISTS preview_metric_cutoff_samples (kind TEXT NOT NULL,cutoff INTEGER NOT NULL,received_at INTEGER NOT NULL,payload TEXT NOT NULL,provenance TEXT NOT NULL,PRIMARY KEY(kind,cutoff));
             """)
 
     def _db(self):
         conn = sqlite3.connect(str(self.db_path), timeout=15)
         conn.row_factory = sqlite3.Row
+        return conn
+
+    def _observations(self):
+        """Never acquire a writable connection to the production collector DB."""
+        conn = sqlite3.connect(self.observation_database.resolve().as_uri() + "?mode=ro", uri=True, timeout=15)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA query_only=ON")
         return conn
 
     def _get(self, key: str, default=None):
@@ -305,11 +338,42 @@ class MetricStore:
             self._put("daily_status", {"state": "preserved_published_snapshot", "source": origin.rstrip("/") + "/data/latest.json",
                       "frozen_end_timestamp": meta.get("statistics_window_end_timestamp"), "source_generated_at": meta.get("generated_at"),
                       "detail": "Published daily/7d/30d data retained at its original cutoff until a complete observed node window is available."})
+            if self.observation_database.resolve() != self.db_path.resolve():
+                # Copy only already verified aggregate metadata, never collector
+                # tables or a write connection to the live database.
+                try:
+                    with self._observations() as source:
+                        rows = source.execute("SELECT key,value FROM preview_metric_state WHERE key IN ('daily_meta','daily_status')").fetchall()
+                    daily = {row["key"]: json.loads(row["value"]) for row in rows}
+                    end = _integer(daily.get("daily_meta", {}).get("statistics_window_end_timestamp"))
+                    if (daily.get("daily_status", {}).get("state") == "verified_node_window" and end is not None
+                            and daily["daily_status"].get("frozen_end_timestamp") == end):
+                        self._put("daily_meta", daily["daily_meta"])
+                        self._put("daily_status", daily["daily_status"])
+                except (sqlite3.Error, OSError, ValueError):
+                    pass
         recovered["bootstrap_errors"] = errors
         return recovered
 
     def history(self) -> list[dict]:
-        return copy.deepcopy(self._get("history", self._get("seed_history", [])))
+        inherited = []
+        if self.observation_database.resolve() != self.db_path.resolve():
+            try:
+                with self._observations() as conn:
+                    row = conn.execute("SELECT value FROM preview_metric_state WHERE key='history'").fetchone()
+                inherited = json.loads(row[0]) if row else []
+            except (sqlite3.Error, OSError, ValueError):
+                pass
+        own = self._get("history", self._get("seed_history", []))
+        merged = {}
+        for snapshot in [*inherited, *own]:
+            if not isinstance(snapshot, dict):
+                continue
+            stamp = _integer(snapshot.get("statistics_window_end_timestamp"))
+            if stamp is not None and not (merged.get(stamp, {}).get("source") == "verified_node_window"
+                                          and snapshot.get("source") != "verified_node_window"):
+                merged[stamp] = snapshot
+        return copy.deepcopy([merged[stamp] for stamp in sorted(merged)[-90:]])
 
     def _rpc(self, method: str, params: list):
         result = self.fetcher(self.rpc_url, self.timeout, {"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
@@ -329,6 +393,194 @@ class MetricStore:
             raise ValueError("unexpected POWER contract return word count")
         return {"power": power[1], "burned": burned[0]}
 
+    def _contract_power_days(self, block: int | None = None) -> list[tuple[int, int]]:
+        raw = self._rpc("eth_call", [{"to": POWER_CONTRACT, "data": "0x1c1b5cdf"}, hex(block) if block is not None else "latest"])
+        if not isinstance(raw, str) or not raw.startswith("0x") or len(raw[2:]) % 64:
+            raise ValueError("invalid daily power history ABI response")
+        words = [int(raw[i:i+64], 16) for i in range(2, len(raw), 64)]
+        if len(words) < 4:
+            raise ValueError("daily power history ABI too short")
+        def array(offset):
+            if offset % 32:
+                raise ValueError("unaligned daily power history ABI offset")
+            index = offset // 32
+            if index < 2 or index >= len(words) or words[index] > len(words) - index - 1:
+                raise ValueError("daily power history ABI offset out of range")
+            return words[index+1:index+1+words[index]]
+        days, powers = array(words[0]), array(words[1])
+        if len(days) != len(powers) or len(set(days)) != len(days):
+            raise ValueError("daily power history length or day identity mismatch")
+        return sorted(zip(days, powers))
+
+    def _refresh_contract_history(self, meta: dict, block_info: dict, now: int):
+        """One small contract view per completed day; never a block/log replay."""
+        block = _integer(block_info.get("number"))
+        stamp = _integer(block_info.get("timestamp"))
+        if stamp is None and block is not None:
+            stamp = _integer(self._rpc("eth_getBlockByNumber", [hex(block), False]).get("timestamp"))
+        completed_through = min(now, stamp or 0) // 86400 * 86400
+        cached = self._get("completed_contract_power_days", {})
+        attempt = self._get("completed_contract_power_days_attempt", {})
+        if (block is not None and completed_through > 0
+                and int(cached.get("completed_through") or 0) < completed_through
+                and now - int(attempt.get("checked_at") or 0) >= 300):
+            try:
+                days = self._contract_power_days(block)
+                cached = {"completed_through": completed_through, "source_block": block,
+                          "source_block_hash": block_info.get("hash"), "fetched_at": now,
+                          "values": [{"day": day, "value": power} for day, power in days
+                                     if (day + 1) * 86400 <= completed_through][-91:]}
+                self._put("completed_contract_power_days", cached)
+                self._put("completed_contract_power_days_attempt", {"checked_at": now, "status": "ok"})
+            except Exception as exc:
+                self._put("completed_contract_power_days_attempt", {"checked_at": now, "status": "unavailable", "error": str(exc)})
+        # Old public seed histories are deliberately replaced, even on failure.
+        meta["daily_total_power_history"] = cached.get("values", [])
+        meta["daily_power_history_completed_through"] = cached.get("completed_through")
+        meta["daily_power_history_source"] = {key: value for key, value in cached.items() if key != "values"}
+
+    def _record_cutoff_sample(self, kind: str, values: dict, received_at: int, provenance: dict):
+        cutoff = (received_at + 43200) // 86400 * 86400
+        if abs(received_at - cutoff) > self.boundary_sample_tolerance_seconds:
+            return
+        provenance = {**provenance, "timing_status": "sampled_near_cutoff", "exact_cutoff": False,
+                      "cutoff_timestamp": cutoff, "received_at": received_at,
+                      "offset_seconds": received_at - cutoff,
+                      "tolerance_seconds": self.boundary_sample_tolerance_seconds}
+        with self._db() as conn:
+            prior = conn.execute("SELECT received_at FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+            # Prefer the closest real sample. Ties keep the earlier receipt.
+            if prior and (abs(prior[0] - cutoff), prior[0]) <= (abs(received_at - cutoff), received_at):
+                return
+            conn.execute("INSERT OR REPLACE INTO preview_metric_cutoff_samples VALUES (?,?,?,?,?)",
+                         (kind, cutoff, received_at, json.dumps(values), json.dumps(provenance)))
+
+    def _cutoff_sample(self, kind: str, cutoff: int) -> tuple[dict, dict]:
+        with self._db() as conn:
+            row = conn.execute("SELECT payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+        return (json.loads(row[0]), json.loads(row[1])) if row else ({}, {})
+
+    def _sample_official_stats(self, stats: dict, source: dict):
+        if source.get("status") != "ok" or not source.get("fetched_at"):
+            return
+        values = {"total_wallets": _integer(stats.get("totalAddresses")),
+                  "network_total_circulation": _integer(stats.get("totalCirculation"))}
+        for key, field in (("network_current_price", "currentPrice"), ("network_highest_price", "highestPrice"), ("network_lowest_price", "lowestPrice")):
+            value = _price(stats.get(field))
+            values[key] = float(value) if value is not None else None
+        self._record_cutoff_sample("official_stats", values, int(source["fetched_at"]),
+                                   {"source": EXPLORER_API + "/stats",
+                                    "basis": "HTTP response receipt near cutoff; upstream data may have its own cache delay"})
+
+    def _sample_counts(self, counts: dict | None, block_info: dict, now: int):
+        if not counts:
+            return
+        values = {"positive_power_addresses": _integer(counts.get("positive_power_count")),
+                  "known_addresses": _integer(counts.get("candidate_count"))}
+        if values["positive_power_addresses"] is None:
+            return
+        cutoff = (now + 43200) // 86400 * 86400
+        stamp = _integer(block_info.get("timestamp"))
+        if stamp is None or abs(stamp - cutoff) > self.boundary_sample_tolerance_seconds:
+            return
+        self._record_cutoff_sample("known_address_counts", values, now,
+                                  {"source": "collector_snapshot_known_addresses", "source_block": block_info.get("number"),
+                                   "source_block_timestamp": block_info.get("timestamp"),
+                                   "scope": "known addresses only; not a complete chain census"})
+
+    def _sampled_address_growth(self, start: int, end: int) -> tuple[int | None, dict]:
+        before, before_source = self._cutoff_sample("official_stats", start)
+        after, after_source = self._cutoff_sample("official_stats", end)
+        left, right = _integer(before.get("total_wallets")), _integer(after.get("total_wallets"))
+        if left is None or right is None or right < left:
+            return None, {"status": "unavailable", "exact_cutoff": False,
+                          "reason": "missing two reliable official near-08:00 samples; historical gaps are not inferred"}
+        return right - left, {"status": "sampled", "timing_status": "sampled_near_cutoff", "exact_cutoff": False,
+                              "source": "official_totalAddresses_sample_difference", "start": before_source, "end": after_source}
+
+    def _cutoff_address_counts(self, cutoff: int) -> tuple[dict, dict]:
+        """Reuse an existing private freeze manifest; do not query every wallet."""
+        name = time.strftime("%Y%m%d-0800", time.gmtime(cutoff))
+        path = self.observation_database.parent.parent / "archives" / name / "manifest.json"
+        try:
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            known, positive = _integer(manifest.get("known_count")), _integer(manifest.get("positive_power_count"))
+            if (manifest.get("state") == "complete" and manifest.get("target_timestamp") == cutoff
+                    and manifest.get("complete_for_known_addresses") is True
+                    and known is not None and positive is not None and 0 <= positive <= known):
+                return {"positive_power_addresses": positive, "known_addresses": known}, {
+                    "source": "verified_private_freeze_manifest", "cutoff_timestamp": cutoff,
+                    "source_block": manifest.get("source_block"), "source_block_hash": manifest.get("source_block_hash"),
+                    "exact_cutoff": True, "scope": "all known addresses; not a complete chain address census"}
+        except (OSError, ValueError, TypeError):
+            pass
+        return self._cutoff_sample("known_address_counts", cutoff)
+
+    def _enrich_daily_history(self, meta: dict, now: int):
+        """Persist each available cutoff field with its own real provenance."""
+        daily_status = meta.get("preview_daily_status") or {}
+        end = _integer(meta.get("statistics_window_end_timestamp"))
+        if daily_status.get("state") != "verified_node_window" or end is None:
+            return
+        official, official_source = self._cutoff_sample("official_stats", end)
+        counts, count_source = self._cutoff_address_counts(end)
+        power = _integer(meta.get("statistics_window_end_total_power"))
+        endpoints = daily_status.get("field_sources", {}).get("power", {})
+        burned = _integer((endpoints.get("end") or {}).get("burned"))
+        daily_emission = None
+        genesis = _integer(meta.get("emission_genesis_timestamp"))
+        if genesis is not None:
+            cycle = max(0, (end - genesis) // 86400) // 448
+            daily_emission = 100_000_000_000 * math.pow(.5, cycle) / 448
+        required = power / (daily_emission * .75) if power and daily_emission else None
+        values = {key: None for key in TREND_KEYS}
+        values.update(network_total_power=power, total_burned=burned,
+                      latest_block=daily_status.get("source_block"),
+                      daily_active_addresses=meta.get("statistics_window_active_wallet_address_count"),
+                      daily_new_power=meta.get("statistics_window_new_power"), daily_burned=meta.get("statistics_window_burned_tokens"),
+                      daily_transaction_volume=meta.get("statistics_window_transaction_volume_wei"),
+                      daily_transaction_count=meta.get("statistics_window_active_transactions_seen"),
+                      total_supply=meta.get("emission_total_supply_cap_tokens"), daily_emission=daily_emission,
+                      power_per_coin=required, one_yi_power_output=100_000_000 / required if required else None)
+        sources = {key: {"source": "verified_node_window", "cutoff_timestamp": end} for key, value in values.items() if value is not None}
+        for key in ("daily_emission", "power_per_coin", "one_yi_power_output", "total_supply"):
+            if values.get(key) is not None:
+                sources[key] = {"source": "existing_site_economic_model_at_verified_cutoff", "estimated": True,
+                                "cutoff_timestamp": end, "basis": "448-day model; not measured emission/reward"}
+        for key in ("total_wallets", "network_total_circulation", "network_current_price"):
+            values[key] = official.get(key)
+            if values[key] is not None:
+                sources[key] = official_source
+        values["positive_power_addresses"] = counts.get("positive_power_addresses")
+        if values["positive_power_addresses"] is not None:
+            sources["positive_power_addresses"] = count_source
+        growth, growth_source = self._sampled_address_growth(end - 86400, end)
+        values["daily_new_addresses"] = growth
+        if growth is not None:
+            sources["daily_new_addresses"] = growth_source
+        for days in (7, 30):
+            prefix = f"period_{days}d"
+            if _integer(meta.get(f"{prefix}_end_timestamp")) == end:
+                for suffix, field in (("new_power", "new_power"), ("new_addresses", "new_candidate_address_count"), ("burned", "burned_tokens")):
+                    key = f"{prefix}_{suffix}"
+                    values[key] = meta.get(f"{prefix}_{field}")
+                    if values[key] is not None:
+                        sources[key] = (meta.get(f"{prefix}_new_candidate_address_sample") or {}) if suffix == "new_addresses" else {
+                            "source": "verified_node_cutoff_difference", "start_timestamp": meta.get(f"{prefix}_start_timestamp"),
+                            "end_timestamp": end}
+        existing = next((item for item in self.history() if item.get("statistics_window_end_timestamp") == end), {})
+        created = int(existing.get("generated_at") or now)
+        snapshot = {"generated_at": created, "generated_at_local": _local(created), "statistics_window_end_timestamp": end,
+                    "statistics_window_end_local": _local(end), "statistics_window_label": meta.get("statistics_window_label"),
+                    "source": "verified_node_window", "source_block": daily_status.get("source_block"), "schema": 2,
+                    "values": values, "field_sources": sources,
+                    "missing_fields": [key for key, value in values.items() if value is None]}
+        history = [item for item in self.history() if item.get("statistics_window_end_timestamp") != end]
+        history.append(snapshot)
+        history.sort(key=lambda item: item.get("statistics_window_end_timestamp") or 0)
+        if self._get("history") != history[-90:]:
+            self._put("history", history[-90:])
+
     def _cached_external(self, path: str, now: int) -> tuple[dict, dict]:
         url = EXPLORER_API + path
         with self._db() as conn:
@@ -338,12 +590,13 @@ class MetricStore:
         checked = _integer(cached.get("checked_at")) or 0
         if now - checked >= self.cache_seconds:
             try:
+                began = time.monotonic()
                 value = self.fetcher(url, self.timeout, None)
                 expected = ("totalAddresses", "totalCirculation", "currentPrice") if path == "/stats" else ("totalPower", "totalBurnedTokens")
                 if not isinstance(value, dict) or not any(key in value for key in expected):
                     raise ValueError("unexpected official stats response")
                 payload = value
-                cached = {"fetched_at": now, "checked_at": now, "error": None}
+                cached = {"fetched_at": now + int(time.monotonic() - began), "checked_at": now, "error": None}
             except Exception as exc:
                 cached.update(checked_at=now, error=str(exc))
             with self._db() as conn:
@@ -351,10 +604,11 @@ class MetricStore:
                              (url, json.dumps(payload), cached.get("fetched_at"), cached.get("checked_at"), cached.get("error")))
         status = {"source": url, "fetched_at": cached.get("fetched_at"), "checked_at": cached.get("checked_at"),
                   "status": "stale_cache" if cached.get("error") and payload else "unavailable" if not payload else "ok",
-                  "error": cached.get("error"), "age_seconds": now - int(cached["fetched_at"]) if cached.get("fetched_at") else None}
+                  "error": cached.get("error"), "age_seconds": max(0, now - int(cached["fetched_at"])) if cached.get("fetched_at") else None}
         return payload, status
 
-    def refresh(self, base_meta: dict, source_block: int | dict, now: int | None = None) -> dict:
+    def refresh(self, base_meta: dict, source_block: int | dict, now: int | None = None,
+                observed_counts: dict | None = None) -> dict:
         now = int(time.time()) if now is None else int(now)
         block_info = source_block if isinstance(source_block, dict) else {"number": source_block}
         block = _integer(block_info.get("number"))
@@ -415,14 +669,39 @@ class MetricStore:
                     rpc_url=self.rpc_url, preview_metrics_checked_at=now)
         sources["latest_block"] = {"source": "collector_checkpoint", "block": block, "checked_at": now, "status": "ok"}
         self._refresh_emission(meta, now, sources)
+        self._sample_official_stats(stats, stats_source)
+        self._sample_counts(observed_counts, block_info, now)
         self._capture_boundary(now // 86400 * 86400, block, now)
         daily_status = self._advance_daily(meta, now, block)
         meta.update(self._get("daily_meta", {}))
         meta["preview_daily_status"] = daily_status
         meta["preview_metric_sources"] = sources
         meta["preview_official_stats_status"] = {"stats": stats_source, "power_stats": power_source}
+        self._refresh_contract_history(meta, block_info, now)
+        self._apply_sampled_growth(meta)
+        self._enrich_daily_history(meta, now)
         meta["metric_trends"] = _daily_trends(meta, self.history())
         return meta
+
+    def _apply_sampled_growth(self, meta: dict):
+        end = _integer(meta.get("statistics_window_end_timestamp"))
+        if end is None:
+            return
+        value, provenance = self._sampled_address_growth(end - 86400, end)
+        meta.update(statistics_window_new_candidate_address_count=value, today_new_wallet_count=value,
+                    statistics_window_new_candidate_address_display=f"{value:,}个（近截点采样）" if value is not None else "缺少08:00地址采样",
+                    statistics_window_new_candidate_address_basis="official totalAddresses difference between near-08:00 response samples; not exact boundary state",
+                    today_new_wallet_basis="official near-08:00 sample difference; unavailable historical samples remain missing",
+                    statistics_window_new_candidate_address_sample=provenance)
+        meta.setdefault("preview_daily_status", {}).setdefault("field_sources", {})["new_addresses"] = provenance
+        for days in (7, 30):
+            prefix = f"period_{days}d"
+            if _integer(meta.get(f"{prefix}_end_timestamp")) == end:
+                value, provenance = self._sampled_address_growth(end - days * 86400, end)
+                meta.update({f"{prefix}_new_candidate_address_count": value,
+                             f"{prefix}_new_candidate_address_display": f"{value:,}个（近截点采样）" if value is not None else "缺少08:00地址采样",
+                             f"{prefix}_new_candidate_address_basis": "official near-08:00 sample difference; not exact boundary state",
+                             f"{prefix}_new_candidate_address_sample": provenance})
 
     def _refresh_emission(self, meta: dict, now: int, sources: dict):
         genesis = _integer(meta.get("emission_genesis_timestamp"))
@@ -446,24 +725,36 @@ class MetricStore:
         """Save cutoff state while it is still recent, even before a day is complete."""
         with self._db() as conn:
             cached = conn.execute("SELECT * FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,)).fetchone()
-            if cached:
-                try:
-                    observed = conn.execute("SELECT block_hash FROM preview_blocks WHERE number=?", (cached["block_number"],)).fetchone()
-                except sqlite3.Error:
-                    observed = None
-                if observed and observed["block_hash"] != cached["block_hash"]:
-                    conn.execute("DELETE FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,))
-                elif cached["block_number"] <= source_block:
-                    return {"timestamp": cutoff, "number": cached["block_number"], "hash": cached["block_hash"],
-                            "power": int(cached["power"]), "burned": int(cached["burned"]), "source": "verified_local_rpc_cutoff"}
-                else:
-                    return None
+        if cached is None and self.observation_database.resolve() != self.db_path.resolve():
             try:
+                with self._observations() as source:
+                    cached = source.execute("SELECT * FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,)).fetchone()
+            except sqlite3.Error:
+                pass
+            if cached is not None:
+                with self._db() as conn:
+                    conn.execute("INSERT OR IGNORE INTO preview_metric_boundaries VALUES (?,?,?,?,?,?)", tuple(cached))
+        if cached:
+            try:
+                with self._observations() as conn:
+                    observed = conn.execute("SELECT block_hash FROM preview_blocks WHERE number=?", (cached["block_number"],)).fetchone()
+            except sqlite3.Error:
+                observed = None
+            if observed and observed["block_hash"] != cached["block_hash"]:
+                with self._db() as conn:
+                    conn.execute("DELETE FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,))
+            elif cached["block_number"] <= source_block:
+                return {"timestamp": cutoff, "number": cached["block_number"], "hash": cached["block_hash"],
+                        "power": int(cached["power"]), "burned": int(cached["burned"]), "source": "verified_local_rpc_cutoff"}
+            else:
+                return None
+        try:
+            with self._observations() as conn:
                 marker = conn.execute("SELECT * FROM preview_blocks WHERE timestamp>=? AND number<=? ORDER BY number LIMIT 1",
                                       (cutoff, source_block)).fetchone()
                 block = conn.execute("SELECT * FROM preview_blocks WHERE number=?", (marker["number"] - 1,)).fetchone() if marker else None
-            except sqlite3.Error:
-                return None
+        except sqlite3.Error:
+            return None
         if not block or block["timestamp"] >= cutoff or marker["parent_hash"] != block["block_hash"]:
             return None
         prior = self._get(f"boundary_attempt:{cutoff}", {})
@@ -489,21 +780,7 @@ class MetricStore:
         cached = self._get(f"historical_power:{cutoff}")
         if cached is not None:
             return int(cached)
-        raw = self._rpc("eth_call", [{"to": POWER_CONTRACT, "data": "0x1c1b5cdf"}, "latest"])
-        if not isinstance(raw, str) or not raw.startswith("0x") or len(raw[2:]) % 64:
-            raise ValueError("invalid daily power history ABI response")
-        words = [int(raw[i:i+64], 16) for i in range(2, len(raw), 64)]
-        if len(words) < 4:
-            raise ValueError("daily power history ABI too short")
-        def array(offset):
-            index = offset // 32
-            if index < 2 or index >= len(words) or words[index] > len(words) - index - 1:
-                raise ValueError("daily power history ABI offset out of range")
-            return words[index+1:index+1+words[index]]
-        days, powers = array(words[0]), array(words[1])
-        if len(days) != len(powers):
-            raise ValueError("daily power history length mismatch")
-        completed = [(day, power) for day, power in zip(days, powers) if day < cutoff // 86400]
+        completed = [(day, power) for day, power in self._contract_power_days() if day < cutoff // 86400]
         if not completed:
             raise RuntimeError("no completed contract power history before cutoff")
         result = max(completed)[1]
@@ -577,7 +854,7 @@ class MetricStore:
 
     def _complete_window(self, end: int, source_block: int) -> tuple[dict, list[dict]]:
         start = end - 86400
-        with self._db() as conn:
+        with self._observations() as conn:
             anchor = conn.execute("SELECT * FROM preview_blocks WHERE timestamp<? AND number<=? ORDER BY number DESC LIMIT 1", (start, source_block)).fetchone()
             marker = conn.execute("SELECT * FROM preview_blocks WHERE timestamp>=? AND number<=? ORDER BY number LIMIT 1", (end, source_block)).fetchone()
             if not anchor or not marker:
@@ -651,7 +928,7 @@ class MetricStore:
     def _complete_burn_sum(self, first: int, last: int) -> int | None:
         if last < first:
             return 0
-        with self._db() as conn:
+        with self._observations() as conn:
             try:
                 ranges = conn.execute("SELECT start_block,end_block FROM preview_log_scan_ranges WHERE end_block>=? AND start_block<=? ORDER BY start_block",
                                       (first, last)).fetchall()

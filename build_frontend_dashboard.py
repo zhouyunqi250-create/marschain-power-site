@@ -2111,6 +2111,10 @@ h2 { font-size: clamp(38px, 4.4vw, 70px); line-height: .92; letter-spacing: -.06
   overflow: hidden;
   cursor: crosshair;
 }
+.trend-chart.is-separated { max-height: 48vh; overflow-y: auto; padding: 10px; }
+.trend-series-panel + .trend-series-panel { margin-top: 12px; border-top: 1px solid rgba(86,239,255,.14); }
+.trend-series-panel h4 { margin: 8px 10px 0; color: #bfefff; font-size: 13px; }
+.trend-chart.is-separated .trend-series-panel svg { width: 100%; height: auto; min-height: 130px; }
 .trend-chart svg {
   display: block;
   width: 100%;
@@ -3213,9 +3217,8 @@ const setupBurnCalculator = (panel) => {
       multiplier = 1_000;
       text = text.slice(0, -1);
     }
-    const match = text.match(/-?\d+(?:\.\d+)?/);
-    if (!match) return NaN;
-    return Number(match[0]) * multiplier;
+    if (!/^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/.test(text)) return NaN;
+    return Number(text) * multiplier;
   };
   const formatChinese = (number, suffix = '') => {
     if (!Number.isFinite(number)) return '待刷新';
@@ -3235,6 +3238,7 @@ const setupBurnCalculator = (panel) => {
     const burned = power * rate;
     result.textContent = formatChinese(burned, '枚');
     if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+    window.applyMarsLanguage?.();
   };
   input.addEventListener('input', update);
   update();
@@ -3551,7 +3555,7 @@ def _trend_points(meta: dict, key: str, fallback: list[object] | None = None, li
     if isinstance(trends, dict):
         entry = trends.get(key)
         if isinstance(entry, dict):
-            trend_points = _clean_trend_points(entry.get("values"), limit=limit)
+            return _clean_trend_points(entry.get("values"), limit=limit)
         elif isinstance(entry, list):
             trend_points = _clean_trend_points(entry, limit=limit)
     if len(trend_points) >= 2:
@@ -3568,7 +3572,7 @@ def _trend_values(meta: dict, key: str, fallback: list[object] | None = None, li
     if isinstance(trends, dict):
         entry = trends.get(key)
         if isinstance(entry, dict):
-            trend_values = _clean_trend_values(entry.get("values"), limit=limit)
+            return _clean_trend_values(entry.get("values"), limit=limit)
         elif isinstance(entry, list):
             trend_values = _clean_trend_values(entry, limit=limit)
     if len(trend_values) >= 2:
@@ -3609,6 +3613,8 @@ def _trend_average_points(day_value: object, period_7d_value: object, period_30d
 
 def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") -> str:
     clean = [value for value in values if value == value]
+    if not clean:
+        return '<div class="metric-trend is-empty"><small>暂无可用历史</small></div>'
     sampling = len(clean) < 2
     if not clean:
         clean = [0.0, 0.0]
@@ -3967,7 +3973,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         "secondary_value": _fmt_signed_power(new_power),
         "secondary_note": "北京时间 08:00 统计日新增",
         "trend_label": "算力趋势",
-        "trend_note": "全网总算力与每日新增算力合并查看。",
+        "trend_note": "全网总算力与每日新增算力分图查看。",
         "series": [
             {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
             {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
@@ -3980,7 +3986,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址、正算力地址合并查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址分图查看。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
@@ -3994,7 +4000,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
         ],
         "trend_label": "币量趋势",
-        "trend_note": "流通量、累计销毁、日销毁币量合并查看。",
+        "trend_note": "流通量、累计销毁、日销毁币量分图查看。",
         "series": [
             {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
             {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
@@ -4007,7 +4013,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
         ],
         "trend_label": "产出趋势",
-        "trend_note": "每日产币量、单币日需算力、1亿算力产出合并查看。",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出分图查看。",
         "series": [
             {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
             {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
@@ -4019,7 +4025,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
         ],
         "trend_label": "交易趋势",
-        "trend_note": "每日交易币量与每日交易笔数合并查看。",
+        "trend_note": "每日交易币量与每日交易笔数分图查看。",
         "series": [
             {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
             {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
@@ -4064,8 +4070,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("总产量", total_supply),
         ("每日产币量", daily_total),
         ("最新区块", f"{latest_block_value:,}"),
-        ("算力日志", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
-        ("已扫描地址", _fmt_chinese_number(candidate_count)),
+        ("已收录地址", _fmt_chinese_number(candidate_count)),
         ("正算力地址", _fmt_chinese_number(positive_power_count)),
         ("统计日活跃地址", _fmt_count_unit(active_wallet_count)),
         ("统计日新增地址", _fmt_count_unit(new_address_count)),
@@ -4081,7 +4086,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("30天销毁", period_30d_burned),
         ("单币日需算力", power_per_coin),
         ("1亿算力产出", one_yi_power_output),
-        ("缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
     ]
     timeline_items = [
         ("最近刷新", generated_at),
@@ -4109,9 +4113,6 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         ("节点日产币量", daily_node),
         ("单币日需算力", power_per_coin),
         ("1亿算力产出", one_yi_power_output),
-        ("合约日志命中", f"{_as_int(meta.get('rpc_logs_seen')):,}"),
-        ("算力缓存刷新", f"{_as_int(meta.get('power_cache_refreshed')):,}"),
-        ("覆盖目标线", threshold_label),
     ]
 
     warning_html = _build_warning(meta, threshold_label)
@@ -4133,10 +4134,10 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       </article>
     """
     equation_cards = """
-      <article class="fcard reveal"><label>当前实际系数<span>算力倍增</span></label><strong>20x</strong><small>当前 04 方程采用的实际膨胀倍数。</small></article>
-      <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>圣诞方程与预言机方程按 8 天窗口执行。</small></article>
-      <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制说明中每轮方程触发的流通量销毁比例。</small></article>
-      <article class="fcard reveal"><label>预言机方程式<span>实时倒计时</span></label><strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong><small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>
+      <article class="fcard reveal"><label>本期机制系数<span>算力倍增</span></label><strong>20x</strong><small>依据本期已确认公开规则；后续期次以官方公告为准。</small></article>
+      <article class="fcard reveal"><label>执行周期<span>单轮</span></label><strong>8 天</strong><small>机制参考窗口，具体执行时间以官方公告为准。</small></article>
+      <article class="fcard reveal"><label>销毁比例<span>流通量</span></label><strong>35%</strong><small>机制参考比例，具体执行以本期官方规则为准。</small></article>
+      <article class="fcard reveal"><label>预言机方程式<span>活动倒计时</span></label><strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong><small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>
     """
     burn_estimate = _build_burn_estimate(meta)
     burn_calculator = _build_burn_calculator(burn_estimate)
@@ -4230,7 +4231,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         <div class="core"><b>{escape(coverage_label)}</b><span>扫描覆盖率</span></div>
         <i class="node n1"></i><i class="node n2"></i><i class="node n3"></i>
         <div class="mini">
-          <div><span>已扫描地址</span><b>{_fmt_chinese_number(candidate_count)}</b></div>
+          <div><span>已收录地址</span><b>{_fmt_chinese_number(candidate_count)}</b></div>
           <div><span>正算力占比</span><b>{_fmt_percent(positive_ratio)}</b></div>
           <div><span>未覆盖算力</span><b>{_fmt_power(uncovered_power)}</b></div>
         </div>
@@ -4799,9 +4800,8 @@ const setupMobileBurnCalculator = (panel) => {
       multiplier = 1_000;
       text = text.slice(0, -1);
     }
-    const match = text.match(/-?\d+(?:\.\d+)?/);
-    if (!match) return NaN;
-    return Number(match[0]) * multiplier;
+    if (!/^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/.test(text)) return NaN;
+    return Number(text) * multiplier;
   };
   const formatChinese = (number, suffix = '') => {
     if (!Number.isFinite(number)) return '待刷新';
@@ -4821,6 +4821,7 @@ const setupMobileBurnCalculator = (panel) => {
     const burned = power * rate;
     result.textContent = formatChinese(burned, '枚');
     if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+    window.applyMarsLanguage?.();
   };
   input.addEventListener('input', update);
   update();
@@ -4904,10 +4905,10 @@ ORACLE_COUNTDOWN_JS = r"""
     const minutes = Math.floor((remaining % 3600000) / 60000);
     const seconds = Math.floor((remaining % 60000) / 1000);
     const isEnglish = document.documentElement.lang === 'en';
-    const value = `${days}${isEnglish ? 'd' : '天'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+    const value = remaining > 0 ? `${days}${isEnglish ? 'd' : '天'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : (isEnglish ? 'Cycle ended' : '本期已结束');
     nodes.forEach((node) => {
       node.textContent = value;
-      node.setAttribute('aria-label', isEnglish
+      node.setAttribute('aria-label', remaining <= 0 ? (isEnglish ? 'This cycle has ended' : '本期已结束') : isEnglish
         ? `${days} days ${hours} hours ${minutes} minutes ${seconds} seconds remaining`
         : `剩余${days}天${hours}小时${minutes}分${seconds}秒`);
     });
@@ -5065,11 +5066,12 @@ SHARE_POSTER_JS = r"""
     return `上线第 ${Math.max(1, Math.floor((generated - genesis) / 86400) + 1)} 天`;
   };
   const christmasCountdown = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    let target = new Date(now.getFullYear(), 11, 25);
-    if (today > target) target = new Date(now.getFullYear() + 1, 11, 25);
-    const days = Math.max(0, Math.ceil((target - today) / 86400000));
+    const beijing = new Date(Date.now() + 8 * 3600000);
+    const year = beijing.getUTCFullYear();
+    const today = Date.UTC(year, beijing.getUTCMonth(), beijing.getUTCDate());
+    let target = Date.UTC(year, 11, 25);
+    if (today > target) target = Date.UTC(year + 1, 11, 25);
+    const days = Math.max(0, Math.round((target - today) / 86400000));
     return `距离圣诞方程 ${days} 天`;
   };
   const generatedLabel = (meta) => String(meta.generated_at_local || '').slice(0, 16) || new Date().toLocaleString('zh-CN', { hour12: false }).slice(0, 16);
@@ -5669,7 +5671,7 @@ METRIC_TREND_JS = r"""
     return text.replace(/^采样\s*/, '#');
   };
   const cleanPoints = (points) => Array.isArray(points)
-    ? points.map((point, index) => ({
+    ? points.filter((point) => point && point.value !== null && point.value !== undefined && point.value !== '').map((point, index) => ({
         label: String(point && point.label ? point.label : `采样 ${index + 1}`),
         value: Number(point && point.value),
       })).filter((point) => Number.isFinite(point.value))
@@ -5782,19 +5784,19 @@ METRIC_TREND_JS = r"""
     const seriesList = metricSeries();
     if (seriesList.length > 1) {
       const focusRows = seriesList.map((series) => {
-        const point = series.points[Math.min(focusIndex, series.points.length - 1)];
-        return { label: series.label, value: formatTrendValue(point && point.value, series.key) };
+        const point = series.points.find((item) => item.label === activePoints[focusIndex]?.label);
+        return { label: series.label, value: point ? formatTrendValue(point.value, series.key) : '暂无数据' };
       });
       const latestRows = seriesList.map((series) => {
         const point = series.points[series.points.length - 1];
-        return { label: series.label, value: formatTrendValue(point && point.value, series.key) };
+        return { label: series.label, value: point ? formatTrendValue(point.value, series.key) : '暂无数据' };
       });
-      const focusPoint = seriesList[0].points[Math.min(focusIndex, seriesList[0].points.length - 1)];
+      const focusPoint = activePoints[focusIndex];
       const latestPoint = seriesList[0].points[seriesList[0].points.length - 1];
       setTrendStat('[data-trend-focus-value]', focusRows);
       modal.querySelector('[data-trend-focus-label]').textContent = focusPoint ? focusPoint.label : '';
       setTrendStat('[data-trend-latest]', latestRows);
-      modal.querySelector('[data-trend-latest-label]').textContent = latestPoint ? latestPoint.label : '';
+      modal.querySelector('[data-trend-latest-label]').textContent = '各指标最新完整采样';
       setTrendStat('[data-trend-min]', seriesList.map((series) => {
         const minPoint = series.points.reduce((best, item) => item.value < best.value ? item : best, series.points[0]);
         return { label: series.label, value: formatTrendValue(minPoint.value, series.key) };
@@ -5843,6 +5845,12 @@ METRIC_TREND_JS = r"""
       });
     });
     const seriesList = metricSeries();
+    if (seriesList.length) {
+      const dates = new Map();
+      seriesList.forEach((series) => series.points.forEach((point) => { if (!dates.has(point.label)) dates.set(point.label, point); }));
+      activePoints = Array.from(dates.values()).sort((a, b) => a.label.localeCompare(b.label));
+      focusIndex = Math.max(0, activePoints.length - 1);
+    }
     if (legend) {
       legend.innerHTML = seriesList.length > 1
         ? seriesList.map((series) => `<span><i></i>${escapeHtml(series.label)}</span>`).join('')
@@ -5850,9 +5858,10 @@ METRIC_TREND_JS = r"""
     }
 
     if (!activePoints.length) {
-      chart.innerHTML = '<div class="trend-empty">趋势采样中，等待下次刷新。</div>';
-      modal.querySelector('[data-trend-foot]').textContent = '趋势采样中，等待下次刷新。';
-      setFocus(0);
+      chart.innerHTML = '<div class="trend-empty">暂无可用历史</div>';
+      modal.querySelector('[data-trend-foot]').textContent = '暂无可用历史；后续记录将按实际统计时间积累。';
+      ['[data-trend-focus-value]','[data-trend-latest]','[data-trend-min]','[data-trend-max]'].forEach((selector) => setTrendStat(selector, '暂无数据'));
+      modal.querySelectorAll('[data-trend-focus-label],[data-trend-latest-label],[data-trend-min-label],[data-trend-max-label]').forEach((node) => { node.textContent = ''; });
       return;
     }
 
@@ -5920,6 +5929,23 @@ METRIC_TREND_JS = r"""
         ${cursors}
       </svg>
     `;
+    if (seriesList.length > 1) {
+      chart.classList.add('is-separated');
+      chart.innerHTML = seriesList.map((series, seriesIndex) => {
+        const values = series.points.map((point) => point.value);
+        const low = Math.min(...values);
+        const high = Math.max(...values);
+        const span = Math.max(high - low, Math.max(Math.abs(high), 1) * 0.08);
+        const h = 180, top = 30, bottom = 28, left = 110, right = 18;
+        const points = series.points.map((point) => {
+          const dateIndex = activePoints.findIndex((entry) => entry.label === point.label);
+          return { x: left + (720-left-right) * dateIndex / Math.max(1,activePoints.length-1), y: top + (h-top-bottom) * (1 - (point.value-low)/span), dateIndex };
+        });
+        const path = points.map((point,index) => `${index && point.dateIndex === points[index-1].dateIndex + 1 ? 'L' : 'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
+        const cursors = points.map((point) => `<g data-cursor-index="${point.dateIndex}" style="opacity:${point.dateIndex === focusIndex ? 1 : 0}"><line class="cursor-line" x1="${point.x}" x2="${point.x}" y1="${top}" y2="${h-bottom}"></line><circle class="cursor-dot" cx="${point.x}" cy="${point.y}" r="4"></circle></g>`).join('');
+        return `<section class="trend-series-panel"><h4>${escapeHtml(series.label)}</h4><svg viewBox="0 0 720 ${h}" role="img" aria-label="${escapeHtml(series.label)}趋势图"><text class="date-label" x="8" y="${top+10}">${escapeHtml(formatTrendValue(high,series.key))}</text><text class="date-label" x="8" y="${h-bottom}">${escapeHtml(formatTrendValue(low,series.key))}</text><line class="axis-line" x1="${left}" x2="702" y1="${h-bottom}" y2="${h-bottom}"></line><path class="line ${seriesIndex % 2 ? 'series-secondary' : ''}" d="${path}"></path>${cursors}<text class="date-label" x="${left}" y="${h-6}">${escapeHtml(formatDateLabel(activePoints[0].label))}</text><text class="date-label" x="702" y="${h-6}" text-anchor="end">${escapeHtml(formatDateLabel(activePoints[activePoints.length-1].label))}</text></svg></section>`;
+      }).join('');
+    } else chart.classList.remove('is-separated');
     const pickIndex = (event) => {
       const rect = chart.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
@@ -5930,7 +5956,7 @@ METRIC_TREND_JS = r"""
       chart.setPointerCapture?.(event.pointerId);
       pickIndex(event);
     };
-    const foot = activePoints.length < 7
+    const foot = seriesList.length > 1 ? '各指标分图展示，纵轴分别标注数值；拖动可查看同一日期，缺失记录不作补值。' : activePoints.length < 7
       ? `采样中：当前只有 ${activePoints.length} 个采样点，等待更多刷新形成完整趋势。`
       : `每根柱子对应一个自然日。当前周期共 ${activePoints.length} 天。`;
     modal.querySelector('[data-trend-foot]').textContent = foot;
@@ -5968,6 +5994,31 @@ LANGUAGE_TOGGLE_JS = r"""
 (function() {
   const STORAGE_KEY = 'marschain_lang';
   const zhToEn = {
+    "暂无可用历史；后续记录将按实际统计时间积累。": "No history is available. Future records will use their actual statistics times.",
+    "生成快报": "Create Report",
+    "快报": "Report",
+    "支持 1亿、5亿、1000万 或纯数字。": "Use 100M, 500M, 10M or a number.",
+    "请输入有效算力": "Enter valid power",
+
+    "本期倒计时已结束 · 等待官方公布下一期": "This countdown has ended; awaiting the next official cycle",
+    "全网总算力与每日新增算力分图查看。": "Separate charts for total power and daily power growth.",
+    "流通量、累计销毁、日销毁币量分图查看。": "Separate charts for circulation, cumulative burns and daily burns.",
+    "每日产币量、单币日需算力、1亿算力产出分图查看。": "Separate charts for daily emission and estimated power output.",
+    "每日交易币量与每日交易笔数分图查看。": "Separate charts for daily transaction volume and count.",
+
+    "本期机制系数": "Cycle Reference Factor",
+    "依据本期已确认公开规则；后续期次以官方公告为准。": "Reference rules for the confirmed cycle. Future cycles follow official announcements.",
+    "机制参考窗口，具体执行时间以官方公告为准。": "Reference window. Actual timing follows official announcements.",
+    "机制参考比例，具体执行以本期官方规则为准。": "Reference ratio. Execution follows official rules for this cycle.",
+    "本期已结束": "Cycle ended",
+    "活动倒计时": "Cycle Countdown",
+    "暂无可用历史": "No history available",
+    "暂无数据": "No data",
+    "各指标最新完整采样": "Latest complete sample for each metric",
+    "各指标分图展示，纵轴分别标注数值；拖动可查看同一日期，缺失记录不作补值。": "Separate charts with labelled scales. Drag to inspect the same date; missing records are left empty.",
+    "最高价格": "Highest Price",
+    "预言机触发价": "Oracle Trigger Price",
+
     'MarsChain 算力排行榜': 'MarsChain Power Ranking',
     '追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。': 'Track on-chain power distribution, top address changes, and Beijing-day growth trends.',
     '算力排行': 'Power Rank',
@@ -5980,7 +6031,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '方程': 'Equation',
     '说明': 'Notes',
     '电脑版': 'Desktop',
-    '数据已加载 · 北京时间 08:00 每日采集': 'Data loaded · collected daily at 08:00 Beijing time',
+    '数据已加载 · 北京时间 08:00 每日采集': 'Updates every minute · Daily close at 08:00 Beijing time',
     '算力指挥舱': 'Power Command Center',
     '算力榜': 'Power Rank',
     '基于公开区块浏览器、RPC 与 POWER 合约日志，展示全网算力、钱包地址、北京时间统计日新增和头部地址排行。': 'Based on public explorer data, RPC, and POWER contract logs, showing total network power, wallet addresses, Beijing-day growth, and top address rankings.',
@@ -5988,7 +6039,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '下方优先展示前 100 名算力地址，默认先看前 10。': 'Top 100 power addresses are shown below, with the first 10 visible by default.',
     '继续查看核心数据、增长趋势与数据说明': 'Continue to core data, growth trends, and data notes',
     '扫描覆盖率': 'Scan Coverage',
-    '已扫描地址': 'Scanned Addresses',
+    '已收录地址': 'Known Addresses',
     '正算力占比': 'Positive Power Share',
     '未覆盖算力': 'Uncovered Power',
     '01 / 算力排行': '01 / Power Rank',
@@ -6025,21 +6076,21 @@ LANGUAGE_TOGGLE_JS = r"""
     '方程膨胀系数': 'Equation Expansion Factor',
     '展示 MarsChain 双方程机制中的公开膨胀参数，帮助理解算力倍增、周期与销毁比例。': 'Shows public expansion parameters in the MarsChain dual-equation mechanism, including power multiplier, period, and burn ratio.',
     '当前起始系数': 'Starting Factor',
-    '当前实际系数': 'Current Actual Factor',
+    '本期机制系数': 'Cycle Reference Factor',
     '预言机方程式': 'Oracle Equation',
-    '实时倒计时': 'Live Countdown',
+    '活动倒计时': 'Cycle Countdown',
     '开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00': 'Next power cycle starts · Deadline: Oct 21, 2026, 08:00 GMT+8',
     '算力倍增': 'Power Multiplier',
     '官方机制说明中的方程膨胀起始倍数。': 'Starting expansion multiplier in the official mechanism notes.',
-    '当前 04 方程采用的实际膨胀倍数。': 'Actual expansion multiplier used by Equation 04.',
+    '依据本期已确认公开规则；后续期次以官方公告为准。': 'Reference rules for the confirmed cycle. Future cycles follow official announcements.',
     '上限': 'Cap',
     '方程膨胀系数逐级放大时的公开说明上限。': 'Published cap for the stepped equation expansion factor.',
     '执行周期': 'Execution Period',
     '单轮': 'Per Round',
     '8 天': '8 Days',
-    '圣诞方程与预言机方程按 8 天窗口执行。': 'The Christmas Equation and Oracle Equation run in an 8-day window.',
+    '机制参考窗口，具体执行时间以官方公告为准。': 'Reference window. Actual timing follows official announcements.',
     '销毁比例': 'Burn Ratio',
-    '机制说明中每轮方程触发的流通量销毁比例。': 'Circulation burn ratio described for each equation round.',
+    '机制参考比例，具体执行以本期官方规则为准。': 'Reference ratio. Execution follows official rules for this cycle.',
     '本区块属于机制口径展示，不等同于当前实时收益承诺。': 'This is a mechanism note, not a real-time earnings promise.',
     '算力销毁测算': 'Power Burn Calculator',
     '按当前全网流通量 × 35% ÷ 全网总算力计算。': 'Calculated as current global circulation x 35% / total network power.',
@@ -6062,7 +6113,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '算力 > 0': 'Power > 0',
     '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
     '当前算力大于 0': 'Current power > 0',
-    '总钱包、新增地址、活跃地址、正算力地址合并查看。': 'Combined view of total wallets, new addresses, active addresses, and positive-power addresses.',
+    '总钱包、新增地址、活跃地址、正算力地址分图查看。': 'Separate charts for total wallets, new addresses, active addresses, and positive-power addresses.',
     '05 / 数据说明': '05 / Data Notes',
     '数据来源与准确性说明': 'Data Sources and Accuracy',
     '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
@@ -6206,23 +6257,30 @@ LANGUAGE_TOGGLE_JS = r"""
   };
 
   const translateChineseNumericUnit = (text) => {
-    let match = text.match(/^(-?[\d,]+(?:\.\d+)?)(万亿|亿|万)(个|枚\/日|\/日)?$/);
+    let match = text.match(/^(-?[\d,]+(?:\.\d+)?)(万亿|亿|万)(个|枚\/日|\/日|枚|笔)?$/);
     if (match) {
       const raw = Number(match[1].replace(/,/g, ''));
       if (!Number.isFinite(raw)) return '';
       const scale = match[2] === '万亿' ? 1_000_000_000_000 : match[2] === '亿' ? 100_000_000 : 10_000;
       const suffix = match[3] || '';
       if (suffix === '枚/日' || suffix === '/日') return `${formatCompactNumber(raw * scale)}/day`;
-      return formatCompactNumber(raw * scale);
+      return formatCompactNumber(raw * scale) + (suffix === '枚' ? ' MARS' : suffix === '笔' ? ' txs' : '');
     }
     match = text.match(/^(-?[\d,]+(?:\.\d+)?)个$/);
     if (match) return Number(match[1].replace(/,/g, '')).toLocaleString('en-US');
+    match = text.match(/^(-?[\d,]+(?:\.\d+)?)(枚|笔)$/);
+    if (match) return `${match[1]} ${match[2] === '枚' ? 'MARS' : 'txs'}`;
     match = text.match(/^(-?[\d,]+(?:\.\d+)?)枚\/日$/);
     if (match) return `${match[1]} coins/day`;
     return '';
   };
 
   const translateDynamic = (text) => {
+    const calculation = text.match(/^输入算力 (.+)，按当前比例估算。$/);
+    if (calculation) return `Input power ${translateChineseNumericUnit(calculation[1]) || calculation[1]}; estimated at the current ratio.`;
+    const windowLabel = text.match(/^(\d{4}-\d{2}-\d{2} [\d:]+) 至 (\d{4}-\d{2}-\d{2} [\d:]+)$/);
+    if (windowLabel) return `${windowLabel[1]} – ${windowLabel[2]} (Beijing time)`;
+
     const numericUnit = translateChineseNumericUnit(text);
     if (numericUnit) return numericUnit;
     let match = text.match(/^第\s*(\d+)\s*\/\s*(\d+)\s*页\s*·\s*当前显示\s*(\d+)-(\d+)\s*\/\s*共\s*(\d+)\s*名$/);
@@ -6295,7 +6353,9 @@ LANGUAGE_TOGGLE_JS = r"""
           node.setAttribute(originalAttr, node.getAttribute(attr) || '');
         }
         const original = node.getAttribute(originalAttr) || '';
-        node.setAttribute(attr, lang === 'en' ? (table[original] || original) : original);
+        const trendLabel = attr === 'aria-label' && original.match(/^查看(.+)趋势$/);
+        const translated = trendLabel ? `View ${zhToEn[trendLabel[1]] || trendLabel[1]} trend` : original === '例如 1亿、5亿、1000万' ? 'e.g. 100M, 500M, 10M' : original;
+        node.setAttribute(attr, lang === 'en' ? (table[original] || translated) : original);
       });
     });
   };
@@ -6523,7 +6583,7 @@ def build_mobile_html(payload: dict) -> str:
         "secondary_value": _fmt_signed_power(new_power),
         "secondary_note": "北京时间 08:00 统计日新增",
         "trend_label": "算力趋势",
-        "trend_note": "全网总算力与每日新增算力合并查看。",
+        "trend_note": "全网总算力与每日新增算力分图查看。",
         "series": [
             {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
             {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
@@ -6536,7 +6596,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址、正算力地址合并查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址分图查看。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
@@ -6550,7 +6610,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
         ],
         "trend_label": "币量趋势",
-        "trend_note": "流通量、累计销毁、日销毁币量合并查看。",
+        "trend_note": "流通量、累计销毁、日销毁币量分图查看。",
         "series": [
             {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
             {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
@@ -6563,7 +6623,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
         ],
         "trend_label": "产出趋势",
-        "trend_note": "每日产币量、单币日需算力、1亿算力产出合并查看。",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出分图查看。",
         "series": [
             {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
             {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
@@ -6575,7 +6635,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
         ],
         "trend_label": "交易趋势",
-        "trend_note": "每日交易币量与每日交易笔数合并查看。",
+        "trend_note": "每日交易币量与每日交易笔数分图查看。",
         "series": [
             {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
             {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
@@ -6614,12 +6674,12 @@ def build_mobile_html(payload: dict) -> str:
     key_cards = _build_mobile_metric_cards(mobile_metric_items)
     equation_cards = _build_mobile_flow_cards(
         [
-            ("当前实际系数", "算力倍增", "20x", "当前 04 方程采用的实际膨胀倍数。"),
-            ("执行周期", "单轮", "8 天", "圣诞方程与预言机方程按 8 天窗口执行。"),
-            ("销毁比例", "流通量", "35%", "机制说明中每轮方程触发的流通量销毁比例。"),
+            ("本期机制系数", "算力倍增", "20x", "依据本期已确认公开规则；后续期次以官方公告为准。"),
+            ("执行周期", "单轮", "8 天", "机制参考窗口，具体执行时间以官方公告为准。"),
+            ("销毁比例", "流通量", "35%", "机制参考比例，具体执行以本期官方规则为准。"),
         ]
     ) + (
-        '<article class="m-flow-card m-reveal"><label>预言机方程式<span>实时倒计时</span></label>'
+        '<article class="m-flow-card m-reveal"><label>预言机方程式<span>活动倒计时</span></label>'
         '<strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong>'
         '<small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>'
     )

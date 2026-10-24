@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from node_preview.bootstrap import atomic_json
+from node_preview.freeze import archive_name, daily_inventory
 
 ARCHIVE_NAME = re.compile(r"\d{8}-0800\Z")
 SHA = re.compile(r"[0-9a-f]{40}\Z")
@@ -315,6 +316,13 @@ class GitTransport:
             raise BackupError("GitHub branch did not retain the uploaded snapshot; retry without replacing it")
         return {"commit": commit, "verified_head": remote, "already_uploaded": False, "verified": True}
 
+    def verify(self, snapshot: Snapshot) -> dict:
+        """Check current remote bytes without recreating or changing a branch."""
+        remote = self._head()
+        if not self._existing(remote, self.config.paths(snapshot)):
+            raise BackupError("Previously backed-up snapshot is absent from the remote branch; review before restoring it")
+        return {"verified_head": remote, "verified": True}
+
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -441,6 +449,13 @@ class RestTransport:
             raise BackupError("GitHub branch verification failed; frozen snapshot remains queued")
         return {"commit": commit, "verified_head": remote, "already_uploaded": False, "verified": True}
 
+    def verify(self, snapshot: Snapshot) -> dict:
+        """Read-only remote verification; no blob, commit or ref mutations."""
+        remote = self._head()
+        if remote is None or not self._existing(self._tree(remote), self.config.paths(snapshot)):
+            raise BackupError("Previously backed-up snapshot is absent from the remote branch; review before restoring it")
+        return {"verified_head": remote, "verified": True}
+
 
 def _receipt_matches(path: Path, expected: dict) -> bool:
     if not path.exists():
@@ -456,17 +471,23 @@ def _receipt_matches(path: Path, expected: dict) -> bool:
 
 
 def backup(root: Path | str, *, dry_run: bool = False, transport: str | None = None,
-           max_snapshots: int = 7) -> dict:
+           max_snapshots: int = 7, verify_interval: int = 86400, grace_seconds: int = 1800) -> dict:
     root = Path(root).expanduser().resolve()
     config = Config.environment(transport)
     if not 1 <= max_snapshots <= 100:
         raise BackupError("max_snapshots must be 1..100")
+    if not 300 <= verify_interval <= 604800:
+        raise BackupError("verify_interval must be 300..604800 seconds")
+    expectation = daily_inventory(root, grace_seconds=grace_seconds)
     archives = root / "archives"
-    candidates = sorted(path for path in archives.iterdir() if ARCHIVE_NAME.fullmatch(path.name)) if archives.exists() else []
+    # Today's new snapshot has priority over old uploads and integrity checks.
+    candidates = sorted((path for path in archives.iterdir() if ARCHIVE_NAME.fullmatch(path.name)),
+                        reverse=True) if archives.exists() else []
     if dry_run:
         return {"state": "dry_run", "repository": config.repository, "branch": config.branch,
                 "transport": config.transport, "network_calls": 0, "remote_writes": False,
                 "snapshots": [read_snapshot(path).inventory() for path in candidates],
+                "daily_expectation": expectation,
                 "private_exports_uploaded": False}
     state = root / "state"
     state.mkdir(parents=True, exist_ok=True)
@@ -481,46 +502,92 @@ def backup(root: Path | str, *, dry_run: bool = False, transport: str | None = N
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {"state": "busy", "private_exports_uploaded": False}
-        uploaded, failures, skipped, attempted = [], [], 0, 0
+        uploaded, verified, failures, queued, skipped, attempted = [], [], [], [], 0, 0
+        valid_receipts = {}
         client = None
+        now = int(time.time())
         for archive in candidates:
-            if attempted >= max_snapshots:
-                break
             try:
                 snapshot = read_snapshot(archive)
                 inventory = snapshot.inventory()
                 receipt = receipts / f"{snapshot.name}.json"
+                existing = None
                 if _receipt_matches(receipt, inventory):
-                    skipped += 1
+                    existing = json.loads(receipt.read_text())
+                    valid_receipts[snapshot.name] = existing
+                    stamp = existing.get("last_verified_at", existing.get("uploaded_at", 0))
+                    if (type(stamp) is int and 0 <= now - stamp < verify_interval):
+                        skipped += 1
+                        continue
+                if attempted >= max_snapshots:
+                    queued.append({"archive": snapshot.name,
+                                   "action": "verify_remote" if existing else "upload"})
                     continue
                 attempted += 1
                 if client is None:
                     client = (GitTransport if config.transport == "git" else RestTransport)(config, private)
+                if existing is not None:
+                    result = client.verify(snapshot)
+                    existing.update(result, last_verified_at=int(time.time()))
+                    atomic_json(receipt, existing)
+                    valid_receipts[snapshot.name] = existing
+                    verified.append({"archive": snapshot.name, "verified_head": result["verified_head"],
+                                     "verified_at": existing["last_verified_at"]})
+                    skipped += 1
+                    continue
                 result = client.publish(snapshot)
                 completed = {**result, "inventory": inventory, "repository": config.repository,
                              "branch": config.branch, "uploaded_at": int(time.time()),
+                             "last_verified_at": int(time.time()),
                              "private_exports_uploaded": False}
                 atomic_json(receipt, completed)
+                valid_receipts[snapshot.name] = completed
                 uploaded.append({"archive": snapshot.name, "source_block": snapshot.source_block,
-                                 "commit": result["commit"], "already_uploaded": result["already_uploaded"]})
+                                 "commit": result["commit"], "already_uploaded": result["already_uploaded"],
+                                 "uploaded_at": completed["uploaded_at"]})
             except Exception as exc:
                 # Only intentional safe diagnostics are emitted. Unknown library
                 # exceptions might carry headers or process output: use type only.
                 safe = str(exc) if isinstance(exc, BackupError) else f"{type(exc).__name__} while backing up frozen archive"
                 failures.append({"archive": archive.name, "error": safe})
-        status = {"state": "error" if failures else "complete", "repository": config.repository,
+        missing = [archive_name(target) for target in expectation["overdue_missing_targets"]]
+        expected = expectation["expected_archive"]
+        expected_receipt = valid_receipts.get(expected)
+        expected_failed = any(item["archive"] == expected for item in failures)
+        expectation["expected_remote_state"] = (
+            "verification_failed" if expected_failed else
+            "verified_receipt" if expected_receipt else
+            "pending_upload" if expectation["expected_local_complete"] else
+            "waiting_for_generation" if expectation["within_grace"] else "missing_daily_snapshot")
+        if expected_receipt:
+            expectation["remote_verified_at"] = expected_receipt.get("last_verified_at", expected_receipt.get("uploaded_at"))
+        if failures:
+            result_state = "error"
+        elif missing:
+            result_state = "missing_daily_snapshot"
+        elif not expectation["expected_local_complete"]:
+            result_state = "waiting_for_daily_snapshot"
+        elif queued or not expected_receipt:
+            result_state = "pending"
+        else:
+            result_state = "complete"
+        status = {"state": result_state, "repository": config.repository,
                   "branch": config.branch, "transport": config.transport,
                   "uploaded": uploaded, "already_backed_up": skipped, "failures": failures,
+                  "remote_verified": verified, "queued": queued,
+                  "remote_verify_interval": verify_interval, "daily_expectation": expectation,
+                  "missing_daily_archives": missing,
                   "checked_at": int(time.time()), "private_exports_uploaded": False}
-        if uploaded:
-            status["last_success"] = {**uploaded[-1], "uploaded_at": int(time.time())}
-        elif status_path.exists():
+        successes = list(uploaded)
+        if status_path.exists():
             try:
                 last = json.loads(status_path.read_text()).get("last_success")
                 if last:
-                    status["last_success"] = last
+                    successes.append(last)
             except (ValueError, OSError):
                 pass
+        if successes:
+            status["last_success"] = max(successes, key=lambda item: item["archive"])
         atomic_json(status_path, status)
         return status
 
@@ -531,14 +598,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Validate local daily archives; no network calls or writes")
     parser.add_argument("--transport", choices=("git", "rest"))
     parser.add_argument("--max-snapshots", type=int, default=7)
+    parser.add_argument("--verify-interval", type=int, default=86400, help="Periodic remote receipt verification, seconds")
+    parser.add_argument("--grace-seconds", type=int, default=1800, help="Allowance for Beijing 08:00 snapshot generation")
     args = parser.parse_args(argv)
     try:
-        result = backup(args.root, dry_run=args.dry_run, transport=args.transport, max_snapshots=args.max_snapshots)
+        result = backup(args.root, dry_run=args.dry_run, transport=args.transport, max_snapshots=args.max_snapshots,
+                        verify_interval=args.verify_interval, grace_seconds=args.grace_seconds)
     except Exception as exc:
         result = {"state": "error", "error": str(exc) if isinstance(exc, BackupError) else type(exc).__name__,
                   "private_exports_uploaded": False}
     print(json.dumps(result, ensure_ascii=False), flush=True)
-    return 1 if result["state"] == "error" else 0
+    return 1 if result["state"] in {"error", "missing_daily_snapshot"} else 0
 
 
 if __name__ == "__main__":

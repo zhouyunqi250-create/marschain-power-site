@@ -13,6 +13,9 @@
   let transportError = '';
   let latestEtag = '';
   const banner = document.querySelector('[data-node-preview]');
+  const dataNotes = document.querySelector('[data-node-data-notes]');
+  const english = () => document.documentElement.lang === 'en';
+  const copy = (zh, en) => english() ? en : zh;
   const rankDataNode = document.getElementById('rankData');
   const trendDataNode = document.getElementById('metricTrendData');
   const setText = (node, value) => {
@@ -36,11 +39,11 @@
   };
   const displayTime = (value) => {
     const date = timestamp(value);
-    if (!Number.isFinite(date)) return String(value || '尚未发布');
-    return new Intl.DateTimeFormat('zh-CN', {
+    if (!Number.isFinite(date)) return copy('尚未发布', 'Not published');
+    return new Intl.DateTimeFormat(english() ? 'en-GB' : 'zh-CN', {
       timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).format(date) + ' 北京时间';
+    }).format(date) + copy(' 北京时间', ' Beijing time');
   };
 
   const getPagination = () => {
@@ -88,11 +91,25 @@
     count.className = mobile ? 'm-rank-count' : 'rank-count';
     count.textContent = currentRows.length
       ? `第 ${currentPage} / ${pages} 页 · 当前显示 ${(currentPage - 1) * pageSize + 1}-${Math.min(currentPage * pageSize, currentRows.length)} / 共 ${currentRows.length} 名`
-      : '正在校准已发现地址的算力，暂未发布排名';
+      : '榜单正在核验，暂未发布排名';
     children.push(count);
     controls.replaceChildren(...children);
   };
   document.addEventListener('click', (event) => {
+    const copyButton = event.target.closest('[data-node-copy-address]');
+    if (copyButton) {
+      const value = copyButton.dataset.nodeCopyAddress || '';
+      if (!/^0x[0-9a-fA-F]{40}$/.test(value)) return;
+      if (!navigator.clipboard?.writeText) {
+        setText(copyButton, copy('请手动复制地址', 'Copy the address manually'));
+        return;
+      }
+      navigator.clipboard.writeText(value).then(() => {
+        setText(copyButton, copy('已复制', 'Copied'));
+        window.setTimeout(() => setText(copyButton, copy('复制地址', 'Copy address')), 1800);
+      }).catch(() => setText(copyButton, copy('请手动复制地址', 'Copy the address manually')));
+      return;
+    }
     const button = event.target.closest('[data-preview-page]');
     if (!button || button.disabled) return;
     currentPage = Number(button.dataset.previewPage || 1);
@@ -121,12 +138,24 @@
       top.append(rank, power);
       const address = document.createElement('code');
       address.textContent = String(row.address || '');
+      const actions = document.createElement('div');
+      actions.className = 'node-rank-actions';
+      const copyButton = document.createElement('button');
+      copyButton.type = 'button';
+      copyButton.dataset.nodeCopyAddress = String(row.address || '');
+      copyButton.textContent = '复制地址';
+      const explorer = document.createElement('a');
+      explorer.href = `https://explorer.marschain.net/address/${encodeURIComponent(row.address || '')}`;
+      explorer.target = '_blank';
+      explorer.rel = 'noopener noreferrer';
+      explorer.textContent = '查看地址';
+      actions.append(copyButton, explorer);
       const bar = document.createElement('span');
       bar.className = mobile ? 'm-bar' : 'rank-bar';
       const width = document.createElement('i');
       width.style.width = `${Math.max(4, Math.min(100, Number(row.power) / maxPower * 100))}%`;
       bar.append(width);
-      card.replaceChildren(top, address, bar);
+      card.replaceChildren(top, address, actions, bar);
     });
     while (grid.children.length > rows.length) grid.lastElementChild.remove();
     grid.dataset.totalCount = String(rows.length);
@@ -203,83 +232,64 @@
     if (!banner) return;
     const meta = latestPayload?.meta || {};
     const preview = meta.node_preview || {};
-    const calibrated = Number(preview.calibration_count || 0);
-    const total = Number(preview.calibration_total || 0);
-    const rawState = String(preview.state || '等待数据');
-    const ready = rawState === 'ready' || rawState === 'running' || rawState === 'live';
-    const calibrating = preview.calibration_done !== true && (total > calibrated || /calibrat|warm|bootstrap/.test(rawState));
-    const state = calibrating
-      ? `初始算力校准中 ${number(calibrated)} / ${number(total)}，排名尚在核对`
-      : ready ? '节点增量采集运行中 · 每分钟处理已确认新区块' : `采集状态：${rawState}`;
-    setText(banner.querySelector('[data-preview-state]'), state);
-    const stamp = preview.generated_at || meta.generated_at_unix || meta.generated_at;
+    const stamp = preview.source_block_timestamp;
     const age = Date.now() - timestamp(stamp);
-    const collectionAge = Date.now() - timestamp(preview.last_collection_success || preview.source_block_timestamp);
-    const stale = (Number.isFinite(age) && age > 3 * 60 * 1000)
-      || (Number.isFinite(collectionAge) && collectionAge > 3 * 60 * 1000);
-    const seedNote = preview.ranking_source === 'public_seed_until_calibration_complete'
-      ? ` · 校准期间排名沿用官网 ${displayTime(preview.seed_generated_at)}` : '';
+    const generationAge = Date.now() - timestamp(preview.generated_at || meta.generated_at);
+    const missing = !Number.isFinite(age) || !Number.isFinite(generationAge);
+    const stale = missing || age > 3 * 60 * 1000 || generationAge > 3 * 60 * 1000;
+    const ready = preview.state === 'ready';
+    const state = transportError ? copy('暂未取到新数据', 'New data unavailable')
+      : stale ? copy('数据更新延迟', 'Data update delayed')
+        : ready ? copy('每分钟更新', 'Minute updates') : copy('数据核验中', 'Verifying data');
+    setText(banner.querySelector('[data-preview-state]'), state);
     setText(banner.querySelector('[data-preview-data-time]'),
-      `数据：${displayTime(stamp)} · 已处理区块 ${number(preview.source_block)}${stale ? ' · 数据更新已延迟' : ''}${seedNote}`);
-    setText(banner.querySelector('[data-preview-scope]'),
-      `排名范围：已发现 ${number(preview.known_addresses ?? meta.candidate_count)} 个地址，尚未覆盖全部链上地址。算力覆盖率衡量已发现算力占比，不代表地址名单完整。${calibrating ? '校准完成后再评估头部排行。' : ''}`);
-    let dailyNode = banner.querySelector('[data-preview-daily]');
-    if (!dailyNode) {
-      dailyNode = document.createElement('p');
-      dailyNode.dataset.previewDaily = '';
-      banner.insertBefore(dailyNode, banner.querySelector('[data-preview-error]'));
-    }
+      `${copy('数据时间：', 'Data time: ')}${displayTime(stamp)}`);
+    banner.classList.toggle('is-error', Boolean(transportError));
+    banner.classList.toggle('is-stale', stale);
+    if (!dataNotes) return;
+    setText(dataNotes.querySelector('[data-preview-scope]'), english()
+      ? `The ranking shows the top 100 among ${number(meta.candidate_count ?? preview.known_addresses)} discovered addresses. The address list is incomplete; power coverage is not address coverage.`
+      : `榜单展示已发现的 ${number(meta.candidate_count ?? preview.known_addresses)} 个地址中的算力前 100 名。地址名单尚不完整；算力覆盖率不代表地址覆盖率。`);
+    setText(dataNotes.querySelector('[data-preview-frequency]'), copy(
+      '榜单约每分钟刷新，已确认交易可能稍后显示；每日统计按北京时间 08:00 日结。',
+      'The ranking refreshes about every minute. Confirmed transactions may appear later; daily statistics close at 08:00 Beijing time.'));
+    setText(dataNotes.querySelector('[data-preview-sources]'), copy(
+      '算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。',
+      'Power and cumulative burns come from the self-hosted node. Prices, total addresses and circulation come from the official explorer.'));
+    setText(dataNotes.querySelector('[data-preview-sampling]'), copy(
+      '官方价格、地址的日历史取自北京时间 08:00 附近采样；标有“近截点采样”的数据不是精确截点值。',
+      'Daily price and address history is sampled near 08:00 Beijing time. Values marked as near-cutoff samples are not exact cutoff measurements.'));
     const cutoff = meta.statistics_window_end_timestamp;
-    const dailyState = meta.preview_daily_status?.state || '';
     const expected = timestamp(meta.preview_daily_status?.expected_end_timestamp);
     const dailyBehind = Number.isFinite(expected) && expected > timestamp(cutoff);
-    const dailyNote = dailyBehind
-      ? ' · 待形成完整新日结，保留原截止数据'
-      : /verified/.test(dailyState) ? ' · 节点已核验完整日结'
-        : /preserv/.test(dailyState) ? ' · 沿用官网已发布完整日结' : '';
-    setText(dailyNode, `每日统计截止：${displayTime(cutoff)}${dailyNote}；7天统计截止：${displayTime(meta.period_7d_end_timestamp)}；30天统计截止：${displayTime(meta.period_30d_end_timestamp)}。`);
-    const sources = meta.preview_metric_sources || {};
-    const groups = new Map();
-    const sourceLabel = (key, source) => {
-      if (/price/.test(key)) return '价格';
-      if (key === 'explorer_total_addresses') return '地址数';
-      if (key === 'network_total_circulation_tokens') return '流通量';
-      if (key === 'network_total_power') return source.source === 'local_rpc_power_contract' ? '节点算力' : '算力';
-      if (key === 'network_total_burned_tokens') return '累计销毁';
-      return '统计';
+    const dailyNote = dailyBehind ? copy('（保留原截止数据）', ' (previous close retained)') : '';
+    setText(dataNotes.querySelector('[data-preview-daily]'), english()
+      ? `Daily statistics through ${displayTime(cutoff)}${dailyNote}. 7-day statistics through ${displayTime(meta.period_7d_end_timestamp)}. 30-day statistics through ${displayTime(meta.period_30d_end_timestamp)}.`
+      : `每日统计截至 ${displayTime(cutoff)}${dailyNote}；7 天统计截至 ${displayTime(meta.period_7d_end_timestamp)}；30 天统计截至 ${displayTime(meta.period_30d_end_timestamp)}。`);
+    const labels = {
+      network_total_power: copy('算力', 'Power'),
+      network_total_burned_tokens: copy('累计销毁', 'Cumulative burns'),
+      explorer_total_addresses: copy('全网地址数', 'Total addresses'),
+      network_total_circulation_tokens: copy('流通量', 'Circulation'),
+      network_current_price: copy('价格', 'Price'),
+      network_highest_price: copy('最高价格', 'Highest price'),
     };
-    Object.entries(sources).forEach(([key, source]) => {
-      if (!source || !/stale|unavailable|preserved_seed/.test(source.status || '')) return;
-      const id = String(source.source || 'unknown');
-      let group = groups.get(id);
-      if (!group) {
-        group = { labels: new Set(), stamps: [], local: id === 'local_rpc_power_contract' };
-        groups.set(id, group);
-      }
-      group.labels.add(sourceLabel(key, source));
-      if (source.fetched_at) group.stamps.push(source.fetched_at);
-    });
     const notes = [];
-    if (transportError) notes.push(`${transportError}，保留最近已载入榜单`);
-    const collectorError = preview.source_error || preview.error;
-    if (collectorError) notes.push(`节点采集提示：${String(collectorError).slice(0, 250)}`);
-    groups.forEach((group) => {
-      const fetched = group.stamps.length
-        ? group.stamps.reduce((oldest, value) => timestamp(value) < timestamp(oldest) ? value : oldest)
-        : null;
-      notes.push(`${group.local ? '本机' : '官方'}${Array.from(group.labels).join('/')}暂未刷新，${fetched ? `上次成功：${displayTime(fetched)}` : '暂无成功抓取时间'}，保留该来源最近成功值`);
+    if (transportError || stale) notes.push(copy('暂未取得最新榜单，显示最近成功数据及其原时间。', 'The latest ranking is unavailable. The last successful data and its original time are shown.'));
+    Object.entries(meta.preview_metric_sources || {}).forEach(([key, source]) => {
+      if (!labels[key] || !source) return;
+      const fetched = timestamp(source.fetched_at);
+      const sourceOld = Number.isFinite(fetched) && Date.now() - fetched > 5 * 60 * 1000;
+      if (source.status === 'ok' && !sourceOld) return;
+      notes.push(english()
+        ? `${labels[key]} has not refreshed${Number.isFinite(fetched) ? `; last success: ${displayTime(source.fetched_at)}` : '; no successful source time'}.`
+        : `${labels[key]}暂未刷新${Number.isFinite(fetched) ? `，上次成功：${displayTime(source.fetched_at)}` : '，暂无成功来源时间'}。`);
     });
-    const powerSource = sources.network_total_power || {};
-    if (groups.size && powerSource.source === 'local_rpc_power_contract' && powerSource.status === 'ok') {
-      notes.push(Number.isFinite(collectionAge) && collectionAge > 3 * 60 * 1000
-        ? '节点算力等待采集进度更新' : `节点算力读取正常（区块 ${number(powerSource.block || preview.source_block)}）`);
+    const note = dataNotes.querySelector('[data-preview-source-notes]');
+    if (note) {
+      note.hidden = notes.length === 0;
+      if (notes.length) setText(note, notes.join(' '));
     }
-    const error = notes.join('；');
-    const errorNode = banner.querySelector('[data-preview-error]');
-    errorNode.hidden = !error;
-    if (error) setText(errorNode, `来源提示：${error}。`);
-    banner.classList.toggle('is-error', Boolean(error));
-    banner.classList.toggle('is-stale', stale);
   };
   const apply = (payload) => {
     if (!payload || !payload.meta || !Array.isArray(payload.rows) || payload.rows.length > 100) {
@@ -318,7 +328,7 @@
       apply(payload);
       latestEtag = response.headers.get('ETag') || '';
     } catch (error) {
-      transportError = error.name === 'AbortError' ? '读取最新榜单超时' : (error.message || '读取最新榜单失败');
+      transportError = error.name === 'AbortError' ? 'timeout' : 'unavailable';
       updateBanner();
     } finally {
       window.clearTimeout(timeout);
@@ -329,11 +339,14 @@
     const seed = JSON.parse(rankDataNode?.textContent || '{}');
     apply(seed);
   } catch (error) {
-    transportError = `初始页面数据：${error.message}`;
+    transportError = 'unavailable';
     updateBanner();
   }
   refresh();
   window.setInterval(() => { updateBanner(); refresh(); }, intervalMs);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   window.addEventListener('focus', refresh);
+  document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
+    button.addEventListener('click', () => window.setTimeout(updateBanner, 0));
+  });
 })();

@@ -2,18 +2,17 @@
 OnSuccess=marschain-rank-preview-github-backup.service
 Description=MarsChain immutable Beijing 08:00 local ranking snapshot
 After=marschain.service marschain-rank-preview-collector.service
-StartLimitIntervalSec=10min
-StartLimitBurst=8
+# The five-minute timer owns retries, including after a long network outage.
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
 WorkingDirectory=%h/marschain-rank-preview/app
-ExecStart=/usr/bin/python3 -m node_preview.freeze --root %h/marschain-rank-preview
+ExecStart=/usr/bin/python3 -m node_preview.freeze --root %h/marschain-rank-preview --max-snapshots 1 --grace-seconds 1800
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 NoNewPrivileges=true
 UMask=0077
 TimeoutStartSec=10min
-Restart=on-failure
-RestartSec=45
+Restart=no

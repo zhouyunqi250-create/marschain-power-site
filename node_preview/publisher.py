@@ -65,7 +65,9 @@ def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool =
         if reader.block(source_block)["hash"].lower() != str(status.get("checkpoint_hash", "")).lower():
             raise RuntimeError("Snapshot checkpoint is no longer canonical")
         meta = metrics.refresh(meta, {"number": source_block, "hash": status.get("checkpoint_hash"),
-                                      "timestamp": status.get("checkpoint_timestamp")})
+                                      "timestamp": status.get("checkpoint_timestamp")},
+                               observed_counts={"candidate_count": known,
+                                                "positive_power_count": counts.get("positive_power_count")} if warmed else None)
         if reader.block(source_block)["hash"].lower() != str(status.get("checkpoint_hash", "")).lower():
             raise RuntimeError("Snapshot checkpoint changed while preparing metrics")
         if warmed and any(meta.get("preview_metric_sources", {}).get(key, {}).get("status") != "ok"
@@ -103,6 +105,8 @@ def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool =
                      "generated_at": now, "generated_at_local": format_beijing_datetime(now),
                      "latest_block": source_block})
         total = int(meta.get("network_total_power") or 0)
+        if total <= 0 or counts["discovered_total_power"] != total:
+            raise SnapshotPending("Address power sum differs from the verified contract total; preserving the last reconciled ranking")
         meta["discovered_power_coverage"] = counts["discovered_total_power"] / total if total else None
         meta["target_met"] = bool(total and meta["discovered_power_coverage"] >= float(meta.get("coverage_target") or .8))
         meta["rpc_logs_seen"] = event_count
@@ -123,6 +127,9 @@ def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool =
     payload = public_payload({"meta": meta, "rows": rows})
     report = {"state": state, "version": preview["version"], "source_block": source_block,
               "generated_at": now, "ranking_source": preview["ranking_source"], "known_addresses": known,
+              "calibration_done": warmed, "last_collection_success": status.get("last_success"),
+              "source_block_timestamp": status.get("checkpoint_timestamp"),
+              "power_sum_verified": bool(warmed and counts.get("discovered_total_power") == int(meta.get("network_total_power") or 0)),
               "public_rows": len(payload["rows"]), "production_writes": False,
               "elapsed_seconds": round(time.monotonic() - start, 3),
               "bytes": len(json.dumps(payload, ensure_ascii=False).encode()),
@@ -130,14 +137,19 @@ def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool =
     return payload, report
 
 
-def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuild: bool, *, production: bool = False) -> None:
-    store = MetricStore(root / "state/preview.sqlite3", rpc_url=rpc_url, seed_dir=root / "state")
+def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuild: bool, *, production: bool = False,
+        source_root: Path | None = None) -> None:
+    if source_root is not None and (production or source_root.resolve() == root.resolve()):
+        raise ValueError("A separate source root is allowed only for an isolated review preview")
+    collection_root = source_root or root
+    store = MetricStore(root / "state/preview.sqlite3", rpc_url=rpc_url, seed_dir=root / "state",
+                        observation_database=collection_root / "state/preview.sqlite3")
     seeds = store.bootstrap(origin=origin)
     built = False
     while True:
         began = time.monotonic()
         try:
-            payload, report = compose(root, seeds, store, production=production)
+            payload, report = compose(collection_root, seeds, store, production=production)
             site = root / "site"
             if not built and (rebuild or not (site / "index.html").exists()):
                 build_preview(payload, site, production=production)
@@ -172,8 +184,10 @@ def main():
     parser.add_argument("--loop", action="store_true")
     parser.add_argument("--rebuild", action="store_true")
     parser.add_argument("--production", action="store_true", help="Build the approved public node-powered site shell")
+    parser.add_argument("--source-root", type=Path, help="Read an existing collector without modifying its database; metrics stay under --root")
     args = parser.parse_args()
-    run(args.root.resolve(), args.rpc, args.origin, args.interval, args.loop, args.rebuild, production=args.production)
+    run(args.root.resolve(), args.rpc, args.origin, args.interval, args.loop, args.rebuild, production=args.production,
+        source_root=args.source_root.resolve() if args.source_root else None)
 
 
 if __name__ == "__main__":

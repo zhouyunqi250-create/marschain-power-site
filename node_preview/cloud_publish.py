@@ -333,13 +333,16 @@ def load_bundle(root: Path, config: Config, max_age: int) -> Bundle:
     expected = manifest.get("artifacts") or {}
     if set(expected) != set(STATIC_NAMES) or any(hashlib.sha256(static[name]).hexdigest() != expected[name] for name in STATIC_NAMES):
         raise SnapshotUnavailable("Static build is incomplete or does not match its build manifest")
-    if (preview.get("state") != "ready" or preview.get("calibration_done") is not True
-            or preview.get("ranking_source") != "local_node_contract" or preview.get("source_error")
+    if (preview.get("state") != "ready" or report.get("calibration_done") is not True
+            or report.get("ranking_source") != "local_node_contract" or report.get("error")
+            or report.get("power_sum_verified") is not True
             or not re.fullmatch(r"[0-9a-f]{20}", str(preview.get("version", "")))
             or not isinstance(preview.get("source_block"), int) or preview["source_block"] <= 0
             or not re.fullmatch(r"0x[0-9a-fA-F]{64}", str(preview.get("source_block_hash", "")))):
         raise SnapshotUnavailable("Local-node snapshot has not completed validation")
-    validate_fresh(preview, max_age)
+    # Collector heartbeat is deployment evidence, kept outside public latest.json.
+    validated_preview = {**preview, "last_collection_success": report.get("last_collection_success")}
+    validate_fresh(validated_preview, max_age)
     meta = payload["meta"]
     if meta.get("paid_download", {}).get("enabled") is not False or meta.get("public_rank_limit") != 100:
         raise ValueError("The public top-100 boundary or disabled download setting is missing")
@@ -391,7 +394,7 @@ def load_bundle(root: Path, config: Config, max_age: int) -> Bundle:
         assets.append(item)
         if name == "m/index.html":
             assets.append(PublicObject("m/", item.body, item.content_type))
-    return Bundle(tuple(assets), PublicObject("data/latest.json", latest, "application/json; charset=utf-8"), preview)
+    return Bundle(tuple(assets), PublicObject("data/latest.json", latest, "application/json; charset=utf-8"), validated_preview)
 
 
 def read_json(path: Path) -> dict:
