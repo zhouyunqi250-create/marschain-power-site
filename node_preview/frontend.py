@@ -21,6 +21,7 @@ from typing import Any
 
 import build_frontend_dashboard as dashboard
 from node_preview.metrics import PUBLIC_HISTORY_NOTES
+from node_preview.christmas import christmas_forecast
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
@@ -248,6 +249,7 @@ def public_payload(payload: dict) -> dict:
             "warning": mobile["warning_html"],
         },
         "burn": desktop["burn_estimate"],
+        "christmas": dashboard._christmas_content(christmas_forecast(meta)),
         "coverage": desktop["coverage_label"],
         "candidate_count": dashboard._fmt_chinese_number(desktop["candidate_count"]),
         "positive_ratio": dashboard._fmt_percent(desktop["positive_ratio"]),
@@ -374,6 +376,36 @@ _PREVIEW_STYLE = """
 .is-power-pair .trend-panel{overscroll-behavior:contain}
 
 .m-section{scroll-margin-top:130px}
+
+.christmas-forecast{margin-top:24px;padding:26px;border:1px solid #35574f;border-radius:18px;background:linear-gradient(145deg,#10242b,#101b2c 60%,#1e2332);color:#dce8f6;scroll-margin-top:130px}
+.christmas-head{display:flex;justify-content:space-between;align-items:center;gap:14px}
+.christmas-kicker{color:#a7ccb6;font-size:11px;letter-spacing:.12em;font-weight:700}
+.christmas-head h3{margin:8px 0 0;font-size:26px;line-height:1.25;letter-spacing:-.03em}
+.christmas-date{font-size:11px;white-space:nowrap;color:#c7bda1;background:#c8b4780c;border:1px solid #716957;padding:7px 9px;border-radius:7px}
+.christmas-intro{color:#99afc3;font-size:13px;line-height:1.7;margin:14px 0 18px}
+.christmas-components{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center;background:#0c1823;border-radius:10px;padding:16px}
+.christmas-components span,.christmas-results span,.christmas-total>span{display:block;color:#9bb0c4;font-size:12px;margin-bottom:8px}
+.christmas-components b{display:block;font-size:19px;font-variant-numeric:tabular-nums}
+.christmas-components>i{font-size:22px;color:#7f9b91;font-style:normal}
+.christmas-cycle{display:grid;gap:10px;padding:15px 0 0;font-size:12px;color:#9bb0c4}.christmas-cycle>div{display:flex;justify-content:space-between;gap:10px;align-items:baseline}.christmas-cycle strong{color:#c4d6df;font-size:15px;font-variant-numeric:tabular-nums;text-align:right}
+.christmas-forecast em{font-size:10px;font-weight:400;font-style:normal;color:#8399af}
+.christmas-total{padding:22px 0;border-bottom:1px solid #2b3e48}
+.christmas-total>b{display:block;color:#c7e9db;font-size:34px;font-variant-numeric:tabular-nums;letter-spacing:-.035em}
+.christmas-total>small{display:block;color:#7f95a9;font-size:11px;margin-top:8px}
+.christmas-results{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}
+.christmas-results>div{border-left:2px solid #4b8774;padding-left:14px}
+.christmas-results b{display:block;color:#e4e6ce;font-size:25px;font-variant-numeric:tabular-nums}
+.christmas-model{font-size:11px;color:#8ca1b5;line-height:1.8}.christmas-model strong{color:#b5c9da;font-weight:500}
+.christmas-method{border-top:1px solid #2b3e48;padding-top:12px;margin-top:12px;color:#869db1;font-size:11px;line-height:1.8}
+.christmas-method summary{cursor:pointer;color:#a9c0c9}.christmas-method p{margin:7px 0}.christmas-empty{color:#9db3c6;font-size:13px;line-height:1.8}
+.m-shell .christmas-forecast{padding:20px 16px}.m-shell .christmas-head h3{font-size:23px}.m-shell .christmas-date{font-size:10px;padding:6px}.m-shell .christmas-components{padding:12px;gap:7px}.m-shell .christmas-components b{font-size:17px}.m-shell .christmas-total>b{font-size:31px}.m-shell .christmas-results b{font-size:22px}.m-shell .christmas-results>div{padding-left:9px}
+@media(max-width:400px){.christmas-head{align-items:flex-start}.christmas-date{max-width:88px;white-space:normal;line-height:1.5}.christmas-results{gap:8px}.christmas-results span{font-size:11px}.christmas-results b{font-size:20px}}
+
+
+.forecast-member-note{font-size:12px;color:#9eb3c5;line-height:1.8;margin:14px 0}.forecast-facts{margin:12px 0;padding:12px;background:#0c1823;border-radius:9px}.forecast-facts>div{display:flex;justify-content:space-between;gap:14px;align-items:baseline;padding:5px 0}.forecast-facts dt{color:#8ea6ba}.forecast-facts dd{margin:0;text-align:right;color:#c5d6df;font-variant-numeric:tabular-nums}.burn-member-method{font-size:11px}.christmas-total>small{line-height:1.7}.christmas-forecast .forecast-member-note{margin-bottom:10px}.m-shell .forecast-facts>div{gap:10px;flex-wrap:wrap}.m-shell .forecast-facts dd{margin-left:auto}
+
+.christmas-stale{color:#ceb584;font-size:11px;line-height:1.7}
+.m-burn-sample{grid-column:1/-1}.m-burn-sample b{color:#c7e9db}.burn-method-note{font-size:11px;color:#8ca1b5;line-height:1.7;margin:12px 0 0}
 </style>"""
 
 _PREVIEW_BANNER = """
@@ -467,6 +499,74 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     html = markup + '<script id="rankData"' + scripts
     language_marker = "  const zhToEn = {"
     extra_translations = {
+        "12.25 · 场景参考": "12.25 · Scenario reference",
+        "圣诞情景测算": "Christmas Scenario Estimate",
+        "参考时点 · 12月25日": "Reference · Dec 25",
+        "本期测算已结束": "This scenario period has ended",
+        "测算暂不可用，等待数据更新。": "Estimate unavailable. Waiting for updated data.",
+        "数据更新延迟，当前使用最近记录估算。": "Data is delayed. Estimates use the latest available record.",
+        "预测圣诞流通量，再计入 8 天预计产量。": "Projected Christmas circulation plus 8 days of estimated emission.",
+        "1 亿算力对应参考销毁量": "Reference burn for 100M power",
+        "按现有 1 亿算力占当前全网算力的比例测算": "Based on the share of existing 100M power in current global power",
+        "8 天预计产量": "Estimated 8-day emission",
+        "参考销毁规模 · 35%": "Reference burn pool · 35%",
+        "已计入该轮 8 天预计产量，按当前全网算力测算；未来新增销毁暂按零计算，结果随数据更新，仅供参考。": "Includes the round’s estimated 8-day emission at current global power. Future burns are assumed zero. Estimates update with the data and are for reference.",
+        "已计入未来 8 天预计产量，按当前全网算力测算；未来新增销毁暂按零计算，结果随数据更新，仅供参考。": "Includes the next 8 days of estimated emission at current global power. Future burns are assumed zero. Estimates update with the data and are for reference.",
+        "数据更新延迟，当前使用最近记录估算；未来新增销毁暂按零计算。": "Data is delayed. Estimates use the latest record and assume no future burns.",
+        "距参考日": "Until reference date",
+        "· 数据更新": "· Data updated",
+        "查看测算说明": "View calculation details",
+        "当前全网算力": "Current global power",
+        "每亿算力测算值（未取整）": "Estimate per 100M power (unrounded)",
+        "参考销毁规模 =（预计圣诞流通量 + 8 天预计产量）× 35%。": "Reference burn pool = (projected Christmas circulation + estimated 8-day emission) × 35%.",
+        "每亿算力参考销毁量 = 参考销毁规模 × 1 亿 ÷ 当前全网总算力。": "Reference burn per 100M power = reference burn pool × 100M ÷ current global power.",
+        "这里的 1 亿指参与测算的现有算力，结果不代表新增 1 亿算力的确定成本。": "100M means existing power used for this calculation. The result is not a guaranteed cost of adding 100M power.",
+        "产量按现有经济模型估算，跨减半周期分段计算；已发生销毁由最新流通量体现。": "Emission is estimated using the existing model across halving cycles. Observed burns are already reflected in circulation.",
+        "起算时间、35% 与 8 天均为本页测算假设，非已确认的官方活动安排。": "The start time, 35% and 8 days are scenario assumptions, not confirmed official event arrangements.",
+        "方程式参考测算": "Equation Reference Estimate",
+        "输入算力，查看含未来 8 天产量的销毁参考。": "Enter power to estimate a burn including the next 8 days of emission.",
+        "参与测算的算力": "Power used for calculation",
+        "对应参考销毁量": "Reference burn amount",
+        "按现有 1 亿算力占比测算。": "Based on the share of existing 100M power.",
+        "参考销毁规模 =（当前流通量 + 未来 8 天预计产量）× 35%。": "Reference burn pool = (current circulation + estimated next 8-day emission) × 35%.",
+        "参考销毁量 = 参考销毁规模 × 输入算力 ÷ 当前全网总算力。": "Reference burn = reference burn pool × entered power ÷ current global power.",
+        "输入值表示参与测算的现有算力，结果不代表新增同等算力的确定成本。": "The input is existing power used for this calculation. The result is not a guaranteed cost of adding that amount of power.",
+        "8 天从当前数据时点起算；按现有经济模型估算产量，跨减半周期分段计算。": "The 8-day window starts at the current data timestamp. Emission uses the existing model across halving cycles.",
+        "本页为参考测算，活动参数及执行时间以官方公告为准。": "This is a reference estimate. Official announcements determine event parameters and execution times.",
+        "膨胀 1 亿算力预计需销毁": "Estimated MARS burn for 100M power inflation",
+        "膨胀 1 亿算力所需 MARS": "MARS needed for 100M power inflation",
+        "膨胀所需销毁（估算）": "Estimated burn for power inflation",
+        "先预测圣诞起算流通量，再加上该轮 8 天产量，测算所需销毁。": "Forecast circulation at Christmas, add the round’s 8-day emission, then estimate the required burn.",
+        "距圣诞预计产量": "Modeled emission until Christmas",
+        "预计圣诞起算流通量": "Projected circulation at Christmas start",
+        "＋ 圣诞轮次 8 天产量": "+ Christmas round 8-day emission",
+        "含 8 天产量的测算基数": "Calculation basis including 8-day emission",
+        "未来 8 天产量": "Next 8 days of modeled emission",
+        "沿用原有算力换算口径 · 已计入该轮 8 天产量": "Uses the existing power conversion · Includes the round’s 8-day emission",
+        "MARS · 距圣诞": "MARS · Until Christmas",
+        "测算基数 = 当前流通量 + 距圣诞预计产量 + 圣诞起算后的 8 天产量。": "Calculation basis = current circulation + emission until Christmas + the following 8 days of emission.",
+        "膨胀 1 亿算力所需 MARS = 测算基数 × 35% ÷ 当前全网总算力 × 1 亿。": "MARS needed for 100M power inflation = calculation basis × 35% ÷ current global power × 100M.",
+        "8 天产量从 12 月 25 日 08:00 至 1 月 2 日 08:00（北京时间）计算，与距圣诞产量不重叠。": "The 8-day emission runs from Dec 25 at 08:00 to Jan 2 at 08:00 Beijing time, without overlap with the earlier emission.",
+        "35% 与 8 天沿用本次测算参数，不代表已确认的圣诞节活动安排。": "35% and 8 days are scenario parameters, not a confirmed Christmas event rule.",
+        "已计入未来 8 天模型产量；未来未知销毁按 0 估算，实际所需数量随流通量与算力更新。": "Includes 8 days of modeled future emission. Future burns are assumed zero; the amount updates with circulation and power.",
+        "流通量记录有延迟，已按模型产量补算至当前；期间未知销毁按 0 处理。": "The circulation record is delayed and projected to now using modeled emissions. Unknown burns during the gap are assumed zero.",
+        "12.25 · 情景预测": "12.25 \u00b7 Scenario estimate",
+        "圣诞节销毁预测": "Christmas Burn Forecast",
+        "12月25日 · 08:00": "Dec 25 \u00b7 08:00",
+        "以最新流通量为起点，累加至圣诞节的模型产量。": "Latest circulation plus modeled emissions until Christmas.",
+        "当前流通量": "Current circulation",
+        "剩余预计产量": "Remaining modeled emissions",
+        "预计圣诞流通量": "Projected Christmas circulation",
+        "按 35% 预计销毁总量": "Estimated burn at 35%",
+        "1亿算力预计需销毁": "Estimated burn per 100M power",
+        "模型日产量": "Modeled daily emission",
+        "MARS · 剩余": "MARS \u00b7 Remaining",
+        "计算口径": "Calculation method",
+        "未来尚未发生的销毁按 0 测算；实际销毁通过最新流通量体现，不重复扣除。": "Future burns are assumed to be zero. Burns already reflected in circulation are not deducted again.",
+        "产量沿用现有经济模型，跨产量周期分段累加，未满一天按剩余时间折算。": "Uses the existing emission model, integrated across cycles and prorated for partial days.",
+        "35% 为沿用当前测算参数，不代表已确认的圣诞节活动安排。": "35% is the current calculation parameter, not a confirmed Christmas event rule.",
+        "本期预测已结束": "This forecast period has ended",
+        "预测数据暂不可用，等待最新数据。": "Forecast unavailable. Waiting for fresh data.",
         "算力覆盖率": "Power Coverage",
         "自建节点 POWER 合约": "Self-hosted node POWER contract",
         "自建节点 POWER 合约 · 最近成功值": "Self-hosted node POWER contract · Last successful value",
@@ -494,6 +594,10 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     # Translate adapter-owned cutoff labels while preserving the original date.
     dynamic_marker = "  const translateDynamic = (text) => {"
     dynamic_extra = """
+    const approxBurn = text.match(/^(当前)?约\s+([\d,.]+)(?:\s+(MARS))?$/);
+    if (approxBurn) return `${approxBurn[1] ? 'Currently approx.' : 'Approx.'} ${approxBurn[2]}${approxBurn[3] ? ' MARS' : ''}`;
+    const inputShare = text.match(/^按现有 (.+) 算力占比测算。$/);
+    if (inputShare) return `Based on the share of existing ${translateChineseNumericUnit(inputShare[1]) || inputShare[1]} power.`;
     const nodeCutoff = text.match(/^截至 (.+?) 北京时间( · 沿用历史快照)?$/);
     if (nodeCutoff) return `Through ${nodeCutoff[1]} Beijing time${nodeCutoff[2] ? ' · Previous snapshot retained' : ''}`;
     const sampledAddress = text.match(/^(.+?)（近截点采样）$/);
@@ -524,7 +628,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     """Write deployment artifacts once; leave latest.json publication to caller."""
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    sources = (Path(__file__), RUNTIME, Path(dashboard.__file__))
+    sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"))
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"

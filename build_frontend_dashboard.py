@@ -10,6 +10,7 @@ import re
 import time
 from html import escape
 from datetime import date
+from node_preview.christmas import christmas_forecast, oracle_burn_forecast
 from pathlib import Path
 
 
@@ -3237,8 +3238,8 @@ const setupBurnCalculator = (panel) => {
       return;
     }
     const burned = power * rate;
-    result.textContent = formatChinese(burned, '枚');
-    if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+    result.textContent = `当前约 ${burned.toLocaleString('zh-CN', burned >= 1 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 3 })} MARS`;
+    if (note) note.textContent = `按现有 ${formatChinese(power)} 算力占比测算。`;
     window.applyMarsLanguage?.();
   };
   input.addEventListener('input', update);
@@ -3386,76 +3387,129 @@ def _fmt_one_yi_power_output(meta: dict) -> str:
     return _fmt_token_daily_output(100_000_000 / power_required)
 
 
+def _approx_reference(value: object) -> str:
+    number = _as_float(value)
+    return f"约 {number:,.0f}" if abs(number) >= 1 else f"约 {number:.3g}"
+
+
 def _build_burn_estimate(meta: dict) -> dict[str, object]:
-    circulation_tokens = _as_float(meta.get("network_total_circulation_tokens")) / 1_000_000_000_000_000_000
-    network_power = _as_float(meta.get("network_total_power"))
-    burn_ratio = 0.35
-    burn_pool = circulation_tokens * burn_ratio if circulation_tokens > 0 else 0.0
-    burn_per_power = burn_pool / network_power if burn_pool > 0 and network_power > 0 else 0.0
-    sample_power = 100_000_000
-    sample_burn = sample_power * burn_per_power
+    forecast = oracle_burn_forecast(meta)
+    ready = forecast.get("state") == "ready"
+    display = forecast.get("display") or {}
+    rate = forecast.get("burn_per_power", 0.0) if ready else 0.0
+    def amount(key):
+        return f"{display.get(key, '—')} MARS" if ready else "待刷新"
     return {
+        "state": forecast.get("state"),
         "burn_ratio_percent": "35%",
-        "burn_pool": burn_pool,
-        "burn_pool_display": f"{_fmt_chinese_number(burn_pool, digits=3)}枚" if burn_pool > 0 else "待刷新",
-        "burn_per_power": burn_per_power,
-        "burn_per_power_attr": f"{burn_per_power:.18f}",
-        "sample_power": sample_power,
-        "sample_burn": sample_burn,
-        "sample_burn_display": f"{_fmt_chinese_number(sample_burn, digits=3)}枚" if sample_burn > 0 else "待刷新",
+        "burn_pool": forecast.get("burn_pool") if ready else None,
+        "burn_pool_display": amount("burn_pool"),
+        "event_emission_display": amount("event_emission"),
+        "calculation_note": (
+            "测算暂不可用，等待数据更新。" if not ready else
+            "数据更新延迟，当前使用最近记录估算；未来新增销毁暂按零计算。"
+            if (forecast.get("source_lag_seconds") or 0) > 300 else
+            "已计入未来 8 天预计产量，按当前全网算力测算；未来新增销毁暂按零计算，结果随数据更新，仅供参考。"
+        ),
+        "settlement_circulation_display": amount("settlement_circulation"),
+        "burn_per_power": rate,
+        "burn_per_power_attr": f"{rate:.18f}",
+        "sample_power": 100_000_000,
+        "sample_burn": forecast.get("per_100m_power") if ready else None,
+        "sample_burn_display": f"当前{_approx_reference(forecast['per_100m_power'])} MARS" if ready else "待刷新",
+        "sample_burn_precise_display": amount("per_100m_power"),
     }
 
 
+def _christmas_content(forecast: dict) -> str:
+    """Render a member-facing scenario; calculations remain available on demand."""
+    def val(key):
+        return escape(str((forecast.get("display") or {}).get(key) or "—"))
+    target = "2026-12-25 08:00 北京时间"
+    header = ('<div class="christmas-head"><div><span class="christmas-kicker">12.25 · 场景参考</span>'
+              '<h3>圣诞情景测算</h3></div><span class="christmas-date">参考时点 · 12月25日</span></div>')
+    if forecast.get("state") != "ready":
+        reason = "本期测算已结束" if forecast.get("state") == "ended" else "测算暂不可用，等待数据更新。"
+        return header + f'<p class="christmas-empty">{reason}</p><small>参考起算时间：{target}</small>'
+    stamp = int(forecast.get("source_timestamp") or 0)
+    observed = time.strftime("%m-%d %H:%M", time.gmtime(stamp + 28800)) if stamp else "待刷新"
+    power = _fmt_power(forecast.get("current_power"))
+    sample = escape(_approx_reference(forecast.get("per_100m_power")))
+    lag_note = '<p class="christmas-stale">数据更新延迟，当前使用最近记录估算。</p>' if (forecast.get("source_lag_seconds") or 0) > 300 else ''
+    return header + lag_note + f"""
+      <p class="christmas-intro">预测圣诞流通量，再计入 8 天预计产量。</p>
+      <div class="christmas-total"><span>1 亿算力对应参考销毁量</span><b>{sample} <em>MARS</em></b><small>按现有 1 亿算力占当前全网算力的比例测算</small></div>
+      <div class="christmas-results">
+        <div><span>8 天预计产量</span><b>{val('event_emission')} <em>MARS</em></b></div>
+        <div><span>参考销毁规模 · 35%</span><b>{val('burn_pool')} <em>MARS</em></b></div>
+      </div>
+      <p class="forecast-member-note">已计入该轮 8 天预计产量，按当前全网算力测算；未来新增销毁暂按零计算，结果随数据更新，仅供参考。</p>
+      <p class="christmas-model">距参考日 <strong>{val('remaining_days')}</strong> · 数据更新 <strong>{observed} 北京时间</strong></p>
+      <details class="christmas-method"><summary>查看测算说明</summary>
+        <dl class="forecast-facts">
+          <div><dt>当前流通量</dt><dd>{val('circulation')} MARS</dd></div>
+          <div><dt>距圣诞预计产量</dt><dd>{val('remaining_emission')} MARS</dd></div>
+          <div><dt>预计圣诞流通量</dt><dd>{val('projected_circulation')} MARS</dd></div>
+          <div><dt>含 8 天产量的测算基数</dt><dd>{val('settlement_circulation')} MARS</dd></div>
+          <div><dt>模型日产量</dt><dd>{val('daily_emission')} MARS</dd></div>
+          <div><dt>当前全网算力</dt><dd>{escape(power)}</dd></div>
+          <div><dt>每亿算力测算值（未取整）</dt><dd>{val('per_100m_power')} MARS</dd></div>
+        </dl>
+        <p>参考销毁规模 =（预计圣诞流通量 + 8 天预计产量）× 35%。</p>
+        <p>每亿算力参考销毁量 = 参考销毁规模 × 1 亿 ÷ 当前全网总算力。</p>
+        <p>这里的 1 亿指参与测算的现有算力，结果不代表新增 1 亿算力的确定成本。</p>
+        <p>参考起算时间：{target}；8 天产量计算至 2027-01-02 08:00 北京时间，与圣诞前产量分开累计。</p>
+        <p>产量按现有经济模型估算，跨减半周期分段计算；已发生销毁由最新流通量体现。</p>
+        <p>起算时间、35% 与 8 天均为本页测算假设，非已确认的官方活动安排。</p>
+      </details>
+    """
+
+
+def _build_christmas_forecast(meta: dict) -> str:
+    return '<article class="christmas-forecast" id="christmas" data-christmas-forecast>' + _christmas_content(christmas_forecast(meta)) + '</article>'
+
+
 def _build_burn_calculator(estimate: dict[str, object], *, mobile: bool = False) -> str:
-    burn_rate = str(estimate.get("burn_per_power_attr") or "0")
-    sample_power = int(_as_float(estimate.get("sample_power"), 100_000_000))
-    sample_burn = str(estimate.get("sample_burn_display") or "待刷新")
-    burn_pool = str(estimate.get("burn_pool_display") or "待刷新")
-    ratio = str(estimate.get("burn_ratio_percent") or "35%")
+    burn_rate = escape(str(estimate.get("burn_per_power_attr") or "0"))
+    sample_burn = escape(str(estimate.get("sample_burn_display") or "待刷新"))
+    burn_pool = escape(str(estimate.get("burn_pool_display") or "待刷新"))
+    event_emission = escape(str(estimate.get("event_emission_display") or "待刷新"))
+    basis = escape(str(estimate.get("settlement_circulation_display") or "待刷新"))
+    precise = escape(str(estimate.get("sample_burn_precise_display") or "待刷新"))
+    note = escape(str(estimate.get("calculation_note") or "测算暂不可用，等待数据更新。"))
+    method = f"""<details class="christmas-method burn-member-method"><summary>查看测算说明</summary>
+          <p>参考销毁规模 =（当前流通量 + 未来 8 天预计产量）× 35%。</p>
+          <p>参考销毁量 = 参考销毁规模 × 输入算力 ÷ 当前全网总算力。</p>
+          <p>测算基数：<b data-burn-field="settlement_circulation_display">{basis}</b>。</p>
+          <p>每亿算力测算值（未取整）：<b data-burn-field="sample_burn_precise_display">{precise}</b>。</p>
+          <p>输入值表示参与测算的现有算力，结果不代表新增同等算力的确定成本。</p>
+          <p>8 天从当前数据时点起算；按现有经济模型估算产量，跨减半周期分段计算。</p>
+          <p>本页为参考测算，活动参数及执行时间以官方公告为准。</p>
+        </details>"""
     if mobile:
         return f"""
-      <article class="m-burn-calculator" data-burn-calculator data-burn-rate="{escape(burn_rate)}">
-        <div>
-          <span class="m-kicker">BURN CALC</span>
-          <h3>算力销毁测算</h3>
-          <p>按当前全网流通量 × {escape(ratio)} ÷ 全网总算力计算。</p>
-        </div>
+      <article class="m-burn-calculator" data-burn-calculator data-burn-rate="{burn_rate}">
+        <div><span class="m-kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力，查看含未来 8 天产量的销毁参考。</p></div>
         <div class="m-burn-stats">
-          <div class="m-burn-stat"><span>35%流通量</span><b>{escape(burn_pool)}</b></div>
-          <div class="m-burn-stat"><span>1亿算力算例</span><b>{escape(sample_burn)}</b></div>
+          <div class="m-burn-stat"><span>8 天预计产量</span><b data-burn-field="event_emission_display">{event_emission}</b></div>
+          <div class="m-burn-stat"><span>参考销毁规模 · 35%</span><b data-burn-field="burn_pool_display">{burn_pool}</b></div>
         </div>
-        <div class="m-burn-input">
-          <label for="mBurnPowerInput">输入算力</label>
-          <input id="mBurnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万">
-        </div>
-        <div class="m-burn-result">
-          <span>需要销毁</span>
-          <b data-burn-result>{escape(sample_burn)}</b>
-          <small data-burn-note>按输入算力实时换算。</small>
-        </div>
+        <div class="m-burn-input"><label for="mBurnPowerInput">参与测算的算力</label><input id="mBurnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万"></div>
+        <div class="m-burn-result"><span>对应参考销毁量</span><b data-burn-result>{sample_burn}</b><small data-burn-note>按现有 1 亿算力占比测算。</small></div>
+        <p class="forecast-member-note" data-burn-field="calculation_note">{note}</p>
+        {method}
       </article>"""
     return f"""
-    <div class="burn-calculator reveal" data-burn-calculator data-burn-rate="{escape(burn_rate)}">
-      <div class="burn-copy">
-        <span class="kicker">BURN CALC</span>
-        <h3>算力销毁测算</h3>
-        <p>按“全网流通量 × {escape(ratio)} ÷ 全网总算力”计算，得到每 1 算力对应的销毁数量；输入任意算力即可换算需要销毁多少 MARS。</p>
-      </div>
+    <div class="burn-calculator reveal" data-burn-calculator data-burn-rate="{burn_rate}">
+      <div class="burn-copy"><span class="kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力，查看含未来 8 天产量的销毁参考。</p><p class="forecast-member-note" data-burn-field="calculation_note">{note}</p></div>
       <div class="burn-form">
         <div class="burn-stats">
-          <div class="line"><span>计算公式</span><b>流通量 × {escape(ratio)} ÷ 总算力</b></div>
-          <div class="line"><span>35%流通量</span><b>{escape(burn_pool)}</b></div>
-          <div class="line"><span>1亿算力算例</span><b>{escape(sample_burn)}</b></div>
+          <div class="line"><span>8 天预计产量</span><b data-burn-field="event_emission_display">{event_emission}</b></div>
+          <div class="line"><span>参考销毁规模 · 35%</span><b data-burn-field="burn_pool_display">{burn_pool}</b></div>
         </div>
-        <div class="burn-input-row">
-          <label for="burnPowerInput">输入算力</label>
-          <input id="burnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万">
-        </div>
-        <div class="burn-result">
-          <span>需要销毁</span>
-          <b data-burn-result>{escape(sample_burn)}</b>
-          <small data-burn-note>当前算例：{sample_power:,} 算力。</small>
-        </div>
+        <div class="burn-input-row"><label for="burnPowerInput">参与测算的算力</label><input id="burnPowerInput" data-burn-power type="text" inputmode="decimal" value="1亿" placeholder="例如 1亿、5亿、1000万"></div>
+        <div class="burn-result"><span>对应参考销毁量</span><b data-burn-result>{sample_burn}</b><small data-burn-note>按现有 1 亿算力占比测算。</small></div>
+        {method}
       </div>
     </div>"""
 
@@ -4192,7 +4246,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <article class="fcard reveal"><label>预言机方程式<span>活动倒计时</span></label><strong class="oracle-countdown-value" data-oracle-countdown>--天 --:--:--</strong><small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>
     """
     burn_estimate = _build_burn_estimate(meta)
-    burn_calculator = _build_burn_calculator(burn_estimate)
+    burn_calculator = _build_burn_calculator(burn_estimate) + _build_christmas_forecast(meta)
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)
@@ -4871,8 +4925,8 @@ const setupMobileBurnCalculator = (panel) => {
       return;
     }
     const burned = power * rate;
-    result.textContent = formatChinese(burned, '枚');
-    if (note) note.textContent = `输入算力 ${formatChinese(power)}，按当前比例估算。`;
+    result.textContent = `当前约 ${burned.toLocaleString('zh-CN', burned >= 1 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 3 })} MARS`;
+    if (note) note.textContent = `按现有 ${formatChinese(power)} 算力占比测算。`;
     window.applyMarsLanguage?.();
   };
   input.addEventListener('input', update);
@@ -6787,7 +6841,7 @@ def build_mobile_html(payload: dict) -> str:
         '<small data-oracle-countdown-note>开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00</small></article>'
     )
     burn_estimate = _build_burn_estimate(meta)
-    burn_calculator = _build_burn_calculator(burn_estimate, mobile=True)
+    burn_calculator = _build_burn_calculator(burn_estimate, mobile=True) + _build_christmas_forecast(meta)
     rank_total_count = min(100, len(rows))
     rank_page_size = 10
     rank_total_pages = max(1, (rank_total_count + rank_page_size - 1) // rank_page_size)

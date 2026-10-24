@@ -213,10 +213,16 @@
     if (!estimate) throw new Error('缺少算力销毁测算数据');
     document.querySelectorAll('[data-burn-calculator]').forEach((panel) => {
       panel.dataset.burnRate = String(estimate.burn_per_power_attr || '0');
-      const summaries = panel.querySelectorAll(mobile ? '.m-burn-stat' : '.burn-stats .line');
-      setText(summaries[mobile ? 0 : 1]?.querySelector('b'), estimate.burn_pool_display);
-      setText(summaries[mobile ? 1 : 2]?.querySelector('b'), estimate.sample_burn_display);
+      panel.querySelectorAll('[data-burn-field]').forEach(node => {
+        setText(node, estimate[node.dataset.burnField]);
+      });
       panel.querySelector('[data-burn-power]')?.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    document.querySelectorAll('[data-christmas-forecast]').forEach(panel => {
+      if (typeof view.christmas !== 'string') return;
+      const expanded = Boolean(panel.querySelector('details')?.open);
+      panel.innerHTML = view.christmas;
+      if (expanded && panel.querySelector('details')) panel.querySelector('details').open = true;
     });
     setText(document.querySelector(mobile ? '.m-footer' : '.footer'), mobile
       ? `MarsChain Rank 手机版 · 最近刷新：${view.generated_at} · 统计周期：${view.statistics_window_label}`
