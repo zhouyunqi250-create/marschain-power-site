@@ -37,6 +37,20 @@ TREND_KEYS = (
     "power_per_coin", "one_yi_power_output",
 )
 
+# These reviewed old site observations may supplement charts, never current
+# cards or exact boundary calculations. Legacy address counts and increments
+# used different coverage/cutoffs and must not enter a verified daily series.
+LEGACY_SAMPLE_KEYS = frozenset((
+    "network_total_circulation", "network_current_price", "total_burned", "total_wallets",
+    "total_supply", "daily_emission", "power_per_coin", "one_yi_power_output",
+))
+LEGACY_WINDOW_KEYS = frozenset(("daily_active_addresses", "daily_transaction_volume", "daily_transaction_count"))
+LEGACY_SAMPLE_NOTE = "旧站历史记录按记录日期展示，采样时间不固定；新记录按北京时间08:00日结，跨期变化需留意口径差异。"
+LEGACY_MODEL_NOTE = "旧记录为当时模型的采样估算；新记录按08:00日结估算，均不代表实测产量或收益。"
+LEGACY_WINDOW_NOTE = "已补入旧站完整统计窗口的历史记录，按北京时间08:00截止日期展示。"
+LEGACY_WINDOW_SAMPLE_NOTE = "旧记录按当时实际区块统计区间展示；新记录按北京时间08:00日结，跨期变化需留意口径差异。"
+PUBLIC_HISTORY_NOTES = frozenset((LEGACY_SAMPLE_NOTE, LEGACY_MODEL_NOTE, LEGACY_WINDOW_NOTE, LEGACY_WINDOW_SAMPLE_NOTE))
+
 
 def _ipv4_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT, source_address=None, **kwargs):
     """Prefer IPv4 for this connection only; do not patch global socket state."""
@@ -148,18 +162,22 @@ def _is_daily(key: str) -> bool:
     return key.startswith(("statistics_", "today_", "period_7d_", "period_30d_", "daily_total_power_history", "daily_power_history", "blackhole_", "full_scan_statistics_"))
 
 
-def _daily_trends(meta: dict, history: list[dict]) -> dict:
+def _daily_trends(meta: dict, history: list[dict], reviewed_legacy: list[dict] | None = None) -> dict:
     """Use one cutoff clock; legacy partial-day snapshots are not daily facts.
 
     A contract entry for UTC day D is the *end* of D, i.e. Beijing 08:00
     on D+1. Verified node snapshots already identify that cutoff directly.
-    Unknown historical fields remain gaps instead of synthetic averages.
+    Reviewed legacy observations are displayed with a separate timing note;
+    unknown historical fields remain gaps instead of synthetic averages.
     """
     cutoff = _integer(meta.get("statistics_window_end_timestamp"))
     points: dict[str, dict[int, dict]] = {key: {} for key in TREND_KEYS}
     sampled_keys: set[str] = set()
+    legacy_notes: dict[str, str] = {}
 
     def number(value):
+        if isinstance(value, bool):
+            return None
         exact = _integer(value)
         if exact is not None:
             return exact
@@ -168,6 +186,43 @@ def _daily_trends(meta: dict, history: list[dict]) -> dict:
             return value if math.isfinite(value) else None
         except (TypeError, ValueError, OverflowError):
             return None
+
+    # Import only explicitly reviewed fields; merely having an old value in a
+    # seed is insufficient. Preserve its original record date/time rather than
+    # relabelling an 08:40 record as an exact 08:00 measurement. Old generated_at
+    # is a build completion time, not an HTTP receipt time.
+    for snapshot in reviewed_legacy or []:
+        if not isinstance(snapshot, dict) or snapshot.get("source") != "legacy_site_capture":
+            continue
+        end = _integer(snapshot.get("statistics_window_end_timestamp"))
+        captured = _integer(snapshot.get("generated_at"))
+        values, sources = snapshot.get("values"), snapshot.get("field_sources")
+        if (end is None or end % 86400 or captured is None or not isinstance(values, dict)
+                or not isinstance(sources, dict) or (cutoff is not None and end >= cutoff)):
+            continue
+        if not end <= captured < end + 86400:
+            continue
+        for key, raw_value in values.items():
+            provenance = sources.get(key) or {}
+            if not isinstance(provenance, dict):
+                continue
+            kind = provenance.get("timing_status")
+            value = number(raw_value)
+            window = key in LEGACY_WINDOW_KEYS and kind in {"verified_legacy_window", "legacy_window_sample"}
+            sample = key in LEGACY_SAMPLE_KEYS and kind in {"legacy_sample", "legacy_model_sample"}
+            if value is None or value < 0 or not (window or sample):
+                continue
+            timestamp = end if window else captured
+            # UTC day buckets correspond to the site's Beijing 08:00 day. A
+            # verified new point at the same cutoff takes precedence below.
+            points[key][end] = {"label": _local(timestamp)[:10], "value": value,
+                                "recorded_at": captured, "timing_status": kind}
+            note = (LEGACY_WINDOW_SAMPLE_NOTE if kind == "legacy_window_sample" else LEGACY_WINDOW_NOTE if window
+                    else LEGACY_MODEL_NOTE if kind == "legacy_model_sample" else LEGACY_SAMPLE_NOTE)
+            # One approximate legacy interval makes the whole series require
+            # that warning, even if its newest old record has exact boundaries.
+            if legacy_notes.get(key) != LEGACY_WINDOW_SAMPLE_NOTE:
+                legacy_notes[key] = note
 
     power_points = points["network_total_power"]
     for row in meta.get("daily_total_power_history") or []:
@@ -211,14 +266,18 @@ def _daily_trends(meta: dict, history: list[dict]) -> dict:
     # Derive daily growth from the same adjacent completed cutoffs as the total
     # curve. Old seed 'daily_new_power' values used partial days and are excluded.
     for timestamp, point in power_points.items():
-        previous = power_points.get(timestamp - 86400)
-        if previous is not None:
-            points["daily_new_power"][timestamp] = {"label": point["label"], "value": point["value"] - previous["value"]}
+        for days, key in ((1, "daily_new_power"), (7, "period_7d_new_power"), (30, "period_30d_new_power")):
+            previous = power_points.get(timestamp - days * 86400)
+            if previous is not None:
+                points[key][timestamp] = {"label": point["label"], "value": point["value"] - previous["value"]}
 
     return {key: {"source": "官方 08:00 附近实际采样（非精确截点）" if key in sampled_keys else
                          "已完成合约日与节点核验日结" if key in ("network_total_power", "daily_new_power") else "已核验或注明采样时间的日结",
-                  "values": [dated[timestamp] for timestamp in sorted(dated)[-30:]],
+                  "values": [dated[timestamp] for timestamp in sorted(dated)[-90:]],
                   "available": bool(dated), "allow_synthetic_fallback": False,
+                  **({"history_note": legacy_notes[key]} if key in legacy_notes and any(
+                      point.get("timing_status", "").startswith(("legacy_", "verified_legacy_"))
+                      for point in [dated[stamp] for stamp in sorted(dated)[-90:]]) else {}),
                   "missing_reason": None if dated else "历史缺少同一截止口径的可靠采样，保留缺失；不以均值补造趋势"}
             for key, dated in points.items()}
 
@@ -680,7 +739,8 @@ class MetricStore:
         self._refresh_contract_history(meta, block_info, now)
         self._apply_sampled_growth(meta)
         self._enrich_daily_history(meta, now)
-        meta["metric_trends"] = _daily_trends(meta, self.history())
+        legacy = self._get("reviewed_legacy_history", {})
+        meta["metric_trends"] = _daily_trends(meta, self.history(), legacy.get("snapshots", []) if isinstance(legacy, dict) else [])
         return meta
 
     def _apply_sampled_growth(self, meta: dict):

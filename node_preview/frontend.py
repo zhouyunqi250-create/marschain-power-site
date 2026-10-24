@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 import build_frontend_dashboard as dashboard
+from node_preview.metrics import PUBLIC_HISTORY_NOTES
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
@@ -59,7 +60,7 @@ _desktop_view = _presentation_function(
 )
 _mobile_view = _presentation_function(
     dashboard.build_mobile_html,
-    ("key_cards", "meta_rows", "metric_trend_payload", "warning_html"),
+    ("key_cards", "growth_cards", "meta_rows", "metric_trend_payload", "warning_html"),
 )
 
 
@@ -166,6 +167,8 @@ def _public_meta(value: dict) -> dict:
             clean.append({"label": str(label)[:80], "value": item})
         trends[key] = {"values": clean}
         if isinstance(entry, dict):
+            if isinstance(entry.get("history_note"), str) and entry["history_note"] in PUBLIC_HISTORY_NOTES:
+                trends[key]["history_note"] = entry["history_note"]
             if isinstance(entry.get("exact_cutoff"), bool):
                 trends[key]["exact_cutoff"] = entry["exact_cutoff"]
             if entry.get("timing_status") in {"exact", "near_cutoff", "sampled", "near_cutoff_sample"}:
@@ -239,7 +242,7 @@ def public_payload(payload: dict) -> dict:
             "warning": desktop["warning_html"],
         },
         "mobile": {
-            "metrics": _metric_views(_annotate_period_cards(_address_missing_copy(mobile["key_cards"], meta), meta)),
+            "metrics": _metric_views(_annotate_period_cards(_address_missing_copy(mobile["key_cards"] + mobile["growth_cards"], meta), meta)),
             "timeline": _address_missing_copy(mobile["meta_rows"], meta),
             "trends": json.loads(mobile["metric_trend_payload"]),
             "warning": mobile["warning_html"],
@@ -318,6 +321,59 @@ _PREVIEW_STYLE = """
 .m-card .metric-secondary-row strong,.m-card .metric-secondary strong{display:block;font-size:15px;line-height:1.3;font-weight:850;margin:0;color:#eef8ff}
 .m-card .metric-secondary-row em,.m-card .metric-secondary em{display:block;font-size:10px;line-height:1.5;font-style:normal;color:#94abc1}
 .m-card .metric-trend{margin-top:17px}
+
+/* Quiet, legible trend preview. */
+.trend-modal{justify-content:center!important;align-items:center!important;place-items:center!important}
+.trend-panel{width:min(760px,calc(100vw - 28px))!important}
+.trend-panel{background:#0c1524!important;border-color:#26364d!important;border-radius:18px!important}
+.trend-title h3{font-size:25px!important}.trend-title p{font-size:12px!important;line-height:1.7!important;color:#8d9cb0!important;max-width:720px}
+.trend-head{padding-bottom:8px!important}.trend-controls{margin-bottom:10px!important}
+.trend-legend{display:flex!important;gap:7px;flex-wrap:wrap;padding:0 24px 12px}
+.trend-legend button{border:1px solid #29384d;background:transparent;color:#96a7bd;padding:7px 12px;border-radius:7px;cursor:pointer;font-size:12px}
+.trend-legend button.is-active{color:#65d8df;border-color:#40828e;background:#142d38}
+.trend-chart{position:relative!important;background:#0a1220!important;border-color:#243348!important;border-radius:10px!important;overflow:visible!important}
+.trend-chart svg{height:auto!important;min-height:220px;display:block;width:100%}
+.trend-chart .line{stroke:#5dcdd8!important;stroke-width:2!important;filter:none!important;fill:none!important}
+.trend-chart .bar{fill:#438b9d!important}.trend-chart .cursor-dot{fill:#8de0df!important;filter:none!important}
+.trend-chart .cursor-line{stroke:#778da8!important;stroke-width:1!important;stroke-dasharray:3 5!important}
+.trend-chart .date-label{font-size:12px!important;fill:#8c9db4!important;font-weight:400!important}
+.trend-axis-title{padding:12px 16px 0;color:#9badc2;font-size:12px}
+.trend-tooltip{position:absolute;right:16px;top:36px;background:#1c2b40;border:1px solid #445a74;color:#e3edf8;padding:8px 12px;border-radius:7px;font-size:12px;pointer-events:none;box-shadow:0 4px 16px #0005}
+.trend-stats{gap:9px!important}.trend-stat{background:#111e2f!important;border-color:#243348!important;border-radius:9px!important}.trend-stat b{font-size:21px!important}
+.trend-foot{color:#8596ad!important;line-height:1.7}
+@media(max-width:700px){.trend-modal{align-items:center!important;place-items:center!important;padding:12px!important}.trend-panel{width:100%!important;max-height:92vh!important}.trend-head{padding:18px 16px 8px!important}.trend-title h3{font-size:22px!important}.trend-legend{padding:0 16px 10px}.trend-chart{margin-left:12px!important;margin-right:12px!important}.trend-chart svg{min-height:235px}.trend-stats{grid-template-columns:repeat(2,minmax(0,1fr))!important}.trend-tooltip{right:6px;top:30px;font-size:11px}.trend-chart .date-label{font-size:15px!important}}
+
+
+.power-mini-pair{margin-top:18px;display:grid;gap:10px}
+.power-mini{border-top:1px solid #24364b;padding-top:9px}
+.power-mini>span{font-size:11px!important;color:#9cb1c9!important;display:block;line-height:1.5}
+.power-mini svg{display:block;width:100%;height:50px;overflow:visible}
+.power-mini svg path{fill:none;stroke:#66d0dc;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.power-mini svg rect{fill:#79baad}
+.trend-chart.power-pair-chart{background:transparent!important;border:0!important;padding:0!important;margin-top:4px!important}
+.power-pair-panel{border:1px solid #243348;border-radius:10px;background:#0a1220;overflow:hidden}
+.power-pair-panel+.power-pair-panel{margin-top:10px}
+.power-pair-panel h4{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0;padding:12px 14px 0;color:#c1d5ea;font-size:13px;font-weight:600}
+.power-pair-panel h4 small{font-weight:400;font-size:10px;color:#8a9bb0}
+.power-pair-chart svg{min-height:0!important;height:auto!important;width:100%!important}
+.power-pair-panel .bar{fill:#79baad!important}
+.is-power-pair .trend-stats{grid-template-columns:1fr!important}
+.is-power-pair .trend-stat:not(:first-child){display:none}
+.is-power-pair .trend-stat-row{display:flex;align-items:center;justify-content:space-between;gap:10px;line-height:1.8}
+.is-power-pair .trend-stat-row i{font-size:12px;font-style:normal;color:#99adc5}
+.is-power-pair .trend-stat-row strong{font-size:19px;font-variant-numeric:tabular-nums;color:#e1edf8}
+.is-power-pair .trend-stat b{display:block}
+.is-power-pair .trend-tooltip{max-width:90%;white-space:normal;top:40px;font-size:11px;line-height:1.6}
+@media(max-width:700px){.is-power-pair .trend-head{padding-top:14px!important}.is-power-pair .trend-title p{margin-bottom:4px!important}.is-power-pair .trend-stat-row strong{font-size:17px}}
+
+
+.power-mini>span{display:flex!important;align-items:center;justify-content:space-between;gap:8px}
+.power-mini>span em{font-size:10px;color:#7488a2;font-style:normal;font-weight:400}
+.power-mini svg circle{fill:#66d0dc}
+.power-pair-panel .group-empty{padding:16px;margin:0;color:#8093ac;font-size:12px}
+.is-power-pair .trend-panel{overscroll-behavior:contain}
+
+.m-section{scroll-margin-top:130px}
 </style>"""
 
 _PREVIEW_BANNER = """
@@ -365,7 +421,10 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     metricTrends = event.detail.trends;
     if (activeMetric) {
       activeMetric = metricTrends.find((entry) => entry.key === activeMetric.key) || null;
-      if (activeMetric && modal && !modal.hidden) renderChart();
+      if (activeMetric && modal && !modal.hidden) {
+        modal.querySelector('[data-trend-note]').textContent = activeMetric.note || '';
+        renderChart();
+      }
     }
   });
 """

@@ -9,6 +9,7 @@ import os
 import re
 import time
 from html import escape
+from datetime import date
 from pathlib import Path
 
 
@@ -3626,7 +3627,7 @@ def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") ->
     pad_y = 5.0
     min_value = min(clean)
     max_value = max(clean)
-    span = max(max_value - min_value, max(abs(max_value), 1.0) * 0.08)
+    span = max(max_value - min_value, max(abs(max_value), abs(min_value), 1e-12) * 0.08)
     points: list[tuple[float, float]] = []
     for index, value in enumerate(clean):
         x = pad_x + (width - pad_x * 2) * (index / max(1, len(clean) - 1))
@@ -3648,6 +3649,41 @@ def _build_sparkline(values: list[float], *, label: str = "近 30 次趋势") ->
         f'<span class="metric-trend-label"><i>{escape(start_label)}</i><i>{escape(end_label)}</i></span>'
         "</div>"
     )
+
+
+def _build_group_card_trends(extra: dict) -> str:
+    """Related series share dates; every metric retains its own vertical scale."""
+    panels = []
+    series = [item for item in extra.get("series", []) if isinstance(item, dict) and item.get("key")]
+    dated = [date.fromisoformat(p["label"]).toordinal() for item in series for p in _clean_trend_points(item.get("points"), limit=120) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p["label"])]
+    end = max(dated, default=0)
+    start = max(min(dated, default=0), end-29)
+    for item in series:
+        key = item.get("key")
+        points = [p for p in _clean_trend_points(item.get("points"), limit=120) if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p["label"]) and start <= date.fromisoformat(p["label"]).toordinal() <= end]
+        label = str(item.get("label") or key)
+        if not points:
+            panels.append(f'<div class="power-mini"><span>{escape(label)}</span><small>暂无可用历史</small></div>')
+            continue
+        values = [float(point["value"]) for point in points]
+        bars = bool(re.match(r"^(daily_(new|burned|transaction|active)|period_)", key))
+        low, high = (min(0, min(values)), max(0, max(values))) if bars else (min(values), max(values))
+        span = max(high - low, abs(high) * .02, 1e-12)
+        if not bars:
+            low -= span * .08
+            span *= 1.16
+        coords = [(8 + 284 * (date.fromisoformat(points[i]["label"]).toordinal()-start) / max(1, end-start), 43 - (v-low)/span*34) for i, v in enumerate(values)]
+        if bars:
+            baseline = 43 - (0-low)/span*34
+            width = min(9, 180 / len(values))
+            marks = ''.join(f'<rect x="{x-width/2:.2f}" y="{min(y,baseline):.2f}" width="{width:.2f}" height="{max(.5,abs(baseline-y)):.2f}" rx="1"/>' for x,y in coords)
+        else:
+            path = ' '.join(('M' if i == 0 or date.fromisoformat(points[i]['label']).toordinal()-date.fromisoformat(points[i-1]['label']).toordinal()!=1 else 'L') + f'{x:.2f},{y:.2f}' for i,(x,y) in enumerate(coords))
+            marks = f'<path d="{path}"/>'
+            if len(coords) == 1:
+                marks += f'<circle cx="{coords[0][0]:.2f}" cy="{coords[0][1]:.2f}" r="2.5"/>'
+        panels.append(f'<div class="power-mini"><span>{escape(label)}<em>{escape(points[-1]["label"][5:])}</em></span><svg viewBox="0 0 300 50" role="img" aria-label="{escape(label)}">{marks}</svg></div>')
+    return '<div class="power-mini-pair">' + ''.join(panels) + '</div>'
 
 
 def _build_metric_cards(items: list[tuple]) -> str:
@@ -3721,14 +3757,23 @@ def _build_metric_cards(items: list[tuple]) -> str:
                 secondary_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
-                _build_sparkline(_clean_trend_values(trend_values)),
+                _build_group_card_trends(extra) if len(extra.get("series", [])) > 1 else _build_sparkline(_clean_trend_values(trend_values)),
             )
         )
     return "\n".join(cards)
 
 
-def _build_metric_trend_payload(items: list[tuple]) -> list[dict[str, object]]:
+_PUBLIC_TREND_HISTORY_NOTES = frozenset({
+    "旧站历史记录按记录日期展示，采样时间不固定；新记录按北京时间08:00日结，跨期变化需留意口径差异。",
+    "旧记录为当时模型的采样估算；新记录按08:00日结估算，均不代表实测产量或收益。",
+    "已补入旧站完整统计窗口的历史记录，按北京时间08:00截止日期展示。",
+    "旧记录按当时实际区块统计区间展示；新记录按北京时间08:00日结，跨期变化需留意口径差异。",
+})
+
+
+def _build_metric_trend_payload(items: list[tuple], meta: dict | None = None) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
+    trends = meta.get("metric_trends") if isinstance(meta, dict) else None
     for index, item in enumerate(items):
         if len(item) >= 5:
             key, label, value, note, points = item[:5]
@@ -3753,8 +3798,6 @@ def _build_metric_trend_payload(items: list[tuple]) -> list[dict[str, object]]:
                 if not isinstance(series_item, dict):
                     continue
                 series_points = _clean_trend_points(series_item.get("points"), limit=120)
-                if not series_points:
-                    continue
                 clean_series.append(
                     {
                         "key": str(series_item.get("key") or key),
@@ -3764,6 +3807,15 @@ def _build_metric_trend_payload(items: list[tuple]) -> list[dict[str, object]]:
                 )
             if clean_series:
                 entry["series"] = clean_series
+        related_keys = [str(key)]
+        related_keys.extend(series_item["key"] for series_item in entry.get("series", []))
+        history_notes: list[str] = []
+        for related_key in related_keys:
+            trend = trends.get(related_key) if isinstance(trends, dict) else None
+            history_note = trend.get("history_note") if isinstance(trend, dict) else None
+            if isinstance(history_note, str) and history_note in _PUBLIC_TREND_HISTORY_NOTES and history_note not in history_notes:
+                history_notes.append(history_note)
+        entry["note"] = " ".join([str(entry["note"]), *history_notes]).strip()
         payload.append(entry)
     return payload
 
@@ -3973,7 +4025,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
         "secondary_value": _fmt_signed_power(new_power),
         "secondary_note": "北京时间 08:00 统计日新增",
         "trend_label": "算力趋势",
-        "trend_note": "全网总算力与每日新增算力分图查看。",
+        "trend_note": "全网总算力与每日新增算力按日期联动展示。",
         "series": [
             {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
             {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
@@ -3986,7 +4038,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址、正算力地址分图查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址按日期联动展示。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
@@ -4000,7 +4052,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
         ],
         "trend_label": "币量趋势",
-        "trend_note": "流通量、累计销毁、日销毁币量分图查看。",
+        "trend_note": "流通量、累计销毁、日销毁币量按日期联动展示。",
         "series": [
             {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
             {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
@@ -4013,7 +4065,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
         ],
         "trend_label": "产出趋势",
-        "trend_note": "每日产币量、单币日需算力、1亿算力产出分图查看。",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出按日期联动展示。",
         "series": [
             {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
             {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
@@ -4025,7 +4077,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
         ],
         "trend_label": "交易趋势",
-        "trend_note": "每日交易币量与每日交易笔数分图查看。",
+        "trend_note": "每日交易币量与每日交易笔数按日期联动展示。",
         "series": [
             {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
             {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
@@ -4164,7 +4216,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     timeline_rows = _build_timeline(timeline_items)
     marquee_html = _build_marquee(marquee_items)
     embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
-    metric_trend_payload = json.dumps(_build_metric_trend_payload(metric_items), ensure_ascii=False).replace("</script>", "<\\/script>")
+    metric_trend_payload = json.dumps(_build_metric_trend_payload(metric_items, meta), ensure_ascii=False).replace("</script>", "<\\/script>")
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -5254,7 +5306,7 @@ SHARE_POSTER_JS = r"""
     const points = clean.length >= 2 ? clean : [0, 0, 1, 1];
     const min = Math.min(...points);
     const max = Math.max(...points);
-    const span = Math.max(max - min, Math.max(Math.abs(max), 1) * 0.08);
+    const span = Math.max(max - min, Math.max(Math.abs(max), Math.abs(min)) * 0.08, Number.EPSILON);
     ctx.beginPath();
     points.forEach((value, index) => {
       const px = x + (w * index) / Math.max(1, points.length - 1);
@@ -5633,7 +5685,8 @@ METRIC_TREND_JS = r"""
     ['all', '全部', Infinity],
   ];
   let activeMetric = null;
-  let activePeriod = '30';
+  let activePeriod = '7';
+  let selectedSeriesKey = null;
   let activePoints = [];
   let focusIndex = 0;
   let modal = null;
@@ -5650,7 +5703,7 @@ METRIC_TREND_JS = r"""
   const displayNumber = (value, metricKey = null) => {
     const number = Number(value);
     if (!Number.isFinite(number)) return NaN;
-    const key = metricKey || (activeMetric && activeMetric.key);
+    const key = metricKey || selectedSeriesKey || (activeMetric && activeMetric.key);
     return TOKEN_WEI_METRICS.has(key) ? number / 1e18 : number;
   };
   const formatTrendValue = (value, metricKey = null) => {
@@ -5686,7 +5739,28 @@ METRIC_TREND_JS = r"""
     return Number.isFinite(limit) ? all.slice(-limit) : all;
   };
   const periodPoints = () => slicePeriod(activeMetric ? activeMetric.points : []);
+  const trendBars = key => /^(daily_(new|burned|transaction|active)|period_)/.test(key);
+  const trendUnit = key => {
+    if (key === 'daily_emission') return 'MARS/日 · 模型估算';
+    if (key === 'one_yi_power_output') return 'MARS/日（每亿算力）· 估算';
+    if (key === 'power_per_coin') return '算力/(MARS/日) · 模型估算';
+    if (key === 'total_supply' || TOKEN_WEI_METRICS.has(key)) return 'MARS';
+    if (/addresses|wallets/.test(key)) return '地址数';
+    if (key === 'daily_transaction_count') return '笔';
+    if (/power/.test(key)) return '算力';
+    if (key === 'network_current_price') return '价格';
+    return '数值';
+  };
+  const isGroupedTrend = () => Array.isArray(activeMetric?.series) && activeMetric.series.length > 1;
+  const groupedSeries = () => {
+    const rows = activeMetric.series.map(s => ({...s,points:cleanPoints(s.points)}));
+    const dates = rows.flatMap(s=>s.points.map(p=>Date.parse(p.label+'T00:00:00Z'))).filter(Number.isFinite);
+    const end = Math.max(...dates), limit = periodLimit();
+    return rows.map(s=>({...s,points:s.points.filter(p=>!Number.isFinite(limit)||Date.parse(p.label+'T00:00:00Z')>=end-(limit-1)*86400000)}));
+  };
   const metricSeries = () => {
+    if (isGroupedTrend()) return groupedSeries();
+
     if (activeMetric && Array.isArray(activeMetric.series) && activeMetric.series.length) {
       return activeMetric.series
         .map((series, index) => ({
@@ -5694,7 +5768,7 @@ METRIC_TREND_JS = r"""
           label: String(series.label || activeMetric.label || `趋势 ${index + 1}`),
           points: slicePeriod(series.points),
         }))
-        .filter((series) => series.points.length);
+        .filter((series) => series.points.length && (!selectedSeriesKey || series.key === selectedSeriesKey));
     }
     return activeMetric ? [{
       key: String(activeMetric.key || 'metric'),
@@ -5798,11 +5872,13 @@ METRIC_TREND_JS = r"""
       setTrendStat('[data-trend-latest]', latestRows);
       modal.querySelector('[data-trend-latest-label]').textContent = '各指标最新完整采样';
       setTrendStat('[data-trend-min]', seriesList.map((series) => {
+        if (!series.points.length) return {label:series.label,value:'暂无数据'};
         const minPoint = series.points.reduce((best, item) => item.value < best.value ? item : best, series.points[0]);
         return { label: series.label, value: formatTrendValue(minPoint.value, series.key) };
       }));
       modal.querySelector('[data-trend-min-label]').textContent = '各自区间最低';
       setTrendStat('[data-trend-max]', seriesList.map((series) => {
+        if (!series.points.length) return {label:series.label,value:'暂无数据'};
         const maxPoint = series.points.reduce((best, item) => item.value > best.value ? item : best, series.points[0]);
         return { label: series.label, value: formatTrendValue(maxPoint.value, series.key) };
       }));
@@ -5827,139 +5903,118 @@ METRIC_TREND_JS = r"""
     });
   };
 
+  const renderGroupedTrend = () => {
+    modal.classList.add('is-power-pair');
+    const chart=modal.querySelector('[data-trend-chart]');
+    chart.classList.add('power-pair-chart');chart.classList.remove('is-separated');
+    const controls=modal.querySelector('[data-trend-periods]');
+    controls.innerHTML=periods.map(([id,label])=>`<button type="button" data-trend-period="${id}" class="${id===activePeriod?'is-active':''}">${label}</button>`).join('');
+    controls.querySelectorAll('button').forEach(b=>b.onclick=()=>{activePeriod=b.dataset.trendPeriod;renderChart();window.applyMarsLanguage?.();});
+    modal.querySelector('[data-trend-legend]').innerHTML='';
+    const series=groupedSeries();
+    const dates=[...new Set(series.flatMap(s=>s.points.map(p=>p.label)))].sort();
+    activePoints=dates.map(label=>({label,value:0}));focusIndex=Math.max(0,dates.length-1);
+    if (!dates.length) {
+      chart.innerHTML=series.map(s=>`<section class="power-pair-panel"><h4>${escapeHtml(s.label)}</h4><p class="group-empty">暂无可用历史</p></section>`).join('');
+      ['[data-trend-focus-value]','[data-trend-latest]','[data-trend-min]','[data-trend-max]'].forEach(selector=>setTrendStat(selector,series.map(s=>({label:s.label,value:'暂无数据'}))));
+      modal.querySelectorAll('[data-trend-focus-label],[data-trend-latest-label],[data-trend-min-label],[data-trend-max-label]').forEach(node=>node.textContent='');
+      modal.querySelector('[data-trend-foot]').textContent='暂无可用历史；后续记录将按实际统计时间积累。';return;
+    }
+    const compact=chart.clientWidth<500,W=compact?400:800,L=compact?86:105,R=20,T=24,B=30;
+    const stamp=label=>Date.parse(label+'T00:00:00Z'),first=stamp(dates[0]),last=stamp(dates.at(-1));
+    const x=label=>L+(W-L-R)*(last>first?(stamp(label)-first)/(last-first):.5);
+    chart.innerHTML=series.map((s,n)=>{
+      const bars=trendBars(s.key),H=series.length>2?170:bars?170:220,ph=H-T-B;
+      const values=s.points.map(p=>p.value);
+      if (!values.length) return `<section class="power-pair-panel"><h4>${escapeHtml(s.label)}</h4><p class="group-empty">暂无可用历史</p></section>`;
+      let low=bars?Math.min(0,...values):Math.min(...values),high=bars?Math.max(0,...values):Math.max(...values);
+      const pad=Math.max(high-low,Math.abs(high)*.02,Number.EPSILON)*.08;
+      if(!bars)low=Math.min(...values)>=0?Math.max(0,low-pad):low-pad;high+=pad;
+      const y=v=>T+ph*(1-(v-low)/(high-low||1));
+      const ticks=Array.from({length:3},(_,i)=>{const v=low+(high-low)*i/2,yy=y(v);return `<line class="axis-line" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="date-label" x="${L-10}" y="${yy+4}" text-anchor="end">${escapeHtml(formatTrendValue(v,s.key))}</text>`;}).join('');
+      const dailySlots=Math.max(1,(last-first)/86400000+1),bw=Math.max(1,Math.min(14,(W-L-R)/dailySlots*.6));
+      const marks=bars?s.points.map(p=>`<rect class="bar" x="${x(p.label)-bw/2}" y="${Math.min(y(p.value),y(0))}" width="${bw}" height="${Math.max(.6,Math.abs(y(0)-y(p.value)))}" rx="1"/>`).join(''):`<path class="line" d="${s.points.map((p,i)=>`${i&&stamp(p.label)-stamp(s.points[i-1].label)===86400000?'L':'M'}${x(p.label)},${y(p.value)}`).join(' ')}"/>`;
+      const isolated=!bars&&s.points.length===1?`<circle class="cursor-dot" cx="${x(s.points[0].label)}" cy="${y(s.points[0].value)}" r="3.5"/>`:'';
+      const dateLabels=[...new Set([dates[0],dates[Math.floor((dates.length-1)/2)],dates.at(-1)])].map((label,i)=>`<text class="date-label" x="${x(label)}" y="${H-8}" text-anchor="${label===dates[0]?'start':label===dates.at(-1)?'end':'middle'}">${escapeHtml(formatDateLabel(label))}</text>`).join('');
+      const cursors=dates.map((label,i)=>{const p=s.points.find(p=>p.label===label);return `<g data-cursor-index="${i}" style="opacity:${i===focusIndex?1:0}"><line class="cursor-line" x1="${x(label)}" x2="${x(label)}" y1="${T}" y2="${H-B}"/>${p?`<circle class="cursor-dot" cx="${x(label)}" cy="${y(p.value)}" r="3.5"/>`:''}</g>`;}).join('');
+      return `<section class="power-pair-panel"><h4><span>${escapeHtml(s.label)}</span><small>${escapeHtml(trendUnit(s.key))} · ${bars?'柱状图':'折线图'}</small></h4><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(s.label)}趋势图">${ticks}${marks}${isolated}${dateLabels}${cursors}</svg></section>`;
+    }).join('')+'<div class="trend-tooltip" hidden></div>';
+    const tip=chart.querySelector('.trend-tooltip');
+    const pick=e=>{
+      const svg=e.target.closest('svg');if(!svg)return;
+      const rect=svg.getBoundingClientRect(),target=(e.clientX-rect.left)/rect.width*W;
+      let i=0;dates.forEach((date,j)=>{if(Math.abs(x(date)-target)<Math.abs(x(dates[i])-target))i=j;});
+      setFocus(i);tip.hidden=false;
+      tip.textContent=dates[i]+' · '+series.map(s=>{const p=s.points.find(p=>p.label===dates[i]);return s.label+' '+(p?formatTrendValue(p.value,s.key):'暂无数据');}).join(' / ');
+    };
+    chart.onpointermove=pick;chart.onpointerdown=pick;chart.onpointerleave=()=>{tip.hidden=true;};
+    modal.querySelector('[data-trend-foot]').textContent=`${dates[0]} — ${dates.at(-1)} · 各图日期对齐，滑动查看同一天。各自独立刻度；缺失记录保留空缺。`;
+    setFocus(focusIndex);
+  };
+
   const renderChart = () => {
     if (!modal || !activeMetric) return;
-    activePoints = periodPoints();
-    focusIndex = Math.max(0, activePoints.length - 1);
+    if (isGroupedTrend()) { renderGroupedTrend(); return; }
+    modal.classList.remove('is-power-pair');
+    modal.querySelector('[data-trend-chart]').classList.remove('power-pair-chart');
+    const choices = Array.isArray(activeMetric.series) ? activeMetric.series.filter(s => s.points?.length) : [];
+    if (choices.length && !choices.some(s => s.key === selectedSeriesKey)) selectedSeriesKey = choices[0].key;
+    const chosen = choices.find(s => s.key === selectedSeriesKey);
+    const key = chosen?.key || activeMetric.key;
+    activePoints = slicePeriod(chosen?.points || activeMetric.points);
+    focusIndex = Math.max(0,activePoints.length-1);
     const chart = modal.querySelector('[data-trend-chart]');
+    chart.classList.remove('is-separated');
     const controls = modal.querySelector('[data-trend-periods]');
+    controls.innerHTML = periods.map(([id,label]) => `<button type="button" data-trend-period="${id}" class="${id===activePeriod?'is-active':''}">${label}</button>`).join('');
+    controls.querySelectorAll('button').forEach(button => button.onclick = () => {activePeriod=button.dataset.trendPeriod;renderChart();window.applyMarsLanguage?.();});
     const legend = modal.querySelector('[data-trend-legend]');
-    controls.innerHTML = periods.map(([key, label]) => (
-      `<button type="button" data-trend-period="${key}" class="${key === activePeriod ? 'is-active' : ''}">${label}</button>`
-    )).join('');
-    controls.querySelectorAll('[data-trend-period]').forEach((button) => {
-      button.addEventListener('click', () => {
-        activePeriod = button.dataset.trendPeriod || '30';
-        renderChart();
-        if (window.applyMarsLanguage) window.applyMarsLanguage();
-      });
-    });
-    const seriesList = metricSeries();
-    if (seriesList.length) {
-      const dates = new Map();
-      seriesList.forEach((series) => series.points.forEach((point) => { if (!dates.has(point.label)) dates.set(point.label, point); }));
-      activePoints = Array.from(dates.values()).sort((a, b) => a.label.localeCompare(b.label));
-      focusIndex = Math.max(0, activePoints.length - 1);
-    }
-    if (legend) {
-      legend.innerHTML = seriesList.length > 1
-        ? seriesList.map((series) => `<span><i></i>${escapeHtml(series.label)}</span>`).join('')
-        : '';
-    }
-
+    legend.innerHTML = choices.map(s => `<button type="button" data-series="${escapeHtml(s.key)}" class="${s.key===key?'is-active':''}">${escapeHtml(s.label)}</button>`).join('');
+    legend.querySelectorAll('button').forEach(button => button.onclick = () => {selectedSeriesKey=button.dataset.series;renderChart();window.applyMarsLanguage?.();});
     if (!activePoints.length) {
-      chart.innerHTML = '<div class="trend-empty">暂无可用历史</div>';
-      modal.querySelector('[data-trend-foot]').textContent = '暂无可用历史；后续记录将按实际统计时间积累。';
-      ['[data-trend-focus-value]','[data-trend-latest]','[data-trend-min]','[data-trend-max]'].forEach((selector) => setTrendStat(selector, '暂无数据'));
-      modal.querySelectorAll('[data-trend-focus-label],[data-trend-latest-label],[data-trend-min-label],[data-trend-max-label]').forEach((node) => { node.textContent = ''; });
-      return;
+      chart.innerHTML='<div class="trend-empty">暂无可用历史</div>';
+      ['[data-trend-focus-value]','[data-trend-latest]','[data-trend-min]','[data-trend-max]'].forEach(s=>setTrendStat(s,'暂无数据'));
+      modal.querySelectorAll('[data-trend-focus-label],[data-trend-latest-label],[data-trend-min-label],[data-trend-max-label]').forEach(n=>n.textContent='');
+      modal.querySelector('[data-trend-foot]').textContent='暂无可用历史；后续记录将按实际统计时间积累。';return;
     }
-
-    const width = 720;
-    const height = 300;
-    const pad = { left: 38, right: 20, top: 44, bottom: 50 };
-    const plotWidth = width - pad.left - pad.right;
-    const plotHeight = height - pad.top - pad.bottom;
-    const values = activePoints.map((point) => point.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const span = Math.max(max - min, Math.max(Math.abs(max), 1) * 0.08);
-    const xy = (point, index) => {
-      const x = pad.left + plotWidth * (index / Math.max(1, activePoints.length - 1));
-      const y = pad.top + plotHeight - ((point.value - min) / span) * plotHeight;
-      return [x, y];
+    const bars = trendBars(key);
+    const unit = trendUnit(key);
+    const compact=chart.clientWidth<500;
+    const W=compact?400:800,H=320,L=compact?78:100,R=20,T=28,B=40,pw=W-L-R,ph=H-T-B;
+    const values=activePoints.map(p=>p.value),min=Math.min(...values),max=Math.max(...values);
+    let low=bars?Math.min(0,min):min, high=bars?Math.max(0,max):max;
+    const padding=Math.max(high-low,Math.abs(high)*.02,Number.EPSILON)*.08;
+    if (!bars) low-=padding;
+    high+=padding;
+    if (high===low) high=low+1;
+    const y=v=>T+ph*(1-(v-low)/(high-low));
+    const stamp=p=>Date.parse(p.label+'T00:00:00Z');
+    const first=stamp(activePoints[0]),last=stamp(activePoints.at(-1));
+    const x=(p,i)=>L+pw*(Number.isFinite(first)&&last>first?(stamp(p)-first)/(last-first):i/Math.max(1,activePoints.length-1));
+    const coords=activePoints.map((p,i)=>[x(p,i),y(p.value)]);
+    const ticks=Array.from({length:5},(_,i)=>{const v=low+(high-low)*i/4,yy=y(v);return `<line class="axis-line" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="date-label" x="${L-12}" y="${yy+4}" text-anchor="end">${escapeHtml(formatTrendValue(v,key))}</text>`;}).join('');
+    const dates=[...new Set([0,Math.floor((activePoints.length-1)/2),activePoints.length-1])].map(i=>`<text class="date-label" x="${coords[i][0]}" y="${H-12}" text-anchor="${i===0?'start':i===activePoints.length-1?'end':'middle'}">${escapeHtml(formatDateLabel(activePoints[i].label))}</text>`).join('');
+    const path=coords.map(([xx,yy],i)=>`${i && stamp(activePoints[i])-stamp(activePoints[i-1])<=86400000?'L':'M'}${xx},${yy}`).join(' ');
+    const bw=Math.max(2,Math.min(18,pw/Math.max(activePoints.length,2)*.6));
+    const marks=bars?coords.map(([xx,yy],i)=>`<rect class="bar" x="${xx-bw/2}" y="${Math.min(yy,y(0))}" width="${bw}" height="${Math.max(1,Math.abs(y(0)-yy))}" rx="2"/>`).join(''):`<path class="line" d="${path}"/>`;
+    const boundary=Date.parse('2026-10-24T00:00:00Z');
+    const boundaryX=last>first?L+pw*(boundary-first)/(last-first):-1;
+    const divider=first<boundary&&last>=boundary?`<line x1="${boundaryX}" x2="${boundaryX}" y1="${T}" y2="${H-B}" stroke="#7e8da8" stroke-dasharray="3 5"/><text class="date-label" x="${boundaryX-5}" y="17" text-anchor="end">10/24 · 日结口径</text>`:'';
+    const cursors=coords.map(([xx,yy],i)=>`<g data-cursor-index="${i}" style="opacity:${i===focusIndex?1:0}"><line class="cursor-line" x1="${xx}" x2="${xx}" y1="${T}" y2="${H-B}"/><line class="cursor-line" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><circle class="cursor-dot" cx="${xx}" cy="${yy}" r="4"/></g>`).join('');
+    chart.innerHTML=`<div class="trend-axis-title">${escapeHtml(chosen?.label||activeMetric.label)} · ${unit}</div><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${escapeHtml(activeMetric.label)}趋势图">${ticks}${dates}${divider}${marks}${cursors}</svg><div class="trend-tooltip" hidden></div>`;
+    const tip=chart.querySelector('.trend-tooltip');
+    const pick=event=>{
+      const rect=chart.querySelector('svg').getBoundingClientRect();
+      const target=(event.clientX-rect.left)/rect.width*W;
+      let nearest=0;coords.forEach((c,i)=>{if(Math.abs(c[0]-target)<Math.abs(coords[nearest][0]-target))nearest=i;});
+      setFocus(nearest);tip.hidden=false;
+      tip.textContent=activePoints[nearest].label+'  ·  '+formatTrendValue(activePoints[nearest].value,key)+' '+unit;
     };
-    const coords = activePoints.map(xy);
-    const linePath = coords.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-    const areaPath = `${linePath} L ${coords[coords.length - 1][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} L ${coords[0][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} Z`;
-    const seriesMarkup = seriesList.length > 1 ? seriesList.map((series, seriesIndex) => {
-      const seriesValues = series.points.map((point) => point.value);
-      const seriesMin = Math.min(...seriesValues);
-      const seriesMax = Math.max(...seriesValues);
-      const seriesSpan = Math.max(seriesMax - seriesMin, Math.max(Math.abs(seriesMax), 1) * 0.08);
-      const seriesCoords = series.points.map((point, index) => {
-        const x = pad.left + plotWidth * (index / Math.max(1, series.points.length - 1));
-        const y = pad.top + plotHeight - ((point.value - seriesMin) / seriesSpan) * plotHeight;
-        return [x, y];
-      });
-      const path = seriesCoords.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)}`).join(' ');
-      const area = `${path} L ${seriesCoords[seriesCoords.length - 1][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} L ${seriesCoords[0][0].toFixed(2)},${(height - pad.bottom).toFixed(2)} Z`;
-      const className = seriesIndex === 1 ? 'series-secondary' : seriesIndex === 2 ? 'series-tertiary' : '';
-      return `<path class="area ${className}" d="${area}"></path><path class="line ${className}" d="${path}"></path>`;
-    }).join('') : '';
-    const barWidth = Math.max(2, Math.min(20, plotWidth / Math.max(1, activePoints.length) * 0.58));
-    const bars = coords.map(([x, y]) => {
-      const base = height - pad.bottom;
-      return `<rect class="bar" x="${(x - barWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${Math.max(1, base - y).toFixed(2)}" rx="2"></rect>`;
-    }).join('');
-    const labelIndexes = chartLabelIndexes(activePoints.length);
-    const topLabels = coords.map(([x, y], index) => {
-      if (!labelIndexes.has(index)) return '';
-      const anchor = index === 0 ? 'start' : index === activePoints.length - 1 ? 'end' : 'middle';
-      return `<text class="value-label" x="${x.toFixed(2)}" y="${Math.max(17, y - 10).toFixed(2)}" text-anchor="${anchor}">${escapeHtml(formatTrendValue(activePoints[index].value))}</text>`;
-    }).join('');
-    const dateLabels = coords.map(([x], index) => {
-      if (!labelIndexes.has(index)) return '';
-      const anchor = index === 0 ? 'start' : index === activePoints.length - 1 ? 'end' : 'middle';
-      return `<text class="date-label" x="${x.toFixed(2)}" y="${(height - 14).toFixed(2)}" text-anchor="${anchor}">${escapeHtml(formatDateLabel(activePoints[index].label))}</text>`;
-    }).join('');
-    const cursors = coords.map(([x, y], index) => (
-      `<g data-cursor-index="${index}" style="opacity:${index === focusIndex ? 1 : 0}">
-        <line class="cursor-line" x1="${x.toFixed(2)}" y1="${pad.top}" x2="${x.toFixed(2)}" y2="${height - pad.bottom}"></line>
-        <circle class="cursor-dot" cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="5"></circle>
-      </g>`
-    )).join('');
-    chart.innerHTML = `
-      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(activeMetric.label)}趋势图">
-        <line class="axis-line" x1="${pad.left}" y1="${height - pad.bottom}" x2="${width - pad.right}" y2="${height - pad.bottom}"></line>
-        ${seriesList.length > 1 ? '' : bars}
-        ${seriesList.length > 1 ? seriesMarkup : `<path class="area" d="${areaPath}"></path><path class="line" d="${linePath}"></path>`}
-        ${topLabels}
-        ${dateLabels}
-        ${cursors}
-      </svg>
-    `;
-    if (seriesList.length > 1) {
-      chart.classList.add('is-separated');
-      chart.innerHTML = seriesList.map((series, seriesIndex) => {
-        const values = series.points.map((point) => point.value);
-        const low = Math.min(...values);
-        const high = Math.max(...values);
-        const span = Math.max(high - low, Math.max(Math.abs(high), 1) * 0.08);
-        const h = 180, top = 30, bottom = 28, left = 110, right = 18;
-        const points = series.points.map((point) => {
-          const dateIndex = activePoints.findIndex((entry) => entry.label === point.label);
-          return { x: left + (720-left-right) * dateIndex / Math.max(1,activePoints.length-1), y: top + (h-top-bottom) * (1 - (point.value-low)/span), dateIndex };
-        });
-        const path = points.map((point,index) => `${index && point.dateIndex === points[index-1].dateIndex + 1 ? 'L' : 'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ');
-        const cursors = points.map((point) => `<g data-cursor-index="${point.dateIndex}" style="opacity:${point.dateIndex === focusIndex ? 1 : 0}"><line class="cursor-line" x1="${point.x}" x2="${point.x}" y1="${top}" y2="${h-bottom}"></line><circle class="cursor-dot" cx="${point.x}" cy="${point.y}" r="4"></circle></g>`).join('');
-        return `<section class="trend-series-panel"><h4>${escapeHtml(series.label)}</h4><svg viewBox="0 0 720 ${h}" role="img" aria-label="${escapeHtml(series.label)}趋势图"><text class="date-label" x="8" y="${top+10}">${escapeHtml(formatTrendValue(high,series.key))}</text><text class="date-label" x="8" y="${h-bottom}">${escapeHtml(formatTrendValue(low,series.key))}</text><line class="axis-line" x1="${left}" x2="702" y1="${h-bottom}" y2="${h-bottom}"></line><path class="line ${seriesIndex % 2 ? 'series-secondary' : ''}" d="${path}"></path>${cursors}<text class="date-label" x="${left}" y="${h-6}">${escapeHtml(formatDateLabel(activePoints[0].label))}</text><text class="date-label" x="702" y="${h-6}" text-anchor="end">${escapeHtml(formatDateLabel(activePoints[activePoints.length-1].label))}</text></svg></section>`;
-      }).join('');
-    } else chart.classList.remove('is-separated');
-    const pickIndex = (event) => {
-      const rect = chart.getBoundingClientRect();
-      const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / Math.max(1, rect.width)));
-      setFocus(Math.round(pct * (activePoints.length - 1)));
-    };
-    chart.onpointermove = pickIndex;
-    chart.onpointerdown = (event) => {
-      chart.setPointerCapture?.(event.pointerId);
-      pickIndex(event);
-    };
-    const foot = seriesList.length > 1 ? '各指标分图展示，纵轴分别标注数值；拖动可查看同一日期，缺失记录不作补值。' : activePoints.length < 7
-      ? `采样中：当前只有 ${activePoints.length} 个采样点，等待更多刷新形成完整趋势。`
-      : `每根柱子对应一个自然日。当前周期共 ${activePoints.length} 天。`;
-    modal.querySelector('[data-trend-foot]').textContent = foot;
+    chart.onpointermove=pick;chart.onpointerdown=pick;
+    chart.onpointerleave=()=>{tip.hidden=true;};
+    const a=values[0],z=values.at(-1),change=z-a;
+    const delta=a?`${change>=0?'+':''}${(change/Math.abs(a)*100).toFixed(2)}%`:'—';
+    modal.querySelector('[data-trend-foot]').textContent=`${activePoints[0].label} — ${activePoints.at(-1).label} · ${activePoints.length} 条记录 · 区间变化 ${delta}。缺失日期保留空缺。`;
     setFocus(focusIndex);
   };
 
@@ -5969,7 +6024,8 @@ METRIC_TREND_JS = r"""
     const node = ensureModal();
     node.querySelector('[data-trend-title]').textContent = activeMetric.label || '数据趋势';
     node.querySelector('[data-trend-note]').textContent = activeMetric.note || '';
-    activePeriod = '30';
+    activePeriod = '7';
+    selectedSeriesKey = activeMetric.series?.find((series) => series.points?.length)?.key || activeMetric.key;
     renderChart();
     node.hidden = false;
     document.body.style.overflow = 'hidden';
@@ -6001,10 +6057,14 @@ LANGUAGE_TOGGLE_JS = r"""
     "请输入有效算力": "Enter valid power",
 
     "本期倒计时已结束 · 等待官方公布下一期": "This countdown has ended; awaiting the next official cycle",
-    "全网总算力与每日新增算力分图查看。": "Separate charts for total power and daily power growth.",
-    "流通量、累计销毁、日销毁币量分图查看。": "Separate charts for circulation, cumulative burns and daily burns.",
-    "每日产币量、单币日需算力、1亿算力产出分图查看。": "Separate charts for daily emission and estimated power output.",
-    "每日交易币量与每日交易笔数分图查看。": "Separate charts for daily transaction volume and count.",
+    "全网总算力与每日新增算力按日期联动展示。": "Separate charts for total power and daily power growth.",
+    "流通量、累计销毁、日销毁币量按日期联动展示。": "Separate charts for circulation, cumulative burns and daily burns.",
+    "每日产币量、单币日需算力、1亿算力产出按日期联动展示。": "Separate charts for daily emission and estimated power output.",
+    "每日交易币量与每日交易笔数按日期联动展示。": "Separate charts for daily transaction volume and count.",
+    "旧站历史记录按记录日期展示，采样时间不固定；新记录按北京时间08:00日结，跨期变化需留意口径差异。": "Older site records use their recorded dates, with varying sample times. New records close at 08:00 Beijing time; allow for methodology differences across the transition.",
+    "旧记录为当时模型的采样估算；新记录按08:00日结估算，均不代表实测产量或收益。": "Older records are sampled estimates from the model in use at the time. New estimates use the 08:00 daily close; neither represents measured output or returns.",
+    "已补入旧站完整统计窗口的历史记录，按北京时间08:00截止日期展示。": "Historical records from complete statistics windows on the previous site have been restored, labelled by their 08:00 Beijing-time closing dates.",
+    "旧记录按当时实际区块统计区间展示；新记录按北京时间08:00日结，跨期变化需留意口径差异。": "Older records use the actual block ranges counted at the time. New records close at 08:00 Beijing time; allow for methodology differences across the transition.",
 
     "本期机制系数": "Cycle Reference Factor",
     "依据本期已确认公开规则；后续期次以官方公告为准。": "Reference rules for the confirmed cycle. Future cycles follow official announcements.",
@@ -6023,6 +6083,8 @@ LANGUAGE_TOGGLE_JS = r"""
     '追踪链上算力分布、头部地址变化与北京时间统计日内新增趋势。': 'Track on-chain power distribution, top address changes, and Beijing-day growth trends.',
     '算力排行': 'Power Rank',
     '核心数据': 'Core Data',
+    '周期': 'Growth',
+    '按 7 天与 30 天对照阶段变化。': 'Compare changes over 7-day and 30-day periods.',
     '周期增长': 'Growth',
     '方程系数': 'Equation Factor',
     '数据说明': 'Data Notes',
@@ -6113,7 +6175,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '算力 > 0': 'Power > 0',
     '候选地址中当前算力大于 0 的钱包地址。': 'Wallet addresses whose current power is greater than 0 among candidates.',
     '当前算力大于 0': 'Current power > 0',
-    '总钱包、新增地址、活跃地址、正算力地址分图查看。': 'Separate charts for total wallets, new addresses, active addresses, and positive-power addresses.',
+    '总钱包、新增地址、活跃地址、正算力地址按日期联动展示。': 'Separate charts for total wallets, new addresses, active addresses, and positive-power addresses.',
     '05 / 数据说明': '05 / Data Notes',
     '数据来源与准确性说明': 'Data Sources and Accuracy',
     '说明公开接口、RPC 节点和合约日志可能带来的延迟、遗漏与统计偏差。': 'Explains delays, omissions, and statistical bias from public APIs, RPC nodes, and contract logs.',
@@ -6275,7 +6337,21 @@ LANGUAGE_TOGGLE_JS = r"""
     return '';
   };
 
+  const trendHistoryNotes = [
+    '旧站历史记录按记录日期展示，采样时间不固定；新记录按北京时间08:00日结，跨期变化需留意口径差异。',
+    '旧记录为当时模型的采样估算；新记录按08:00日结估算，均不代表实测产量或收益。',
+    '已补入旧站完整统计窗口的历史记录，按北京时间08:00截止日期展示。',
+    '旧记录按当时实际区块统计区间展示；新记录按北京时间08:00日结，跨期变化需留意口径差异。',
+  ];
+
   const translateDynamic = (text) => {
+    for (const note of trendHistoryNotes) {
+      if (text === note) return zhToEn[note];
+      if (text.endsWith(` ${note}`)) {
+        const lead = text.slice(0, -note.length).trim();
+        return `${translateDynamic(lead) || zhToEn[lead] || lead} ${zhToEn[note]}`;
+      }
+    }
     const calculation = text.match(/^输入算力 (.+)，按当前比例估算。$/);
     if (calculation) return `Input power ${translateChineseNumericUnit(calculation[1]) || calculation[1]}; estimated at the current ratio.`;
     const windowLabel = text.match(/^(\d{4}-\d{2}-\d{2} [\d:]+) 至 (\d{4}-\d{2}-\d{2} [\d:]+)$/);
@@ -6291,8 +6367,8 @@ LANGUAGE_TOGGLE_JS = r"""
     if (match) return `Sampling: only ${match[1]} samples are available. More refreshes will build a complete trend.`;
     match = text.match(/^拖动图表查看具体日期。当前周期共\s*(\d+)\s*个采样点。$/);
     if (match) return `Drag across the chart to inspect each date. This period has ${match[1]} samples.`;
-    match = text.match(/^每根柱子对应一个自然日。当前周期共\s*(\d+)\s*天。$/);
-    if (match) return `Each bar represents one calendar day. This period has ${match[1]} days.`;
+    match = text.match(/^柱子按实际采样或日结记录展示。当前周期共\s*(\d+)\s*条记录。$/);
+    if (match) return `Bars show actual samples or daily closing records. This period has ${match[1]} records.`;
     match = text.match(/^覆盖率\s+(.+)$/);
     if (match) return `Coverage ${match[1]}`;
     match = text.match(/^订单已生成：支付\s*(.+?)\s*MARS 后提交交易哈希。$/);
@@ -6391,9 +6467,9 @@ LANGUAGE_TOGGLE_JS = r"""
 """
 
 
-def _build_mobile_metric_cards(items: list[tuple]) -> str:
+def _build_mobile_metric_cards(items: list[tuple], *, start_index: int = 0) -> str:
     cards: list[str] = []
-    for index, item in enumerate(items):
+    for index, item in enumerate(items, start=start_index):
         if len(item) >= 5:
             metric_key, label, value, note, trend_points = item[:5]
             extra = item[5] if len(item) > 5 and isinstance(item[5], dict) else {}
@@ -6437,6 +6513,8 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
                 f"<strong>{escape(secondary_value)}</strong>"
                 f"{note_html}</div>"
             )
+        if extra.get("compact_period"):
+            value_html = ""
         if live_price:
             highest = str(extra.get("highest_price") or "待刷新")
             trigger = str(extra.get("oracle_trigger_price") or "待刷新")
@@ -6461,7 +6539,7 @@ def _build_mobile_metric_cards(items: list[tuple]) -> str:
                 secondary_html,
                 ' data-live-price-note' if live_price else "",
                 escape(note),
-                _build_sparkline(_clean_trend_values(trend_values)),
+                _build_group_card_trends(extra) if len(extra.get("series", [])) > 1 else _build_sparkline(_clean_trend_values(trend_values)),
             )
         )
     return "\n".join(cards)
@@ -6583,7 +6661,7 @@ def build_mobile_html(payload: dict) -> str:
         "secondary_value": _fmt_signed_power(new_power),
         "secondary_note": "北京时间 08:00 统计日新增",
         "trend_label": "算力趋势",
-        "trend_note": "全网总算力与每日新增算力分图查看。",
+        "trend_note": "全网总算力与每日新增算力按日期联动展示。",
         "series": [
             {"key": "network_total_power", "label": "全网总算力", "points": network_total_power_points},
             {"key": "daily_new_power", "label": "每日新增算力", "points": daily_new_power_points},
@@ -6596,7 +6674,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "正算力地址", "value": _fmt_count_unit(positive_power_count), "note": "当前算力大于 0"},
         ],
         "trend_label": "地址趋势",
-        "trend_note": "总钱包、新增地址、活跃地址、正算力地址分图查看。",
+        "trend_note": "总钱包、新增地址、活跃地址、正算力地址按日期联动展示。",
         "series": [
             {"key": "total_wallets", "label": "总钱包数量", "points": total_wallet_points},
             {"key": "daily_new_addresses", "label": "新增地址", "points": daily_new_address_points},
@@ -6610,7 +6688,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "日销毁币量", "value": daily_burned, "note": "08:00 统计日口径"},
         ],
         "trend_label": "币量趋势",
-        "trend_note": "流通量、累计销毁、日销毁币量分图查看。",
+        "trend_note": "流通量、累计销毁、日销毁币量按日期联动展示。",
         "series": [
             {"key": "network_total_circulation", "label": "全网流通量", "points": circulation_points},
             {"key": "total_burned", "label": "累计销毁", "points": total_burned_points},
@@ -6623,7 +6701,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "1亿算力产出", "value": one_yi_power_output, "note": "1亿算力 ÷ 单币日需算力"},
         ],
         "trend_label": "产出趋势",
-        "trend_note": "每日产币量、单币日需算力、1亿算力产出分图查看。",
+        "trend_note": "每日产币量、单币日需算力、1亿算力产出按日期联动展示。",
         "series": [
             {"key": "daily_emission", "label": "每日产币量", "points": daily_emission_points},
             {"key": "power_per_coin", "label": "单币日需算力", "points": power_per_coin_points},
@@ -6635,7 +6713,7 @@ def build_mobile_html(payload: dict) -> str:
             {"label": "每日交易笔数", "value": _fmt_count_unit(daily_transaction_count, "笔"), "note": "08:00 统计窗口内交易数量"},
         ],
         "trend_label": "交易趋势",
-        "trend_note": "每日交易币量与每日交易笔数分图查看。",
+        "trend_note": "每日交易币量与每日交易笔数按日期联动展示。",
         "series": [
             {"key": "daily_transaction_volume", "label": "每日交易币量", "points": daily_transaction_volume_points},
             {"key": "daily_transaction_count", "label": "每日交易笔数", "points": daily_transaction_count_points},
@@ -6663,15 +6741,40 @@ def build_mobile_html(payload: dict) -> str:
         ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", daily_emission_points, merged_output_extra),
         ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
         ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", daily_transaction_volume_points, merged_transaction_extra),
-        ("period_7d_new_power", "7 天新增算力", _fmt_power(period_7d_new_power), "最近 7 个完整统计日", _trend_points(meta, "period_7d_new_power", [period_7d_new_power])),
-        ("period_7d_new_addresses", "7 天新增地址", period_7d_new_address_display, "官方地址快照差额", _trend_points(meta, "period_7d_new_addresses", [period_7d_new_address_count])),
-        ("period_7d_burned", "7 天销毁", period_7d_burned, "官方累计销毁差额", _trend_points(meta, "period_7d_burned", [meta.get("period_7d_burned_tokens")])),
-        ("period_30d_new_power", "30 天新增算力", _fmt_power(period_30d_new_power), "最近 30 个完整统计日", _trend_points(meta, "period_30d_new_power", [period_30d_new_power])),
-        ("period_30d_new_addresses", "30 天新增地址", period_30d_new_address_display, "官方地址快照差额", _trend_points(meta, "period_30d_new_addresses", [period_30d_new_address_count])),
-        ("period_30d_burned", "30 天销毁", period_30d_burned, "官方累计销毁差额", _trend_points(meta, "period_30d_burned", [meta.get("period_30d_burned_tokens")])),
+        ("period_7d_new_power", "7 天增长", _fmt_power(period_7d_new_power), "最近 7 个统计日 · 点开对照趋势", _trend_points(meta, "period_7d_new_power"), {
+            "compact_period": True,
+            "secondary_items": [
+                {"label": "新增算力", "value": _fmt_power(period_7d_new_power)},
+                {"label": "7 天新增地址", "value": period_7d_new_address_display},
+                {"label": "销毁数量", "value": period_7d_burned},
+            ],
+            "trend_label": "7 天增长趋势",
+            "trend_note": "新增算力、新增地址与销毁数量按日期联动展示。缺失历史不补值。",
+            "series": [
+                {"key": "period_7d_new_power", "label": "新增算力", "points": _trend_points(meta, "period_7d_new_power")},
+                {"key": "period_7d_new_addresses", "label": "新增地址", "points": _trend_points(meta, "period_7d_new_addresses")},
+                {"key": "period_7d_burned", "label": "销毁数量", "points": _trend_points(meta, "period_7d_burned")},
+            ],
+        }),
+        ("period_30d_new_power", "30 天增长", _fmt_power(period_30d_new_power), "最近 30 个统计日 · 点开对照趋势", _trend_points(meta, "period_30d_new_power"), {
+            "compact_period": True,
+            "secondary_items": [
+                {"label": "新增算力", "value": _fmt_power(period_30d_new_power)},
+                {"label": "30 天新增地址", "value": period_30d_new_address_display},
+                {"label": "销毁数量", "value": period_30d_burned},
+            ],
+            "trend_label": "30 天增长趋势",
+            "trend_note": "新增算力、新增地址与销毁数量按日期联动展示。缺失历史不补值。",
+            "series": [
+                {"key": "period_30d_new_power", "label": "新增算力", "points": _trend_points(meta, "period_30d_new_power")},
+                {"key": "period_30d_new_addresses", "label": "新增地址", "points": _trend_points(meta, "period_30d_new_addresses")},
+                {"key": "period_30d_burned", "label": "销毁数量", "points": _trend_points(meta, "period_30d_burned")},
+            ],
+        }),
     ]
-    hero_metric_cards = _build_mobile_metric_cards(mobile_metric_items[1:8])
-    key_cards = _build_mobile_metric_cards(mobile_metric_items)
+    hero_metric_cards = ""  # Metrics appear once, in the core section.
+    key_cards = _build_mobile_metric_cards(mobile_metric_items[:6])
+    growth_cards = _build_mobile_metric_cards(mobile_metric_items[6:], start_index=6)
     equation_cards = _build_mobile_flow_cards(
         [
             ("本期机制系数", "算力倍增", "20x", "依据本期已确认公开规则；后续期次以官方公告为准。"),
@@ -6711,29 +6814,11 @@ def build_mobile_html(payload: dict) -> str:
             ("统计周期", statistics_window_label),
             ("采集频率", "每日 08:00 官方快照"),
             ("抓取时间", "北京时间 08:00"),
-            ("全网流通量", circulation),
-            ("当前价格", current_price),
-            ("最高价格", highest_price),
-            ("预言机触发价", oracle_trigger_price),
-            ("累计销毁", total_burned),
-            ("日销毁币量", daily_burned),
-            ("每日交易币量", daily_transaction_volume_display),
-            ("每日交易笔数", _fmt_count_unit(daily_transaction_count, "笔")),
-            ("7 天新增算力", _fmt_power(period_7d_new_power)),
-            ("7 天新增地址", period_7d_new_address_display),
-            ("7 天销毁", period_7d_burned),
-            ("30 天新增算力", _fmt_power(period_30d_new_power)),
-            ("30 天新增地址", period_30d_new_address_display),
-            ("30 天销毁", period_30d_burned),
-            ("总产量", total_supply),
-            ("矿工日产币量", daily_miner),
-            ("节点日产币量", daily_node),
-            ("1亿算力产出", one_yi_power_output),
         ]
     ).replace('class="line"', 'class="m-meta-row"')
     warning_html = _build_warning(meta, _fmt_percent(meta.get("coverage_target", 0.8))).replace('class="alert"', 'class="m-note"')
     embedded_payload = json.dumps(payload, ensure_ascii=False).replace("</script>", "<\\/script>")
-    metric_trend_payload = json.dumps(_build_metric_trend_payload(mobile_metric_items), ensure_ascii=False).replace("</script>", "<\\/script>")
+    metric_trend_payload = json.dumps(_build_metric_trend_payload(mobile_metric_items, meta), ensure_ascii=False).replace("</script>", "<\\/script>")
 
     return f"""<!doctype html>
 <html lang="zh-CN">
@@ -6762,6 +6847,7 @@ def build_mobile_html(payload: dict) -> str:
     <nav class="m-nav">
       <a href="#rank">排行</a>
       <a href="#core">核心</a>
+      <a href="#growth">周期</a>
       <a href="#equation">方程</a>
       <a href="#risk">说明</a>
     </nav>
@@ -6773,9 +6859,6 @@ def build_mobile_html(payload: dict) -> str:
       <p class="m-lead">下方先看前 100 名算力地址，再查看覆盖率、活跃地址和新增数据。</p>
       <div class="m-hero-grid">
         <article class="m-primary"><span>扫描覆盖率</span><b>{escape(coverage_label)}</b></article>
-        <div class="m-card-grid">
-          {hero_metric_cards}
-        </div>
       </div>
       {warning_html}
     </section>
@@ -6789,14 +6872,18 @@ def build_mobile_html(payload: dict) -> str:
       <div class="m-section-head"><div><span class="m-kicker">02 / CORE</span><h2>核心数据</h2></div><p>先看结果，再看口径。</p></div>
       <div class="m-card-grid">{key_cards}</div>
     </section>
+    <section id="growth" class="m-section">
+      <div class="m-section-head"><div><span class="m-kicker">03 / GROWTH</span><h2>周期增长</h2></div><p>按 7 天与 30 天对照阶段变化。</p></div>
+      <div class="m-card-grid">{growth_cards}</div>
+    </section>
     <section id="equation" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">03 / EQUATION</span><h2>方程膨胀系数</h2></div><p>机制参数展示。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">04 / EQUATION</span><h2>方程膨胀系数</h2></div><p>机制参数展示。</p></div>
       <div class="m-list">{equation_cards}</div>
       {burn_calculator}
       <p class="m-note">本区块属于机制口径展示，不等同于当前实时收益承诺。</p>
     </section>
     <section id="risk" class="m-section">
-      <div class="m-section-head"><div><span class="m-kicker">04 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
+      <div class="m-section-head"><div><span class="m-kicker">05 / NOTE</span><h2>数据说明</h2></div><p>公开数据存在延迟。</p></div>
       <div class="m-meta">{meta_rows}</div>
       <p class="m-note">榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成，是 best effort 结果。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台存在差异。</p>
     </section>
