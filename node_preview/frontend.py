@@ -25,6 +25,8 @@ from node_preview.christmas import christmas_forecast
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
+OPENING_SOURCES = tuple(Path(__file__).with_name(name) for name in
+                        ("intro_orbit_resonance.js", "rank_opening.js"))
 
 
 def _presentation_function(function, names: tuple[str, ...]):
@@ -711,7 +713,8 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     """Write deployment artifacts once; leave latest.json publication to caller."""
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"))
+    sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
+               *OPENING_SOURCES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"
@@ -723,10 +726,14 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
             return hashes
     public = public_payload(payload)
     (root / "m").mkdir(exist_ok=True)
+    # Keep the approved opening in the same content-addressed runtime. It needs
+    # no additional public objects, permissions, requests or data dependencies.
+    opening = "\n".join(path.read_text(encoding="utf-8") for path in OPENING_SOURCES) if production else ""
+    runtime = (opening + "\n" if opening else "") + RUNTIME.read_text(encoding="utf-8")
     artifacts = {
         "index.html": _adapt_html(dashboard.build_html(public), mobile=False, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),
         "m/index.html": _adapt_html(dashboard.build_mobile_html(public), mobile=True, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),
-        "live_preview.js": RUNTIME.read_text(encoding="utf-8"),
+        "live_preview.js": runtime,
     }
     result = {}
     for name, content in artifacts.items():
