@@ -7,6 +7,9 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from traffic_stats import safe_summary as traffic_summary
 
 ROOT = Path.home() / "marschain-node" / "dashboard"
 EXPORT = Path.home() / "marschain-node" / "full-power-export"
@@ -96,6 +99,15 @@ def collector_status():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        if urlsplit(self.path).path == "/api/traffic":
+            try:
+                self.send_json(200, traffic_summary())
+            except Exception:
+                # Provider responses and authentication details stay out of HTTP
+                # responses and the node dashboard's status text.
+                self.send_json(503, {"ok": False, "state": "unavailable",
+                                    "message": "访问统计暂时不可用，请稍后重试。"})
+            return
         if self.path == "/api/collector":
             try:
                 self.send_json(200, collector_status())

@@ -28,3 +28,34 @@ The systemd service and timer templates are in `systemd/`.
 The dashboard listens only on loopback. From another computer, use an SSH
 local port forward to view it without exposing the dashboard or node RPC to the
 LAN.
+
+## Private website traffic panel
+
+The node dashboard includes today's and yesterday's pageviews (PV), plus the
+last seven completed calendar days. Dates use Beijing time. It reads existing
+Baidu Tongji reports; repeated pageviews count separately from visitors.
+
+`dashboard/traffic_stats.py` fetches reports in a background thread every ten
+minutes. `/api/traffic` returns only cached counts and safe status messages, so
+a slow reporting provider cannot block node monitoring. The browser reads the
+cache every minute. Missing data stays blank; zero is displayed only when the
+provider returns zero. Dated cached values remain visible during an outage.
+
+Report access must be configured separately from the public tracking script.
+The tracking hash is not a report credential or the numeric report site ID.
+Store authorized credentials only on the Ubuntu host in the current user's
+`~/.config/marschain-dashboard/analytics.json`, owned by that user with mode
+`0600`, inside a private directory. Never commit this file or copy it to the
+public website. The backend does not create an empty credential file.
+
+Personal OAuth configuration fields are `mode: "oauth"`, `client_id`,
+`client_secret`, and `refresh_token`; `access_token` and Unix `expires_at` are
+optional. Successful token renewal is saved atomically to the same private
+file. Commercial report accounts can use `mode: "commercial"`, `user_name`,
+and `access_token`, with manual renewal when the provider requires it. Optional
+`site_id` is a positive numeric report ID. The backend verifies the authorized
+site list and accepts only `marschainrank.com` or `www.marschainrank.com`.
+
+Private cache location: `~/.cache/marschain-dashboard/analytics-cache.json`.
+No analytics secrets are served to the browser. Keep this panel on the existing
+loopback-only dashboard; it is not part of the public ranking site.
