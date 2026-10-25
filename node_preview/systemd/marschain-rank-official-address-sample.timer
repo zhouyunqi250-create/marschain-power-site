@@ -1,0 +1,16 @@
+[Unit]
+Description=MarsChain official address samples near Beijing 08:00
+
+[Timer]
+OnCalendar=*-*-* 07:59:00 Asia/Shanghai
+OnCalendar=*-*-* 07:59:30 Asia/Shanghai
+OnCalendar=*-*-* 08:00:00 Asia/Shanghai
+OnCalendar=*-*-* 08:00:30 Asia/Shanghai
+OnCalendar=*-*-* 08:01:00 Asia/Shanghai
+AccuracySec=1s
+RandomizedDelaySec=0
+Persistent=false
+Unit=marschain-rank-official-address-sample.service
+
+[Install]
+WantedBy=timers.target

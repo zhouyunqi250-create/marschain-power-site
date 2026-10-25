@@ -1,0 +1,13 @@
+[Unit]
+Description=MarsChain official address cutoff sample independent of the collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.official_address_sample --root %h/marschain-rank-preview
+TimeoutStartSec=25
+Nice=5
+NoNewPrivileges=true
+UMask=0077

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import copy
+import hashlib
 import http.client
 import json
 import math
@@ -507,17 +508,151 @@ class MetricStore:
                       "offset_seconds": received_at - cutoff,
                       "tolerance_seconds": self.boundary_sample_tolerance_seconds}
         with self._db() as conn:
-            prior = conn.execute("SELECT received_at FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
-            # Prefer the closest real sample. Ties keep the earlier receipt.
-            if prior and (abs(prior[0] - cutoff), prior[0]) <= (abs(received_at - cutoff), received_at):
-                return
+            # Both the minute publisher and the independent cutoff sampler use
+            # this table. Compare and replace under the same write transaction.
+            conn.execute("BEGIN IMMEDIATE")
+            prior = conn.execute("SELECT received_at,payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+            if prior:
+                prior_values, prior_source = self._decode_cutoff_sample(prior)
+                complete = self._valid_official_sample(values, provenance, cutoff, received_at) if kind == "official_stats" else True
+                prior_complete = self._valid_official_sample(prior_values, prior_source, cutoff, prior["received_at"]) if kind == "official_stats" else True
+                # A closer response without totalAddresses must never erase a
+                # usable census sample. A complete recovery may replace such an
+                # incomplete row even when its receipt is slightly farther away.
+                if prior_complete and not complete:
+                    return
+                if prior_complete == complete and (abs(prior["received_at"] - cutoff), prior["received_at"]) <= (abs(received_at - cutoff), received_at):
+                    return
             conn.execute("INSERT OR REPLACE INTO preview_metric_cutoff_samples VALUES (?,?,?,?,?)",
                          (kind, cutoff, received_at, json.dumps(values), json.dumps(provenance)))
 
+    @staticmethod
+    def _decode_cutoff_sample(row) -> tuple[dict, dict]:
+        if row is not None:
+            try:
+                values, provenance = json.loads(row["payload"]), json.loads(row["provenance"])
+                if isinstance(values, dict) and isinstance(provenance, dict):
+                    return values, provenance
+            except (ValueError, TypeError):
+                pass
+        return {}, {}
+
+    def _valid_official_sample(self, values: dict, provenance: dict, cutoff: int, received_at: Any) -> bool:
+        total, stamp = _integer(values.get("total_wallets")), _integer(received_at)
+        return (type(cutoff) is int and cutoff >= 0 and cutoff % 86400 == 0
+                and not isinstance(values.get("total_wallets"), bool) and total is not None and total >= 0
+                and stamp is not None and not isinstance(received_at, bool)
+                and abs(stamp - cutoff) <= self.boundary_sample_tolerance_seconds
+                and provenance.get("source") == EXPLORER_API + "/stats"
+                and provenance.get("received_at") == stamp and provenance.get("cutoff_timestamp") == cutoff
+                and provenance.get("timing_status") == "sampled_near_cutoff"
+                and provenance.get("exact_cutoff") is False)
+
+    def _recover_official_cutoff_archive(self, cutoff: int) -> tuple[dict, dict]:
+        """Recover one original HTTP sample, never a build time or old 08:10 row.
+
+        Only the small frozen public payload is read; no address file, chain
+        replay, or mutable archive is touched. Recovery receipts remain private.
+        """
+        if cutoff < 0 or cutoff % 86400:
+            return {}, {}
+        now = int(time.time())
+        attempts = self._get("official_sample_archive_recovery", {})
+        prior = attempts.get(str(cutoff), {}) if isinstance(attempts, dict) else {}
+        if not isinstance(prior, dict):
+            prior = {}
+        if prior.get("status") != "recovered" and now - (_integer(prior.get("checked_at")) or 0) < 300:
+            return {}, {}
+        if not isinstance(attempts, dict):
+            attempts = {}
+        name = time.strftime("%Y%m%d-0800", time.gmtime(cutoff))
+        archives = self.observation_database.parent.parent / "archives"
+        archive = archives / name
+        manifest_path, public_path = archive / "manifest.json", archive / "public.json"
+        receipt = {"checked_at": now, "cutoff_timestamp": cutoff, "archive": name, "status": "unavailable"}
+        values, provenance = {}, {}
+        try:
+            if (archives.is_symlink() or archive.is_symlink() or not archive.is_dir()
+                    or manifest_path.is_symlink() or public_path.is_symlink()):
+                raise ValueError("archive path is missing or uses a symlink")
+            if not 0 < manifest_path.stat().st_size <= 128 * 1024:
+                raise ValueError("archive manifest size is invalid")
+            manifest_raw = manifest_path.read_bytes()
+            manifest = json.loads(manifest_raw)
+            if (not isinstance(manifest, dict) or manifest.get("schema") != 1
+                    or manifest.get("state") != "complete" or type(manifest.get("target_timestamp")) is not int
+                    or manifest["target_timestamp"] != cutoff or manifest.get("complete_for_known_addresses") is not True):
+                raise ValueError("archive is not a completed freeze for this cutoff")
+            information = (manifest.get("files") or {}).get("public.json")
+            if (not isinstance(information, dict) or type(information.get("bytes")) is not int
+                    or not 0 < information["bytes"] <= 2 * 1024 * 1024
+                    or public_path.stat().st_size != information["bytes"]):
+                raise ValueError("frozen public payload size does not match manifest")
+            public_raw = public_path.read_bytes()
+            digest = hashlib.sha256(public_raw).hexdigest()
+            if len(public_raw) != information["bytes"] or digest != information.get("sha256"):
+                raise ValueError("frozen public payload checksum does not match manifest")
+            public = json.loads(public_raw)
+            meta = public.get("meta") if isinstance(public, dict) else None
+            if not isinstance(meta, dict):
+                raise ValueError("frozen public payload has no metadata")
+            source = (meta.get("preview_metric_sources") or {}).get("explorer_total_addresses")
+            total = _integer(meta.get("explorer_total_addresses"))
+            stamp = _integer(source.get("fetched_at")) if isinstance(source, dict) else None
+            # Public freezes may contain the frontend's reviewed "official"
+            # alias. It denotes this same stats endpoint for this exact field.
+            if (not isinstance(source, dict) or source.get("source") not in {EXPLORER_API + "/stats", "official"}
+                    or source.get("status") != "ok" or stamp is None or isinstance(source.get("fetched_at"), bool)
+                    or abs(stamp - cutoff) > self.boundary_sample_tolerance_seconds
+                    or total is None or total < 0 or isinstance(meta.get("explorer_total_addresses"), bool)):
+                raise ValueError("archive lacks a valid official totalAddresses HTTP receipt near cutoff")
+            values = {"total_wallets": total}
+            provenance = {"source": EXPLORER_API + "/stats", "timing_status": "sampled_near_cutoff", "exact_cutoff": False,
+                          "cutoff_timestamp": cutoff, "received_at": stamp, "offset_seconds": stamp - cutoff,
+                          "tolerance_seconds": self.boundary_sample_tolerance_seconds,
+                          "basis": "original official HTTP receipt recovered from checksum-verified private daily freeze; upstream may cache data",
+                          "recovery_source": "verified_private_freeze_archive", "archive": name,
+                          "public_sha256": digest, "manifest_sha256": hashlib.sha256(manifest_raw).hexdigest()}
+            self._record_cutoff_sample("official_stats", values, stamp, provenance)
+            receipt.update(status="recovered", total_wallets=total, received_at=stamp,
+                           public_sha256=digest, manifest_sha256=provenance["manifest_sha256"])
+        except (OSError, ValueError, TypeError, AttributeError) as exc:
+            receipt["reason"] = str(exc)
+        attempts[str(cutoff)] = receipt
+        # This report describes at most the retained 90 daily cutoffs, not an
+        # ever-growing duplicate of the immutable archive inventory.
+        attempts = {key: attempts[key] for key in sorted((key for key in attempts if str(key).isdigit()), key=int)[-90:]}
+        self._put("official_sample_archive_recovery", attempts)
+        return values, provenance
+
     def _cutoff_sample(self, kind: str, cutoff: int) -> tuple[dict, dict]:
         with self._db() as conn:
-            row = conn.execute("SELECT payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
-        return (json.loads(row[0]), json.loads(row[1])) if row else ({}, {})
+            row = conn.execute("SELECT received_at,payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+        values, provenance = self._decode_cutoff_sample(row)
+        if kind != "official_stats":
+            return values, provenance
+        if row is not None and self._valid_official_sample(values, provenance, cutoff, row["received_at"]):
+            return values, provenance
+        if self.observation_database.resolve() != self.db_path.resolve():
+            try:
+                with self._observations() as conn:
+                    inherited = conn.execute("SELECT received_at,payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+                inherited_values, inherited_source = self._decode_cutoff_sample(inherited)
+                if inherited is not None and self._valid_official_sample(inherited_values, inherited_source, cutoff, inherited["received_at"]):
+                    self._record_cutoff_sample(kind, inherited_values, inherited["received_at"], inherited_source)
+                    return inherited_values, inherited_source
+            except (sqlite3.Error, OSError, ValueError):
+                pass
+        recovered = self._recover_official_cutoff_archive(cutoff)
+        if recovered[0]:
+            # A concurrent direct sampler may have won with an even closer
+            # complete receipt. Return the row that actually won, not our input.
+            with self._db() as conn:
+                row = conn.execute("SELECT received_at,payload,provenance FROM preview_metric_cutoff_samples WHERE kind=? AND cutoff=?", (kind, cutoff)).fetchone()
+            values, provenance = self._decode_cutoff_sample(row)
+            if row is not None and self._valid_official_sample(values, provenance, cutoff, row["received_at"]):
+                return values, provenance
+        return {}, {}
 
     def _sample_official_stats(self, stats: dict, source: dict):
         if source.get("status") != "ok" or not source.get("fetched_at"):
@@ -637,6 +772,30 @@ class MetricStore:
         history = [item for item in self.history() if item.get("statistics_window_end_timestamp") != end]
         history.append(snapshot)
         history.sort(key=lambda item: item.get("statistics_window_end_timestamp") or 0)
+        # The current day's recovery can also repair an already verified prior
+        # cutoff (e.g. yesterday's total). Only address fields are enriched; an
+        # archive never invents a node window or rewrites unrelated daily facts.
+        for item in history[-90:]:
+            stamp = _integer(item.get("statistics_window_end_timestamp"))
+            if item.get("source") != "verified_node_window" or stamp is None or stamp > end:
+                continue
+            official_values, official_provenance = self._cutoff_sample("official_stats", stamp)
+            total = official_values.get("total_wallets")
+            if total is None:
+                continue
+            item_values = item.get("values")
+            if not isinstance(item_values, dict):
+                continue
+            item_sources = item.get("field_sources")
+            if not isinstance(item_sources, dict):
+                item_sources = item["field_sources"] = {}
+            item_values["total_wallets"], item_sources["total_wallets"] = total, official_provenance
+            recovered_growth, recovered_source = self._sampled_address_growth(stamp - 86400, stamp)
+            if recovered_growth is not None:
+                item_values["daily_new_addresses"] = recovered_growth
+                item_sources["daily_new_addresses"] = recovered_source
+            if isinstance(item.get("missing_fields"), list):
+                item["missing_fields"] = [key for key in item["missing_fields"] if item_values.get(key) is None]
         if self._get("history") != history[-90:]:
             self._put("history", history[-90:])
 
@@ -654,6 +813,12 @@ class MetricStore:
                 expected = ("totalAddresses", "totalCirculation", "currentPrice") if path == "/stats" else ("totalPower", "totalBurnedTokens")
                 if not isinstance(value, dict) or not any(key in value for key in expected):
                     raise ValueError("unexpected official stats response")
+                if path == "/stats":
+                    addresses, circulation = _integer(value.get("totalAddresses")), _integer(value.get("totalCirculation"))
+                    current_price = _price(value.get("currentPrice"))
+                    if (addresses is None or addresses < 0 or circulation is None or circulation < 0
+                            or current_price is None or Decimal(str(value["currentPrice"])) < 0):
+                        raise ValueError("incomplete official stats response; preserving previous payload and its original receipt time")
                 payload = value
                 cached = {"fetched_at": now + int(time.monotonic() - began), "checked_at": now, "error": None}
             except Exception as exc:
@@ -753,7 +918,16 @@ class MetricStore:
                     statistics_window_new_candidate_address_basis="official totalAddresses difference between near-08:00 response samples; not exact boundary state",
                     today_new_wallet_basis="official near-08:00 sample difference; unavailable historical samples remain missing",
                     statistics_window_new_candidate_address_sample=provenance)
-        meta.setdefault("preview_daily_status", {}).setdefault("field_sources", {})["new_addresses"] = provenance
+        status = meta.setdefault("preview_daily_status", {})
+        status.setdefault("field_sources", {})["new_addresses"] = provenance
+        if status.get("state") == "verified_node_window":
+            status["detail"] = ("Daily tx/activity/power/burn verified. Address growth uses two official near-cutoff HTTP samples; not exact boundary state."
+                                if value is not None else
+                                "Daily tx/activity/power/burn verified. Address growth unavailable without two reliable official near-cutoff HTTP samples.")
+        # Keep the private persisted status consistent with the displayed value;
+        # previously it continued claiming that growth was unavailable forever.
+        if status.get("frozen_end_timestamp") == end and self._get("daily_status") != status:
+            self._put("daily_status", status)
         for days in (7, 30):
             prefix = f"period_{days}d"
             if _integer(meta.get(f"{prefix}_end_timestamp")) == end:
