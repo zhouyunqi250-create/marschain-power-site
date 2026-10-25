@@ -263,8 +263,8 @@
       '算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。',
       'Power and cumulative burns come from the self-hosted node. Prices, total addresses and circulation come from the official explorer.'));
     setText(dataNotes.querySelector('[data-preview-sampling]'), copy(
-      '官方价格、地址的日历史取自北京时间 08:00 附近采样；标有“近截点采样”的数据不是精确截点值。',
-      'Daily price and address history is sampled near 08:00 Beijing time. Values marked as near-cutoff samples are not exact cutoff measurements.'));
+      '官方价格、地址的日历史取自北京时间 08:00 附近采样；每日新增地址为相邻统计日采样差额，可能与精确截点值存在差异。',
+      'Daily price and address history is sampled near 08:00 Beijing time. Daily new addresses are the difference between adjacent daily samples and may differ from exact cutoff measurements.'));
     const cutoff = meta.statistics_window_end_timestamp;
     const expected = timestamp(meta.preview_daily_status?.expected_end_timestamp);
     const dailyBehind = Number.isFinite(expected) && expected > timestamp(cutoff);

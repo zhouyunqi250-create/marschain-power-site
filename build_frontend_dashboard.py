@@ -5744,6 +5744,7 @@ METRIC_TREND_JS = r"""
   let activePoints = [];
   let focusIndex = 0;
   let modal = null;
+  let triggerCard = null;
 
   const TOKEN_WEI_METRICS = new Set([
     'network_total_circulation',
@@ -5784,13 +5785,19 @@ METRIC_TREND_JS = r"""
       })).filter((point) => Number.isFinite(point.value))
     : [];
   const periodLimit = () => {
-    const period = periods.find((item) => item[0] === activePeriod) || periods[1];
+    const period = periods.find((item) => item[0] === activePeriod) || periods[0];
     return period[2];
   };
   const slicePeriod = (points) => {
     const all = cleanPoints(points);
     const limit = periodLimit();
-    return Number.isFinite(limit) ? all.slice(-limit) : all;
+    if (!Number.isFinite(limit)) return all;
+    const dated = all.map(point => ({point, day: Date.parse(point.label + 'T00:00:00Z')}));
+    const valid = dated.filter(item => Number.isFinite(item.day));
+    if (!valid.length) return [];
+    const end = Math.max(...valid.map(item => item.day));
+    return valid.filter(item => item.day >= end - (limit - 1) * 86400000)
+      .sort((a, b) => a.day - b.day).map(item => item.point);
   };
   const periodPoints = () => slicePeriod(activeMetric ? activeMetric.points : []);
   const trendBars = key => /^(daily_(new|burned|transaction|active)|period_)/.test(key);
@@ -5804,6 +5811,12 @@ METRIC_TREND_JS = r"""
     if (/power/.test(key)) return '算力';
     if (key === 'network_current_price') return '价格';
     return '数值';
+  };
+  const countAxisBounds = (low, high, key, divisions) => {
+    if (!/addresses|wallets/.test(key) && key !== 'daily_transaction_count') return [low, high];
+    const start = Math.floor(low);
+    const step = Math.max(1, Math.ceil((Math.ceil(high) - start) / divisions));
+    return [start, start + step * divisions];
   };
   const isGroupedTrend = () => Array.isArray(activeMetric?.series) && activeMetric.series.length > 1;
   const groupedSeries = () => {
@@ -5895,7 +5908,18 @@ METRIC_TREND_JS = r"""
       if (event.target === modal || event.target.closest('[data-trend-close]')) closeModal();
     });
     document.addEventListener('keydown', (event) => {
-      if (!modal.hidden && event.key === 'Escape') closeModal();
+      if (modal.hidden) return;
+      if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
+      if (event.key !== 'Tab') return;
+      const buttons = [...modal.querySelectorAll('button:not([disabled])')].filter(button => button.getClientRects().length);
+      const first = buttons[0], last = buttons.at(-1);
+      if (!first) return;
+      const outside = !modal.contains(document.activeElement);
+      if (event.shiftKey && (outside || document.activeElement === first)) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (outside || document.activeElement === last)) {
+        event.preventDefault(); first.focus();
+      }
     });
     return modal;
   };
@@ -5904,6 +5928,7 @@ METRIC_TREND_JS = r"""
     if (!modal) return;
     modal.hidden = true;
     document.body.style.overflow = '';
+    triggerCard?.focus({preventScroll: true});
   };
 
   const setFocus = (index) => {
@@ -5963,7 +5988,7 @@ METRIC_TREND_JS = r"""
     chart.classList.add('power-pair-chart');chart.classList.remove('is-separated');
     const controls=modal.querySelector('[data-trend-periods]');
     controls.innerHTML=periods.map(([id,label])=>`<button type="button" data-trend-period="${id}" class="${id===activePeriod?'is-active':''}">${label}</button>`).join('');
-    controls.querySelectorAll('button').forEach(b=>b.onclick=()=>{activePeriod=b.dataset.trendPeriod;renderChart();window.applyMarsLanguage?.();});
+    controls.querySelectorAll('button').forEach(b=>b.onclick=()=>{activePeriod=b.dataset.trendPeriod;redrawVisibleChart();});
     modal.querySelector('[data-trend-legend]').innerHTML='';
     const series=groupedSeries();
     const dates=[...new Set(series.flatMap(s=>s.points.map(p=>p.label)))].sort();
@@ -5974,7 +5999,7 @@ METRIC_TREND_JS = r"""
       modal.querySelectorAll('[data-trend-focus-label],[data-trend-latest-label],[data-trend-min-label],[data-trend-max-label]').forEach(node=>node.textContent='');
       modal.querySelector('[data-trend-foot]').textContent='暂无可用历史；后续记录将按实际统计时间积累。';return;
     }
-    const compact=chart.clientWidth<500,W=compact?400:800,L=compact?86:105,R=20,T=24,B=30;
+    const compact=chart.clientWidth<500,W=compact?400:800,L=112,R=20,T=24,B=30;
     const stamp=label=>Date.parse(label+'T00:00:00Z'),first=stamp(dates[0]),last=stamp(dates.at(-1));
     const x=label=>L+(W-L-R)*(last>first?(stamp(label)-first)/(last-first):.5);
     chart.innerHTML=series.map((s,n)=>{
@@ -5984,6 +6009,7 @@ METRIC_TREND_JS = r"""
       let low=bars?Math.min(0,...values):Math.min(...values),high=bars?Math.max(0,...values):Math.max(...values);
       const pad=Math.max(high-low,Math.abs(high)*.02,Number.EPSILON)*.08;
       if(!bars)low=Math.min(...values)>=0?Math.max(0,low-pad):low-pad;high+=pad;
+      [low, high] = countAxisBounds(low, high, s.key, 2);
       const y=v=>T+ph*(1-(v-low)/(high-low||1));
       const ticks=Array.from({length:3},(_,i)=>{const v=low+(high-low)*i/2,yy=y(v);return `<line class="axis-line" x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}"/><text class="date-label" x="${L-10}" y="${yy+4}" text-anchor="end">${escapeHtml(formatTrendValue(v,s.key))}</text>`;}).join('');
       const dailySlots=Math.max(1,(last-first)/86400000+1),bw=Math.max(1,Math.min(14,(W-L-R)/dailySlots*.6));
@@ -6021,10 +6047,10 @@ METRIC_TREND_JS = r"""
     chart.classList.remove('is-separated');
     const controls = modal.querySelector('[data-trend-periods]');
     controls.innerHTML = periods.map(([id,label]) => `<button type="button" data-trend-period="${id}" class="${id===activePeriod?'is-active':''}">${label}</button>`).join('');
-    controls.querySelectorAll('button').forEach(button => button.onclick = () => {activePeriod=button.dataset.trendPeriod;renderChart();window.applyMarsLanguage?.();});
+    controls.querySelectorAll('button').forEach(button => button.onclick = () => {activePeriod=button.dataset.trendPeriod;redrawVisibleChart();});
     const legend = modal.querySelector('[data-trend-legend]');
     legend.innerHTML = choices.map(s => `<button type="button" data-series="${escapeHtml(s.key)}" class="${s.key===key?'is-active':''}">${escapeHtml(s.label)}</button>`).join('');
-    legend.querySelectorAll('button').forEach(button => button.onclick = () => {selectedSeriesKey=button.dataset.series;renderChart();window.applyMarsLanguage?.();});
+    legend.querySelectorAll('button').forEach(button => button.onclick = () => {selectedSeriesKey=button.dataset.series;redrawVisibleChart();});
     if (!activePoints.length) {
       chart.innerHTML='<div class="trend-empty">暂无可用历史</div>';
       ['[data-trend-focus-value]','[data-trend-latest]','[data-trend-min]','[data-trend-max]'].forEach(s=>setTrendStat(s,'暂无数据'));
@@ -6034,13 +6060,14 @@ METRIC_TREND_JS = r"""
     const bars = trendBars(key);
     const unit = trendUnit(key);
     const compact=chart.clientWidth<500;
-    const W=compact?400:800,H=320,L=compact?78:100,R=20,T=28,B=40,pw=W-L-R,ph=H-T-B;
+    const W=compact?400:800,H=320,L=112,R=20,T=28,B=40,pw=W-L-R,ph=H-T-B;
     const values=activePoints.map(p=>p.value),min=Math.min(...values),max=Math.max(...values);
     let low=bars?Math.min(0,min):min, high=bars?Math.max(0,max):max;
     const padding=Math.max(high-low,Math.abs(high)*.02,Number.EPSILON)*.08;
     if (!bars) low-=padding;
     high+=padding;
     if (high===low) high=low+1;
+    [low, high] = countAxisBounds(low, high, key, 4);
     const y=v=>T+ph*(1-(v-low)/(high-low));
     const stamp=p=>Date.parse(p.label+'T00:00:00Z');
     const first=stamp(activePoints[0]),last=stamp(activePoints.at(-1));
@@ -6072,27 +6099,48 @@ METRIC_TREND_JS = r"""
     setFocus(focusIndex);
   };
 
-  const openMetric = (index) => {
+  const redrawVisibleChart = () => {
+    if (!modal || modal.hidden || !activeMetric) return;
+    const selectedDate = activePoints[focusIndex]?.label;
+    const focused = modal.contains(document.activeElement) ? document.activeElement : null;
+    const period = focused?.dataset.trendPeriod;
+    const series = focused?.dataset.series;
+    renderChart();
+    const restoredIndex = activePoints.findIndex(point => point.label === selectedDate);
+    if (restoredIndex >= 0) setFocus(restoredIndex);
+    if (period) modal.querySelector(`[data-trend-period="${CSS.escape(period)}"]`)?.focus({preventScroll:true});
+    else if (series) modal.querySelector(`[data-series="${CSS.escape(series)}"]`)?.focus({preventScroll:true});
+    window.applyMarsLanguage?.();
+  };
+  let resizeFrame = 0;
+  window.addEventListener('resize', () => {
+    if (!modal || modal.hidden) return;
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(redrawVisibleChart);
+  });
+
+  const openMetric = (index, trigger = null) => {
     activeMetric = metricTrends[index];
     if (!activeMetric) return;
     const node = ensureModal();
+    triggerCard = trigger || document.activeElement;
     node.querySelector('[data-trend-title]').textContent = activeMetric.label || '数据趋势';
     node.querySelector('[data-trend-note]').textContent = activeMetric.note || '';
     activePeriod = '7';
     selectedSeriesKey = activeMetric.series?.find((series) => series.points?.length)?.key || activeMetric.key;
-    renderChart();
     node.hidden = false;
     document.body.style.overflow = 'hidden';
+    renderChart();
     node.querySelector('[data-trend-close]')?.focus();
     if (window.applyMarsLanguage) window.applyMarsLanguage();
   };
 
   document.querySelectorAll('[data-trend-index]').forEach((card) => {
-    card.addEventListener('click', () => openMetric(Number(card.dataset.trendIndex || 0)));
+    card.addEventListener('click', () => openMetric(Number(card.dataset.trendIndex || 0), card));
     card.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' || event.key === ' ') {
         event.preventDefault();
-        openMetric(Number(card.dataset.trendIndex || 0));
+        openMetric(Number(card.dataset.trendIndex || 0), card);
       }
     });
   });
@@ -6373,6 +6421,10 @@ LANGUAGE_TOGGLE_JS = r"""
   };
 
   const translateChineseNumericUnit = (text) => {
+    if (/^\+\d/.test(text)) {
+      const value = translateChineseNumericUnit(text.slice(1));
+      return value ? '+' + value : '';
+    }
     let match = text.match(/^(-?[\d,]+(?:\.\d+)?)(万亿|亿|万)(个|枚\/日|\/日|枚|笔)?$/);
     if (match) {
       const raw = Number(match[1].replace(/,/g, ''));

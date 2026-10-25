@@ -231,10 +231,79 @@ def _annotate_period_cards(markup: str, meta: dict) -> str:
 
 _CARD_DAILY_FIELDS = {
     "全网总算力": ("每日新增算力", ("statistics_window_new_power",)),
-    "全网流通量": ("日销毁统计", ("statistics_window_burned_tokens",)),
-    "钱包地址": ("新增 / 活跃地址统计", ("statistics_window_new_candidate_address_count", "statistics_window_active_wallet_address_count")),
-    "每日交易币量": ("交易日统计", ("statistics_window_transaction_volume_wei", "statistics_window_active_transactions_seen")),
+    "全网流通量": ("每日销毁量", ("statistics_window_burned_tokens",)),
+    "钱包地址": ("每日新增 / 活跃地址", ("statistics_window_new_candidate_address_count", "statistics_window_active_wallet_address_count")),
+    "每日交易币量": ("每日交易量 / 笔数", ("statistics_window_transaction_volume_wei", "statistics_window_active_transactions_seen")),
 }
+
+# These are the builder's stable lookup labels, not the visible card titles.
+# Both the static page and each latest.json update use this same adapter.
+_CORE_CARD_LABELS = frozenset({
+    "全网总算力", "全网流通量", "当前价格", "每日产币量", "钱包地址", "每日交易币量",
+})
+_DAILY_NAMES = {
+    "统计日新增总算力": "每日新增算力",
+    "统计日新增算力": "每日新增算力",
+    "统计日新增地址数量": "每日新增地址",
+    "统计日新增地址": "每日新增地址",
+    "统计日活跃地址数量": "每日活跃地址",
+    "统计日活跃地址": "每日活跃地址",
+    "日销毁币量": "每日销毁量",
+    "每日交易币量": "每日交易量",
+    "每日产币量": "预计日产量",
+}
+_DAILY_TREND_LABELS = {
+    "daily_new_power": "每日新增算力",
+    "daily_new_addresses": "每日新增地址",
+    "daily_burned": "每日销毁量",
+    "daily_transaction_volume": "每日交易量",
+    "daily_transaction_count": "每日交易笔数",
+    "daily_active_addresses": "每日活跃地址",
+    "daily_emission": "预计日产量",
+}
+
+
+def _daily_text(text: str) -> str:
+    for old, new in _DAILY_NAMES.items():
+        text = text.replace(old, new)
+    return text
+
+
+def _daily_markup(markup: str) -> str:
+    """Change visible wording without changing data-label, keys or attributes."""
+    return re.sub(r"(?<=>)[^<>]+(?=<)", lambda match: _daily_text(match.group(0)), markup)
+
+
+def _daily_trend_copy(trends: list[dict]) -> list[dict]:
+    """Relabel the six core popup series; dates, numbers and keys stay intact."""
+    for trend in trends:
+        if str(trend.get("key") or "").startswith("period_"):
+            continue
+        for name in ("label", "note"):
+            if isinstance(trend.get(name), str):
+                trend[name] = _daily_text(trend[name])
+        if trend.get("key") == "total_wallets":
+            trend["note"] = trend.get("note", "").replace(
+                "总钱包、新增地址、活跃地址、正算力地址按日期联动展示。",
+                "总钱包、每日新增地址、每日活跃地址、正算力地址按日期联动展示。", 1,
+            )
+        for series in trend.get("series") or []:
+            if series.get("key") in _DAILY_TREND_LABELS:
+                series["label"] = _DAILY_TREND_LABELS[series["key"]]
+    return trends
+
+
+def _remove_card_chart(inner: str) -> str:
+    """Remove only the outer mini chart, including its nested div panels."""
+    chart = re.search(r'<div\b[^>]*class="(?:metric-trend(?:\s[^"]*)?|power-mini-pair)"[^>]*>', inner)
+    if chart is None:
+        return inner
+    depth = 0
+    for tag in re.finditer(r'</?div\b[^>]*>', inner[chart.start():]):
+        depth += -1 if tag.group(0).startswith("</") else 1
+        if depth == 0:
+            return inner[:chart.start()] + inner[chart.start() + tag.end():]
+    raise RuntimeError("Core metric mini chart has an unclosed div")
 
 
 def _daily_state(meta: dict, fields: tuple[str, ...]) -> str:
@@ -254,16 +323,30 @@ def _annotate_metric_cards(markup: str, meta: dict) -> str:
         if not label:
             return match.group(0)
         name = label.group(1)
+        if name not in _CORE_CARD_LABELS:
+            return match.group(0)
+        inner = _daily_markup(_remove_card_chart(inner))
+        inner = inner.replace(">新增地址<", ">每日新增地址<").replace(">活跃地址<", ">每日活跃地址<")
+        inner = inner.replace("08:00统计窗口内交易 value 汇总", "统计区间内交易币量 · MARS")
+        # Fixed-window values share the actual interval below; avoid repeating
+        # several different descriptions of the same 08:00 close in each row.
+        inner = re.sub(
+            r'<em>(?:北京时间 08:00 统计日新增|08:00 统计日新增|同一统计窗口内活跃|'
+            r'08:00 统计日口径|08:00 统计窗口内交易数量)</em>', "", inner,
+        )
+        if "data-core-compact" not in opening:
+            opening = opening[:-1] + " data-core-compact>"
+        opening = opening.replace('aria-label="查看每日交易币量趋势"', 'aria-label="查看每日交易量趋势"')
+        opening = opening.replace('aria-label="查看每日产币量趋势"', 'aria-label="查看预计日产量趋势"')
         if name in _CARD_DAILY_FIELDS:
-            caption, fields = _CARD_DAILY_FIELDS[name]
+            _caption, fields = _CARD_DAILY_FIELDS[name]
             state = _daily_state(meta, fields)
             note = ('<div class="node-daily-window" data-node-daily-window>'
-                    + f'<span>{escape(caption)} · 北京时间</span>'
+                    + '<span>统计区间 · 北京时间</span>'
                     + f'<span>{escape(_window_note(meta, "statistics_window"))}</span>'
                     + (f'<em data-node-daily-state>{escape(state)}</em>' if state else '') + '</div>')
-            # Place the time next to the daily values, before their trend charts.
-            chart = re.search(r'<div class="(?:metric-trend|power-mini-pair)', inner)
-            inner = inner[:chart.start()] + note + inner[chart.start():] if chart else inner + note
+            inner += note
+        inner += '<div class="node-card-trend-entry" aria-hidden="true"><span>查看趋势</span><i>↗</i></div>'
         return opening + inner + closing
     return re.sub(r'(<article\b[^>]*>)(.*?)(</article>)', card, markup, flags=re.S)
 
@@ -272,12 +355,13 @@ def _address_missing_copy(markup: str, meta: dict) -> str:
     count = meta.get("statistics_window_new_candidate_address_count")
     display = "暂无可比快照" if count is None else meta.get("statistics_window_new_candidate_address_display")
     if display:
-        # Preserve timing qualifications such as “近截点采样”, not just the
-        # numeric count that the original dashboard formatter would render.
-        note = escape(str(display))
+        # Sampling qualifications remain in public meta and data notes. The
+        # card number is concise and never fabricates a missing comparison.
+        note = escape(re.sub(r"（近截点采样）$", "", str(display)))
         for pattern in (
-            r'(<span>(?:统计日)?新增地址</span>\s*<(?:strong|b)>)[^<]*(</(?:strong|b)>)',
-            r'(<span>(?:统计日)?新增地址\s*<b>)[^<]*(</b>)',
+            r'(<span>(?:统计日|每日)新增地址</span>\s*<(?:strong|b)>)[^<]*(</(?:strong|b)>)',
+            r'(<span>新增地址</span>\s*<strong>)[^<]*(</strong>)',
+            r'(<span>(?:统计日|每日)新增地址\s*<b>)[^<]*(</b>)',
         ):
             markup = re.sub(pattern, lambda match: match[1] + note + match[2], markup)
     return markup
@@ -302,15 +386,15 @@ def public_payload(payload: dict) -> dict:
         "desktop": {
             "metrics": _metric_views(_annotate_metric_cards(_address_missing_copy(desktop["metric_cards"], meta), meta)),
             "growth": _annotate_period_cards(desktop["growth_cards"], meta),
-            "timeline": _address_missing_copy(desktop["timeline_rows"], meta),
-            "marquee": _address_missing_copy(desktop["marquee_html"], meta),
-            "trends": json.loads(desktop["metric_trend_payload"]),
+            "timeline": _daily_markup(_address_missing_copy(desktop["timeline_rows"], meta)),
+            "marquee": _daily_markup(_address_missing_copy(desktop["marquee_html"], meta)),
+            "trends": _daily_trend_copy(json.loads(desktop["metric_trend_payload"])),
             "warning": desktop["warning_html"],
         },
         "mobile": {
             "metrics": _metric_views(_annotate_metric_cards(_annotate_period_cards(_address_missing_copy(mobile["key_cards"] + mobile["growth_cards"], meta), meta), meta)),
-            "timeline": _address_missing_copy(mobile["meta_rows"], meta),
-            "trends": json.loads(mobile["metric_trend_payload"]),
+            "timeline": _daily_markup(_address_missing_copy(mobile["meta_rows"], meta)),
+            "trends": _daily_trend_copy(json.loads(mobile["metric_trend_payload"])),
             "warning": mobile["warning_html"],
         },
         "burn": desktop["burn_estimate"],
@@ -394,6 +478,40 @@ _PREVIEW_STYLE = """
 .m-card .metric-secondary-row strong,.m-card .metric-secondary strong{display:block;font-size:15px;line-height:1.3;font-weight:850;margin:0;color:#eef8ff}
 .m-card .metric-secondary-row em,.m-card .metric-secondary em{display:block;font-size:10px;line-height:1.5;font-style:normal;color:#94abc1}
 .m-card .metric-trend{margin-top:17px}
+
+/* Core cards show the figures; the existing full charts open on activation. */
+.metric[data-core-compact]{min-height:0;padding:19px 20px}
+.metric[data-core-compact]>b{margin-top:16px;font-size:clamp(27px,2.35vw,37px);line-height:1.1}
+.metric[data-core-compact] .metric-secondary-list{gap:6px;margin-top:13px}
+.metric[data-core-compact] .metric-secondary,.metric[data-core-compact] .metric-secondary-row{padding:8px 10px;border-radius:10px;gap:3px 9px}
+.metric[data-core-compact] .metric-secondary{margin-top:13px}
+.metric[data-core-compact] .metric-secondary-row em,.metric[data-core-compact] .metric-secondary em{font-size:10px;line-height:1.4}
+.metric[data-core-compact] .price-stack{gap:6px;margin-top:13px}
+.metric[data-core-compact] .price-stack span{padding:8px 10px;border-radius:10px}
+[data-core-compact] .node-daily-window{margin-top:11px;padding-top:8px}
+.node-card-trend-entry{position:relative;z-index:1;display:flex;align-items:center;justify-content:flex-end;gap:6px;margin-top:auto;padding-top:14px;color:#8eb7cc;font:11px/1.4 var(--font,sans-serif)}
+.node-card-trend-entry span{display:inline!important;margin:0!important;padding:0!important;border:0!important;background:none!important;max-width:none!important;font:inherit!important;color:inherit!important;opacity:1!important}
+.node-card-trend-entry i{font-size:15px;line-height:1;font-style:normal;transition:transform .18s ease}
+[data-core-compact]:hover .node-card-trend-entry{color:#83e5df}
+[data-core-compact]:hover .node-card-trend-entry i{transform:translate(2px,-2px)}
+.node-core-daily-caption{color:#9bb2c8!important;font-size:12px!important;line-height:1.65!important}
+.m-section-head .node-core-daily-caption{max-width:180px;font-size:11px!important}
+.m-card[data-core-compact]{min-height:0;padding:14px 12px}
+.m-card[data-core-compact]>b{margin-top:11px;font-size:clamp(20px,5.2vw,25px);line-height:1.1;white-space:nowrap}
+.m-card[data-core-compact] .metric-secondary-list{gap:6px;margin-top:11px}
+.m-card[data-core-compact] .metric-secondary,.m-card[data-core-compact] .metric-secondary-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 5px;padding:7px 0}
+.m-card[data-core-compact] .metric-secondary{margin-top:11px}
+.m-card[data-core-compact] .metric-secondary-row span,.m-card[data-core-compact] .metric-secondary span{font-size:10px;line-height:1.5}
+.m-card[data-core-compact] .metric-secondary-row strong,.m-card[data-core-compact] .metric-secondary strong{font-size:13px;line-height:1.35;text-align:right;white-space:nowrap}
+.m-card[data-core-compact] .metric-secondary-row em,.m-card[data-core-compact] .metric-secondary em{grid-column:1/-1;font-size:9px;line-height:1.5}
+.m-card[data-core-compact] .node-daily-window{font-size:10px;line-height:1.65}
+.m-card[data-core-compact] .node-card-trend-entry{padding-top:12px;font-size:10px}
+@media(max-width:620px){
+ .metrics{grid-template-columns:minmax(0,1fr)}
+ .metric[data-core-compact]>span{max-width:calc(100% - 40px);white-space:nowrap}
+ .metric[data-core-compact]>b{font-size:30px}
+}
+@media(prefers-reduced-motion:reduce){.node-card-trend-entry i{transition:none}}
 
 /* Quiet, legible trend preview. */
 .trend-modal{justify-content:center!important;align-items:center!important;place-items:center!important}
@@ -492,7 +610,7 @@ _DATA_NOTES = """
  <p data-preview-frequency>榜单约每分钟刷新，已确认交易可能稍后显示；每日统计按北京时间 08:00 日结。</p>
  <p data-preview-daily></p>
  <p data-preview-sources>算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。</p>
- <p data-preview-sampling>官方价格、地址的日历史取自北京时间 08:00 附近采样；标有“近截点采样”的数据不是精确截点值。</p>
+ <p data-preview-sampling>官方价格、地址的日历史取自北京时间 08:00 附近采样；每日新增地址为相邻统计日采样差额，可能与精确截点值存在差异。</p>
  <p data-preview-source-notes hidden></p>
 </details>"""
 
@@ -526,7 +644,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
       activeMetric = metricTrends.find((entry) => entry.key === activeMetric.key) || null;
       if (activeMetric && modal && !modal.hidden) {
         modal.querySelector('[data-trend-note]').textContent = activeMetric.note || '';
-        renderChart();
+        redrawVisibleChart();
       }
     }
   });
@@ -541,6 +659,8 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     # provider error strings containing an unusual </ScRiPt> spelling.
     def safe_json(match):
         content = json.loads(match.group(2))
+        if match.group(1).startswith('<script id="metricTrendData"'):
+            content = _daily_trend_copy(content)
         safe = json.dumps(content, ensure_ascii=False).replace("<", "\\u003c")
         return match.group(1) + safe + match.group(3)
     html = re.sub(r'(<script id="(?:rankData|metricTrendData)" type="application/json">)(.*?)(</script>)', safe_json, html, flags=re.S)
@@ -555,6 +675,11 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     markup = markup.replace("<span>覆盖率<b", "<span>算力覆盖率<b")
     markup = markup.replace("本轮覆盖率", "本轮算力覆盖率")
     markup = _annotate_metric_cards(_annotate_period_cards(_address_missing_copy(markup, public_meta), public_meta), public_meta)
+    markup = _daily_markup(markup)
+    core_caption = '<p class="node-core-daily-caption">每日统计 · 北京时间 08:00 结算</p>'
+    old_caption = ('<p>先看结果，再看口径。</p>' if mobile else
+                   '<p>展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。</p>')
+    markup = _once(markup, old_caption, core_caption)
     # Wrap seed warnings with a stable slot, including when they are empty.
     warning_pattern = r'<div class="(?:alert|m-note)">本轮算力覆盖率.*?</div>'
     markup = re.sub(warning_pattern, lambda match: '<div data-preview-coverage-warning>' + match.group(0) + '</div>', markup, flags=re.S)
@@ -570,6 +695,23 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     html = markup + '<script id="rankData"' + scripts
     language_marker = "  const zhToEn = {"
     extra_translations = {
+        "每日统计 · 北京时间 08:00 结算": "Daily statistics · Close at 08:00 Beijing time",
+        "统计区间 · 北京时间": "Statistics window · Beijing time",
+        "查看趋势": "View trend",
+        "统计区间内交易币量 · MARS": "Transaction volume in this window · MARS",
+        "每日新增算力": "Daily New Power",
+        "每日新增地址": "Daily New Addresses",
+        "每日销毁量": "Daily Burned Amount",
+        "每日交易量": "Daily Transaction Volume",
+        "每日交易笔数": "Daily Transaction Count",
+        "每日活跃地址": "Daily Active Addresses",
+        "预计日产量": "Estimated Daily Emission",
+        "矿工 75% 产量口径": "Based on the miners' 75% emission share",
+        "1亿算力 ÷ 单币日需算力": "100M power / power required per daily MARS",
+        "流通量、累计销毁、每日销毁量按日期联动展示。": "Separate charts for circulation, cumulative burns and daily burns.",
+        "总钱包、每日新增地址、每日活跃地址、正算力地址按日期联动展示。": "Separate charts for total wallets, daily new addresses, daily active addresses and positive-power addresses.",
+        "每日交易量与每日交易笔数按日期联动展示。": "Separate charts for daily transaction volume and count.",
+        "预计日产量、单币日需算力、1亿算力产出按日期联动展示。": "Separate charts for estimated daily emission and modeled power output.",
         "保留上次统计": "Previous statistics retained",
         "保留上次日统计": "Previous daily statistics retained",
         "部分数据待补齐": "Some statistics are pending",
@@ -663,6 +805,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "榜单约每分钟刷新，已确认交易可能稍后显示；每日统计按北京时间 08:00 日结。": "The ranking refreshes about every minute. Confirmed transactions may appear later; daily statistics close at 08:00 Beijing time.",
         "算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。": "Power and cumulative burns come from the self-hosted node. Prices, total addresses and circulation come from the official explorer.",
         "官方价格、地址的日历史取自北京时间 08:00 附近采样；标有“近截点采样”的数据不是精确截点值。": "Daily price and address history is sampled near 08:00 Beijing time. Values marked as near-cutoff samples are not exact cutoff measurements.",
+        "官方价格、地址的日历史取自北京时间 08:00 附近采样；每日新增地址为相邻统计日采样差额，可能与精确截点值存在差异。": "Daily price and address history is sampled near 08:00 Beijing time. Daily new addresses are the difference between adjacent statistics-day samples and may differ from exact cutoff values.",
         "每分钟处理已确认新区块": "Confirmed blocks processed every minute",
         "北京时间 08:00 日结": "Daily close at 08:00 Beijing time",
         "每分钟刷新 · 每日 08:00 统计": "Minute updates · Daily statistics at 08:00 Beijing time",
