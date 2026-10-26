@@ -293,6 +293,7 @@
       network_total_circulation_tokens: copy('流通量', 'Circulation'),
       network_current_price: copy('价格', 'Price'),
       network_highest_price: copy('最高价格', 'Highest price'),
+      emission: copy('预计日产量', 'Estimated emission'),
     };
     const notes = [];
     if (transportError || stale) notes.push(copy('暂未取得最新榜单，显示最近成功数据及其原时间。', 'The latest ranking is unavailable. The last successful data and its original time are shown.'));

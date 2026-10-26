@@ -103,6 +103,11 @@ PUBLIC_META_FIELDS = frozenset({
     "emission_daily_miner_display", "emission_daily_node_tokens", "emission_daily_node_display",
     "emission_total_supply_cap_tokens", "emission_total_supply_cap_display", "emission_miner_share",
     "emission_node_share", "emission_genesis_timestamp",
+    "emission_model_version", "emission_model_status", "emission_reference_block",
+    "emission_reference_timestamp", "emission_block_reward_wei", "emission_block_time_seconds",
+    "emission_blocks_per_day", "emission_halving_interval_blocks", "emission_halving_offset",
+    "emission_next_halving_block", "emission_blocks_until_halving",
+    "emission_next_halving_estimated_timestamp",
     "period_statistics_schema",
     *{f"period_{days}d_{field}" for days in (7, 30) for field in (
         "label", "start_timestamp", "end_timestamp", "start_local", "end_local", "start_total_power",
@@ -119,7 +124,7 @@ PUBLIC_TREND_KEYS = frozenset({
 })
 PUBLIC_SOURCE_KEYS = frozenset({
     "network_total_power", "network_total_burned_tokens", "explorer_total_addresses",
-    "network_total_circulation_tokens", "network_current_price", "network_highest_price",
+    "network_total_circulation_tokens", "network_current_price", "network_highest_price", "emission",
 })
 
 
@@ -160,7 +165,7 @@ def _public_meta(value: dict) -> dict:
         if not isinstance(entry, dict):
             continue
         source = str(entry.get("source") or "")
-        label = "node" if source in {"local_rpc_power_contract", "node"} else "official" if "explorer.marschain.net" in source or source == "official" else "snapshot"
+        label = "node" if source in {"local_rpc_power_contract", "local_rpc_block_reward", "node"} else "official" if "explorer.marschain.net" in source or source == "official" else "snapshot"
         status = str(entry.get("status") or "unavailable")
         sources[key] = {"source": label, "status": "ok" if status == "ok" else "stale" if entry.get("fetched_at") else "unavailable"}
         for field in ("fetched_at", "block"):
@@ -766,6 +771,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "每日交易笔数": "Daily Transaction Count",
         "每日活跃地址": "Daily Active Addresses",
         "预计日产量": "Estimated Daily Emission",
+        "当前区块奖励估算": "Estimated from current block rewards",
         "矿工 75% 产量口径": "Based on the miners' 75% emission share",
         "1亿算力 ÷ 单币日需算力": "100M power / power required per daily MARS",
         "流通量、累计销毁、每日销毁量按日期联动展示。": "Separate charts for circulation, cumulative burns and daily burns.",
@@ -806,17 +812,21 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "参考销毁规模 =（预计圣诞流通量 + 8 天预计产量）× 35%。": "Reference burn pool = (projected Christmas circulation + estimated 8-day emission) × 35%.",
         "每亿算力参考销毁量 = 参考销毁规模 × 1 亿 ÷ 当前全网总算力。": "Reference burn per 100M power = reference burn pool × 100M ÷ current global power.",
         "这里的 1 亿指参与测算的现有算力，结果不代表新增 1 亿算力的确定成本。": "100M means existing power used for this calculation. The result is not a guaranteed cost of adding 100M power.",
-        "产量按现有经济模型估算，跨减半周期分段计算；已发生销毁由最新流通量体现。": "Emission is estimated using the existing model across halving cycles. Observed burns are already reflected in circulation.",
+        "产量按区块奖励规则估算，按预计出块进度分段计算；已发生销毁由最新流通量体现。": "Emission follows block reward rules and projected block production. Observed burns are already reflected in circulation.",
         "起算时间、35% 与 8 天均为本页测算假设，非已确认的官方活动安排。": "The start time, 35% and 8 days are scenario assumptions, not confirmed official event arrangements.",
         "方程式参考测算": "Equation Reference Estimate",
-        "输入算力，查看含未来 8 天产量的销毁参考。": "Enter power to estimate a burn including the next 8 days of emission.",
+        "输入算力查看当前膨胀所需参考。": "Enter power to view the current reference burn for expansion.",
+        "请输入有效算力": "Enter valid power",
+        "支持 1亿、5亿、1000万 或纯数字。": "Use 1亿, 5亿, 1000万, or a plain number.",
+        "参考参数暂不可用，请稍后重试。": "Reference data is unavailable. Please try again later.",
+        "算力数值超出可计算范围，请调整后重试。": "Power is outside the supported range. Adjust it and try again.",
         "参与测算的算力": "Power used for calculation",
         "对应参考销毁量": "Reference burn amount",
         "按现有 1 亿算力占比测算。": "Based on the share of existing 100M power.",
         "参考销毁规模 =（当前流通量 + 未来 8 天预计产量）× 35%。": "Reference burn pool = (current circulation + estimated next 8-day emission) × 35%.",
         "参考销毁量 = 参考销毁规模 × 输入算力 ÷ 当前全网总算力。": "Reference burn = reference burn pool × entered power ÷ current global power.",
         "输入值表示参与测算的现有算力，结果不代表新增同等算力的确定成本。": "The input is existing power used for this calculation. The result is not a guaranteed cost of adding that amount of power.",
-        "8 天从当前数据时点起算；按现有经济模型估算产量，跨减半周期分段计算。": "The 8-day window starts at the current data timestamp. Emission uses the existing model across halving cycles.",
+        "8 天从当前数据时点起算；按标准出块速度估算产量，跨减半区块分段计算。": "The 8-day window starts at the current data timestamp. Emission uses the standard projected block rate and splits at halving blocks.",
         "本页为参考测算，活动参数及执行时间以官方公告为准。": "This is a reference estimate. Official announcements determine event parameters and execution times.",
         "膨胀 1 亿算力预计需销毁": "Estimated MARS burn for 100M power inflation",
         "膨胀 1 亿算力所需 MARS": "MARS needed for 100M power inflation",
@@ -896,7 +906,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     if (text.startsWith('算力与累计销毁读取自建节点的 POWER 合约，价格、全网地址数与流通量来自官方浏览器。')) {
       let note = 'Power and cumulative burns are read from the self-hosted POWER contract. Prices, total addresses and circulation come from the official explorer. ';
       const supply = text.match(/总产量采用官方经济模型口径：(.+?) 枚永不增发/);
-      if (supply) note += `The official supply cap is ${translateChineseNumericUnit(supply[1]) || supply[1]} coins, with no additional issuance. Daily emission follows the official formula and chain age, allocated 75% to miners and 25% to nodes. Daily power per coin is estimated as total power divided by miners' daily emission. `;
+      if (supply) note += `The official supply cap is ${translateChineseNumericUnit(supply[1]) || supply[1]} coins, with no additional issuance. Estimated daily emission uses the verified current block reward and standard daily block count, allocated 75% to miners and 25% to nodes. Daily power per coin is estimated as total power divided by miners' daily emission. `;
       note += 'The ranking shows the top 100 discovered addresses; power coverage does not mean the address list is complete. Node synchronization, undiscovered addresses, contract event changes or delayed sources may cause differences from official data.';
       return note;
     }
@@ -920,6 +930,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
+               Path(__file__).with_name("emission.py"),
                *OPENING_SOURCES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()

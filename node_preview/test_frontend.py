@@ -45,7 +45,14 @@ class FrontendTests(unittest.TestCase):
             self.assertNotIn(private, encoded)
         self.assertEqual(public["view"]["schema"], 1)
         self.assertEqual(len(public["view"]["desktop"]["metrics"]), 6)
-        self.assertEqual(len(public["view"]["mobile"]["metrics"]), 12)
+        mobile_metrics = public["view"]["mobile"]["metrics"]
+        core_labels = {"全网总算力", "全网流通量", "当前价格", "每日产币量", "钱包地址", "每日交易币量"}
+        period_labels = {"7 天增长", "30 天增长"}
+        self.assertEqual(len(mobile_metrics), 8)
+        self.assertEqual({label for label, card in mobile_metrics.items() if card["trend_index"] < 6},
+                         core_labels)
+        self.assertEqual({label for label, card in mobile_metrics.items() if card["trend_index"] >= 6},
+                         period_labels)
 
     def test_layout_artifacts_stay_static_until_code_changes(self):
         payload = fixture()
@@ -75,14 +82,27 @@ class FrontendTests(unittest.TestCase):
 
     def test_json_script_html_safety(self):
         payload = fixture()
-        payload["meta"]["node_preview"]["source_error"] = "</ScRiPt><script>bad()</script>"
+        private_error = "PRIVATE_SOURCE_ERROR_MUST_NOT_LEAK"
+        public_version = "</ScRiPt><script>public_probe()</script>"
+        payload["meta"]["node_preview"]["source_error"] = private_error
+        payload["meta"]["node_preview"]["version"] = public_version
+        public = public_payload(payload)
+        self.assertNotIn("source_error", public["meta"]["node_preview"])
+        self.assertNotIn(private_error, json.dumps(public))
+        self.assertEqual(public["meta"]["node_preview"]["version"], public_version)
         with tempfile.TemporaryDirectory() as temporary:
             build_preview(payload, temporary)
-            html = (Path(temporary) / "index.html").read_text(encoding="utf-8")
-            self.assertNotIn("</ScRiPt>", html)
-            match = re.search(r'<script id="rankData" type="application/json">(.*?)</script>', html, re.S)
-            self.assertEqual(json.loads(match.group(1))["meta"]["node_preview"]["source_error"],
-                             payload["meta"]["node_preview"]["source_error"])
+            for filename in ("index.html", "m/index.html"):
+                with self.subTest(filename=filename):
+                    html = (Path(temporary) / filename).read_text(encoding="utf-8")
+                    self.assertNotIn("</ScRiPt>", html)
+                    self.assertNotIn(private_error, html)
+                    match = re.search(r'<script id="rankData" type="application/json">(.*?)</script>', html, re.S)
+                    self.assertIsNotNone(match)
+                    self.assertIn("\\u003c/ScRiPt>", match.group(1))
+                    node = json.loads(match.group(1))["meta"]["node_preview"]
+                    self.assertNotIn("source_error", node)
+                    self.assertEqual(node["version"], public_version)
 
 
 if __name__ == "__main__":

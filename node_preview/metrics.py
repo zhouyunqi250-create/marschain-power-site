@@ -17,6 +17,7 @@ import math
 import socket
 import sqlite3
 import ssl
+from node_preview.emission import build_emission_meta, MODEL_VERSION
 import time
 import urllib.request
 from decimal import Decimal, InvalidOperation
@@ -789,10 +790,28 @@ class MetricStore:
         endpoints = daily_status.get("field_sources", {}).get("power", {})
         burned = _integer((endpoints.get("end") or {}).get("burned"))
         daily_emission = None
-        genesis = _integer(meta.get("emission_genesis_timestamp"))
-        if genesis is not None:
-            cycle = max(0, (end - genesis) // 86400) // 448
-            daily_emission = 100_000_000_000 * math.pow(.5, cycle) / 448
+        prior = next((item for item in self.history()
+                      if item.get("statistics_window_end_timestamp") == end), {})
+        old_values = prior.get("values") or {}
+        old_sources = prior.get("field_sources") or {}
+        emission_provenance = old_sources.get("daily_emission") or {}
+        if old_values.get("daily_emission") is not None:
+            # Existing economic history retains its original model and values.
+            daily_emission = old_values["daily_emission"]
+        else:
+            with self._db() as conn:
+                boundary = conn.execute("SELECT block_number,block_hash FROM preview_metric_boundaries WHERE timestamp=?", (end,)).fetchone()
+            if boundary is not None:
+                cutoff_meta = {"network_total_power": power}
+                cutoff_sources = {}
+                self._refresh_emission(cutoff_meta, now, cutoff_sources,
+                    block_info={"number": boundary["block_number"], "hash": boundary["block_hash"]})
+                if cutoff_meta.get("emission_model_status") == "verified":
+                    daily_emission = cutoff_meta["emission_daily_total_tokens"]
+                    emission_provenance = {"source": "verified_block_reward_model_at_cutoff",
+                        "model_version": MODEL_VERSION, "estimated": True, "cutoff_timestamp": end,
+                        "source_block": boundary["block_number"], "source_block_hash": boundary["block_hash"],
+                        "basis": "cutoff block reward x 28800 model blocks/day; not actual daily production"}
         required = power / (daily_emission * .75) if power and daily_emission else None
         values = {key: None for key in TREND_KEYS}
         values.update(network_total_power=power, total_burned=burned,
@@ -805,9 +824,13 @@ class MetricStore:
                       power_per_coin=required, one_yi_power_output=100_000_000 / required if required else None)
         sources = {key: {"source": "verified_node_window", "cutoff_timestamp": end} for key, value in values.items() if value is not None}
         for key in ("daily_emission", "power_per_coin", "one_yi_power_output", "total_supply"):
-            if values.get(key) is not None:
-                sources[key] = {"source": "existing_site_economic_model_at_verified_cutoff", "estimated": True,
-                                "cutoff_timestamp": end, "basis": "448-day model; not measured emission/reward"}
+            if old_values.get(key) is not None:
+                values[key] = old_values[key]
+                sources[key] = old_sources.get(key) or {"source": "preserved_original_economic_history",
+                    "estimated": True, "cutoff_timestamp": end}
+            elif values.get(key) is not None:
+                sources[key] = dict(emission_provenance) if emission_provenance else {
+                    "source": "preserved_original_economic_history", "estimated": True, "cutoff_timestamp": end}
         for key in ("total_wallets", "network_total_circulation", "network_current_price"):
             values[key] = official.get(key)
             if values[key] is not None:
@@ -967,7 +990,7 @@ class MetricStore:
         meta.update(generated_at=now, generated_at_local=_local(now), rpc_latest_block=block, latest_block=block,
                     rpc_url=self.rpc_url, preview_metrics_checked_at=now)
         sources["latest_block"] = {"source": "collector_checkpoint", "block": block, "checked_at": now, "status": "ok"}
-        self._refresh_emission(meta, now, sources)
+        self._refresh_emission(meta, now, sources, block_info=block_info)
         self._sample_official_stats(stats, stats_source)
         self._sample_counts(observed_counts, block_info, now)
         self._capture_boundary(now // 86400 * 86400, block, now)
@@ -1005,23 +1028,45 @@ class MetricStore:
         if status.get("frozen_end_timestamp") == end and self._get("daily_status") != status:
             self._put("daily_status", status)
 
-    def _refresh_emission(self, meta: dict, now: int, sources: dict):
-        genesis = _integer(meta.get("emission_genesis_timestamp"))
-        if genesis is None:
-            return
-        elapsed = max(0, (now - genesis) // 86400)
-        cycle = elapsed // 448 + 1
-        cycle_total = 100_000_000_000 * math.pow(0.5, cycle - 1)
-        daily = cycle_total / 448
-        required = int(meta.get("network_total_power") or 0) / (daily * .75) if daily else None
-        meta.update(emission_reference_timestamp=now, emission_current_cycle=cycle, emission_cycle_elapsed_days=elapsed % 448,
-                    emission_cycle_output_tokens=cycle_total, emission_daily_total_tokens=daily,
-                    emission_daily_total_display=f"{daily / 10**8:.3f}亿/日", emission_daily_miner_tokens=daily * .75,
-                    emission_daily_miner_display=f"{daily * .75 / 10**8:.3f}亿/日", emission_daily_node_tokens=daily * .25,
-                    emission_daily_node_display=f"{daily * .25 / 10**8:.3f}亿/日", power_required_per_mars_daily=required,
-                    power_required_per_mars_daily_display=_amount(required) if required is not None else None)
-        sources["emission"] = {"source": "existing_site_emission_formula", "genesis_timestamp": genesis, "checked_at": now,
-                               "basis": "448-day halving, 75% miner and 25% node allocation; same formula as original site"}
+    def _refresh_emission(self, meta: dict, now: int, sources: dict, *, block_info: dict | None = None):
+        """Verify the emission model against the ranking's pinned block."""
+        try:
+            block = _integer((block_info or {}).get("number", meta.get("latest_block")))
+            if block is None or block < 0:
+                raise ValueError("missing emission reference block")
+            header = self._rpc("eth_getBlockByNumber", [hex(block), False])
+            stamp = _integer(header.get("timestamp"))
+            expected_hash = (block_info or {}).get("hash")
+            if (stamp is None or stamp <= 0 or stamp > now
+                    or (expected_hash and header.get("hash", "").lower() != expected_hash.lower())):
+                raise ValueError("emission reference header is inconsistent")
+            raw = self._rpc("eth_call", [{"to": POWER_CONTRACT,
+                "data": "0x94f7f62b" + f"{block:064x}"}, hex(block)])
+            if not isinstance(raw, str) or len(raw) != 66 or not raw.startswith("0x"):
+                raise ValueError("invalid getBlockReward ABI response")
+            total_power = _integer(meta.get("network_total_power"))
+            if isinstance(meta.get("network_total_power"), bool) or total_power is None:
+                raise ValueError("invalid emission reference power")
+            fields = build_emission_meta(block, stamp, total_power,
+                                         observed_reward_wei=int(raw, 16))
+            meta.update(fields, emission_model_status="verified")
+            sources["emission"] = {"source": "local_rpc_block_reward", "block": block,
+                "block_hash": header.get("hash"), "fetched_at": now, "checked_at": now,
+                "status": "ok", "model_version": MODEL_VERSION,
+                "basis": "verified block reward; 28800 model blocks/day; 75% miner and 25% node"}
+        except Exception as exc:
+            # A failed/mismatching reward read must not silently revive the
+            # previous genesis-time model or leave a current-looking forecast.
+            for key in build_emission_meta(0, 1, 0):
+                if key not in {"emission_total_supply_cap_tokens", "emission_total_supply_cap_display",
+                               "emission_miner_share", "emission_node_share"}:
+                    meta[key] = None
+            meta.update(emission_model_version=MODEL_VERSION, emission_model_status="unavailable")
+            for key in ("emission_daily_total_display", "emission_daily_miner_display",
+                        "emission_daily_node_display", "power_required_per_mars_daily_display"):
+                meta[key] = "待刷新"
+            sources["emission"] = {"source": "local_rpc_block_reward", "checked_at": now,
+                "status": "unavailable", "error": str(exc), "model_version": MODEL_VERSION}
 
     def _capture_boundary(self, cutoff: int, source_block: int, now: int) -> dict | None:
         """Save cutoff state while it is still recent, even before a day is complete."""

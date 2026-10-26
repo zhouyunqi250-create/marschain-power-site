@@ -1,18 +1,19 @@
-"""Public equation burn scenarios using the site's existing emission model."""
+"""Public equation burn scenarios anchored to the observed block reward."""
 
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, localcontext
 import math
+
+from .emission import (
+    MODEL_VERSION, BLOCKS_PER_DAY, WEI_PER_TOKEN,
+    block_reward_wei, projected_emission_wei,
+)
 
 
 TARGET_TIMESTAMP = int(datetime(2026, 12, 25, tzinfo=timezone.utc).timestamp())
 DAY_SECONDS = 86_400
 EVENT_DAYS = 8
 EVENT_SECONDS = EVENT_DAYS * DAY_SECONDS
-CYCLE_DAYS = 448
-CYCLE_SECONDS = CYCLE_DAYS * DAY_SECONDS
-FIRST_CYCLE_TOKENS = Decimal(100_000_000_000)
-WEI_PER_TOKEN = Decimal(10) ** 18
 DISPLAY_KEYS = (
     "circulation", "remaining_emission", "projected_circulation", "event_emission",
     "settlement_circulation", "burn_pool",
@@ -46,22 +47,29 @@ def _amount(number: Decimal) -> str:
     return f"{number:,.3f}".rstrip("0").rstrip(".")
 
 
-def _daily_emission(timestamp: int, genesis: int) -> Decimal:
-    cycle = (timestamp - genesis) // CYCLE_SECONDS
-    return FIRST_CYCLE_TOKENS * (Decimal("0.5") ** cycle) / CYCLE_DAYS
+def _emission_reference(meta: dict, now: int):
+    """Require a coherent block anchor; never fall back to the old date model."""
+    if (meta.get("emission_model_version") != MODEL_VERSION
+            or meta.get("emission_model_status") != "verified"):
+        return None
+    block = _integer(meta.get("emission_reference_block"))
+    timestamp = _integer(meta.get("emission_reference_timestamp"))
+    reward = _integer(meta.get("emission_block_reward_wei"))
+    if (block is None or block < 0 or timestamp is None or timestamp <= 0
+            or timestamp > now or reward is None or reward < 0):
+        return None
+    try:
+        if reward != block_reward_wei(block):
+            return None
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return block, timestamp, reward
 
 
-def _future_emission(start: int, end: int, genesis: int) -> Decimal:
-    """Integrate daily model output, including a halving inside the interval."""
-    total = Decimal(0)
-    cursor = start
-    while cursor < end:
-        cycle = (cursor - genesis) // CYCLE_SECONDS
-        boundary = genesis + (cycle + 1) * CYCLE_SECONDS
-        segment_end = min(boundary, end)
-        total += _daily_emission(cursor, genesis) * Decimal(segment_end - cursor) / DAY_SECONDS
-        cursor = segment_end
-    return total
+def _projected_tokens(start: int, end: int, reference) -> Decimal:
+    """Use one block anchor for every adjacent forecast segment."""
+    block, timestamp, _reward = reference
+    return projected_emission_wei(start, end, block, timestamp) / WEI_PER_TOKEN
 
 
 def _lag_display(lag: int) -> str:
@@ -89,7 +97,7 @@ def oracle_burn_forecast(meta: dict) -> dict:
         "assumptions": [
             "未来新增销毁按0计算，实际销毁随流通量更新。",
             "流通量记录滞后时，至当前时点的产量单列模型补算。",
-            "本轮产量从当前数据时间起算8天，跨减半周期分段计算。",
+            "本轮产量从当前数据时间起算8天，预计按区块减半及3秒出块模型分段计算。",
             "按当前全网总算力及35%参数估算，沿用原有算力换算口径。",
         ],
     }
@@ -99,11 +107,11 @@ def oracle_burn_forecast(meta: dict) -> dict:
     if now is None or now <= 0:
         result["reason"] = "缺少有效数据时间"
         return result
-    genesis = _integer(meta.get("emission_genesis_timestamp"))
+    reference = _emission_reference(meta, now)
     circulation_wei = _integer(meta.get("network_total_circulation_tokens"))
     power = _integer(meta.get("network_total_power"))
-    if genesis is None or genesis <= 0 or now < genesis:
-        result["reason"] = "缺少有效产量周期"
+    if reference is None:
+        result["reason"] = "缺少有效链上产量参数"
         return result
     if circulation_wei is None or circulation_wei < 0:
         result["reason"] = "缺少有效流通量"
@@ -119,20 +127,20 @@ def oracle_burn_forecast(meta: dict) -> dict:
         result["reason"] = "缺少有效流通量记录时间"
         return result
     anchor = fetched_at if fetched_at is not None and 0 < fetched_at <= now else now
-    if anchor < genesis:
-        result["reason"] = "流通量采样早于产量周期"
-        return result
-
     with localcontext() as context:
         context.prec = 60
         circulation = Decimal(circulation_wei) / WEI_PER_TOKEN
-        source_gap = _future_emission(anchor, now, genesis)
+        try:
+            source_gap = _projected_tokens(anchor, now, reference)
+            event = _projected_tokens(now, now + EVENT_SECONDS, reference)
+        except (ValueError, TypeError, OverflowError, InvalidOperation):
+            result["reason"] = "缺少有效产量预测区间"
+            return result
         projected = circulation + source_gap
-        event = _future_emission(now, now + EVENT_SECONDS, genesis)
         settlement = projected + event
         pool = settlement * Decimal("0.35")
         burn_per_power = pool / Decimal(power)
-        daily = _daily_emission(now, genesis)
+        daily = Decimal(reference[2]) * BLOCKS_PER_DAY / WEI_PER_TOKEN
         numbers = {
             "circulation": circulation, "source_gap_emission": source_gap,
             "projected_circulation": projected, "event_emission": event,
@@ -176,7 +184,7 @@ def christmas_forecast(meta: dict) -> dict:
         "display": {key: "—" for key in DISPLAY_KEYS},
         "assumptions": [
             "未来新增销毁按0计算，实际销毁随流通量更新。",
-            "未来产量沿用现有448天减半模型，跨周期分段计算。",
+            "未来产量预计按区块减半及3秒出块模型分段计算。",
             "圣诞起算后另加8天产量，与距圣诞产量不重叠。",
             "按当前全网总算力及35%参数估算，沿用原有算力换算口径。",
         ],
@@ -192,11 +200,11 @@ def christmas_forecast(meta: dict) -> dict:
         result.update(state="ended", reason="本期预测已结束")
         return result
 
-    genesis = _integer(meta.get("emission_genesis_timestamp"))
+    reference = _emission_reference(meta, now)
     circulation_wei = _integer(meta.get("network_total_circulation_tokens"))
     power = _integer(meta.get("network_total_power"))
-    if genesis is None or genesis <= 0 or now < genesis:
-        result["reason"] = "缺少有效产量周期"
+    if reference is None:
+        result["reason"] = "缺少有效链上产量参数"
         return result
     if circulation_wei is None or circulation_wei < 0:
         result["reason"] = "缺少有效流通量"
@@ -212,21 +220,21 @@ def christmas_forecast(meta: dict) -> dict:
         result["reason"] = "缺少有效流通量记录时间"
         return result
     anchor = fetched_at if fetched_at is not None and 0 < fetched_at <= now else now
-    if anchor < genesis:
-        result["reason"] = "流通量采样早于产量周期"
-        return result
-
     with localcontext() as context:
         context.prec = 60
         circulation = Decimal(circulation_wei) / WEI_PER_TOKEN
-        remaining = _future_emission(anchor, TARGET_TIMESTAMP, genesis)
+        try:
+            remaining = _projected_tokens(anchor, TARGET_TIMESTAMP, reference)
+            event = _projected_tokens(TARGET_TIMESTAMP, TARGET_TIMESTAMP + EVENT_SECONDS, reference)
+        except (ValueError, TypeError, OverflowError, InvalidOperation):
+            result["reason"] = "缺少有效产量预测区间"
+            return result
         projected = circulation + remaining
-        event = _future_emission(TARGET_TIMESTAMP, TARGET_TIMESTAMP + EVENT_SECONDS, genesis)
         settlement = projected + event
         pool = settlement * Decimal("0.35")
         burn_per_power = pool / Decimal(power)
         per_power = burn_per_power * Decimal(100_000_000)
-        daily = _daily_emission(now, genesis)
+        daily = Decimal(reference[2]) * BLOCKS_PER_DAY / WEI_PER_TOKEN
         days = Decimal(TARGET_TIMESTAMP - now) / DAY_SECONDS
         numbers = {
             "circulation": circulation, "remaining_emission": remaining,

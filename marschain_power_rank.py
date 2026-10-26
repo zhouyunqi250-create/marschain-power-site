@@ -305,40 +305,45 @@ def build_mars_emission_meta(
     except Exception as exc:  # pragma: no cover - public RPC variability
         emission_error = str(exc)
 
-    elapsed_days = 0
-    if genesis_timestamp is not None and reference_timestamp >= genesis_timestamp:
-        elapsed_days = max(0, (reference_timestamp - genesis_timestamp) // 86_400)
-    current_cycle = int(elapsed_days // MARS_HALVING_PERIOD_DAYS) + 1
-    cycle_output_tokens = MARS_INITIAL_CYCLE_OUTPUT_TOKENS * math.pow(0.5, current_cycle - 1)
-    daily_total_tokens = cycle_output_tokens / MARS_HALVING_PERIOD_DAYS
-    daily_miner_tokens = daily_total_tokens * MARS_MINER_SHARE
-    daily_node_tokens = daily_total_tokens * MARS_NODE_SHARE
-    power_required = network_total_power / daily_miner_tokens if daily_miner_tokens and network_total_power else None
-
-    meta = {
-        "emission_basis": "MarsChain official model: total supply 2000亿, halving every 448 days, miner 75%, node 25%",
-        "emission_reference_timestamp": reference_timestamp,
-        "emission_genesis_timestamp": genesis_timestamp,
-        "emission_current_cycle": current_cycle,
-        "emission_cycle_elapsed_days": int(elapsed_days % MARS_HALVING_PERIOD_DAYS),
-        "emission_total_supply_cap_tokens": MARS_TOTAL_SUPPLY_CAP_TOKENS,
-        "emission_total_supply_cap_display": "2000亿",
-        "emission_initial_cycle_output_tokens": MARS_INITIAL_CYCLE_OUTPUT_TOKENS,
-        "emission_halving_period_days": MARS_HALVING_PERIOD_DAYS,
-        "emission_miner_share": MARS_MINER_SHARE,
-        "emission_node_share": MARS_NODE_SHARE,
-        "emission_cycle_output_tokens": cycle_output_tokens,
-        "emission_daily_total_tokens": daily_total_tokens,
-        "emission_daily_total_display": f"{format_yi_tokens(daily_total_tokens)}/日",
-        "emission_daily_miner_tokens": daily_miner_tokens,
-        "emission_daily_miner_display": f"{format_yi_tokens(daily_miner_tokens)}/日",
-        "emission_daily_node_tokens": daily_node_tokens,
-        "emission_daily_node_display": f"{format_yi_tokens(daily_node_tokens)}/日",
-        "power_required_per_mars_daily": power_required,
-        "power_required_per_mars_daily_display": format_chinese_amount(power_required) if power_required is not None else None,
-    }
+    from node_preview.emission import build_emission_meta, MODEL_VERSION
+    meta = {"emission_genesis_timestamp": genesis_timestamp}
+    try:
+        head = rpc_call(rpc_url, "eth_getBlockByNumber", ["latest", False])
+        if not isinstance(head, dict):
+            raise ValueError("missing emission reference head")
+        number = hex_to_int(head.get("number"))
+        stamp = hex_to_int(head.get("timestamp"))
+        if number is None or stamp is None:
+            raise ValueError("invalid emission reference head")
+        if stamp > reference_timestamp:
+            following = find_first_block_at_or_after_timestamp(rpc_url, 0, number, reference_timestamp + 1)
+            if following is None or following == 0:
+                raise ValueError("cannot pin emission reference time")
+            number = following - 1
+            head = rpc_call(rpc_url, "eth_getBlockByNumber", [hex(number), False])
+            stamp = hex_to_int(head.get("timestamp"))
+        if stamp is None or stamp <= 0 or stamp > reference_timestamp:
+            raise ValueError("invalid emission reference timestamp")
+        raw = rpc_call(rpc_url, "eth_call", [{"to": POWER_CONTRACT_ADDRESS,
+            "data": "0x94f7f62b" + f"{number:064x}"}, hex(number)])
+        if not isinstance(raw, str) or len(raw) != 66 or not raw.startswith("0x"):
+            raise ValueError("invalid getBlockReward ABI response")
+        meta.update(build_emission_meta(number, stamp, network_total_power,
+                    observed_reward_wei=int(raw, 16)), emission_model_status="verified")
+        meta["emission_basis"] = "Verified block reward; 28800 model blocks/day; miner 75%, node 25%"
+    except Exception as exc:
+        fields = build_emission_meta(0, 1, 0)
+        meta.update({key: None for key in fields})
+        for key in ("emission_total_supply_cap_tokens", "emission_total_supply_cap_display",
+                    "emission_miner_share", "emission_node_share"):
+            meta[key] = fields[key]
+        meta.update(emission_model_version=MODEL_VERSION, emission_model_status="unavailable",
+                    emission_error=str(exc))
+        for key in ("emission_daily_total_display", "emission_daily_miner_display",
+                    "emission_daily_node_display", "power_required_per_mars_daily_display"):
+            meta[key] = "待刷新"
     if emission_error:
-        meta["emission_error"] = emission_error
+        meta["emission_genesis_error"] = emission_error
     return meta
 
 

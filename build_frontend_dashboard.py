@@ -1225,7 +1225,7 @@ def build_html(payload: dict) -> str:
         {{
           label: '每日总产币量',
           value: meta.emission_daily_total_display || '2.232亿/日',
-          help: '按官网半衰期公式计算：当前周期产量 ÷ 448 天。'
+          help: '按当前已核验区块奖励 × 标准每日出块数量估算。'
         }},
         {{
           label: '矿工日产币量',
@@ -3191,36 +3191,28 @@ const setupPaidDownloadPanel = (panel) => {
 };
 
 const setupBurnCalculator = (panel) => {
-  const rate = Number(panel.dataset.burnRate || 0);
   const input = panel.querySelector('[data-burn-power]');
   const result = panel.querySelector('[data-burn-result]');
   const note = panel.querySelector('[data-burn-note]');
   if (!input || !result) return;
   const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
   const parsePower = (value) => {
-    let text = String(value || '').replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
-    let multiplier = 1;
-    if (text.includes('万亿')) {
-      multiplier = 1_0000_0000_0000;
-      text = text.replace(/万亿/g, '');
-    } else if (text.includes('亿')) {
-      multiplier = 1_0000_0000;
-      text = text.replace(/亿/g, '');
-    } else if (text.includes('万')) {
-      multiplier = 1_0000;
-      text = text.replace(/万/g, '');
-    } else if (text.endsWith('b')) {
-      multiplier = 1_000_000_000;
-      text = text.slice(0, -1);
-    } else if (text.endsWith('m')) {
-      multiplier = 1_000_000;
-      text = text.slice(0, -1);
-    } else if (text.endsWith('k')) {
-      multiplier = 1_000;
-      text = text.slice(0, -1);
-    }
-    if (!/^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/.test(text)) return NaN;
-    return Number(text) * multiplier;
+    const text = String(value ?? '').trim().toLowerCase();
+    // Validate the entire value before removing valid thousands separators.
+    const match = text.match(/^\+?((?:\d+|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d+)?|\.\d+)\s*(万亿|亿|万|千|百|b|m|k)?$/);
+    if (!match) return NaN;
+    const multipliers = {
+      '万亿': 1_0000_0000_0000,
+      '亿': 1_0000_0000,
+      '万': 1_0000,
+      '千': 1_000,
+      '百': 100,
+      b: 1_000_000_000,
+      m: 1_000_000,
+      k: 1_000,
+    };
+    const power = Number(match[1].replace(/,/g, '')) * (multipliers[match[2]] ?? 1);
+    return Number.isFinite(power) && power > 0 ? power : NaN;
   };
   const formatChinese = (number, suffix = '') => {
     if (!Number.isFinite(number)) return '待刷新';
@@ -3231,13 +3223,30 @@ const setupBurnCalculator = (panel) => {
     return `${trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }))}${suffix}`;
   };
   const update = () => {
+    const rate = Number(panel.dataset.burnRate || 0);
     const power = parsePower(input.value);
-    if (!Number.isFinite(power) || power <= 0 || rate <= 0) {
+    if (!Number.isFinite(power) || power <= 0) {
+      input.setAttribute('aria-invalid', 'true');
       result.textContent = '请输入有效算力';
       if (note) note.textContent = '支持 1亿、5亿、1000万 或纯数字。';
+      window.applyMarsLanguage?.();
+      return;
+    }
+    input.removeAttribute('aria-invalid');
+    if (!Number.isFinite(rate) || rate <= 0) {
+      result.textContent = '待刷新';
+      if (note) note.textContent = '参考参数暂不可用，请稍后重试。';
+      window.applyMarsLanguage?.();
       return;
     }
     const burned = power * rate;
+    if (!Number.isFinite(burned) || burned <= 0) {
+      input.setAttribute('aria-invalid', 'true');
+      result.textContent = '请输入有效算力';
+      if (note) note.textContent = '算力数值超出可计算范围，请调整后重试。';
+      window.applyMarsLanguage?.();
+      return;
+    }
     result.textContent = `当前约 ${burned.toLocaleString('zh-CN', burned >= 1 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 3 })} MARS`;
     if (note) note.textContent = `按现有 ${formatChinese(power)} 算力占比测算。`;
     window.applyMarsLanguage?.();
@@ -3369,6 +3378,11 @@ def _fmt_token_daily_output(value: object) -> str:
 
 
 def _fmt_one_yi_power_output(meta: dict) -> str:
+    if meta.get("emission_model_version"):
+        if meta.get("emission_model_status") != "verified":
+            return "待刷新"
+        if _as_float(meta.get("emission_daily_miner_tokens")) <= 0:
+            return _fmt_token_daily_output(0) if meta.get("emission_daily_miner_tokens") == 0 else "待刷新"
     power_required = _as_float(meta.get("power_required_per_mars_daily"))
     if power_required <= 0:
         network_power = _as_float(meta.get("network_total_power"))
@@ -3459,7 +3473,7 @@ def _christmas_content(forecast: dict) -> str:
         <p>每亿算力参考销毁量 = 参考销毁规模 × 1 亿 ÷ 当前全网总算力。</p>
         <p>这里的 1 亿指参与测算的现有算力，结果不代表新增 1 亿算力的确定成本。</p>
         <p>参考起算时间：{target}；8 天产量计算至 2027-01-02 08:00 北京时间，与圣诞前产量分开累计。</p>
-        <p>产量按现有经济模型估算，跨减半周期分段计算；已发生销毁由最新流通量体现。</p>
+        <p>产量按区块奖励规则估算，按预计出块进度分段计算；已发生销毁由最新流通量体现。</p>
         <p>起算时间、35% 与 8 天均为本页测算假设，非已确认的官方活动安排。</p>
       </details>
     """
@@ -3483,13 +3497,13 @@ def _build_burn_calculator(estimate: dict[str, object], *, mobile: bool = False)
           <p>测算基数：<b data-burn-field="settlement_circulation_display">{basis}</b>。</p>
           <p>每亿算力测算值（未取整）：<b data-burn-field="sample_burn_precise_display">{precise}</b>。</p>
           <p>输入值表示参与测算的现有算力，结果不代表新增同等算力的确定成本。</p>
-          <p>8 天从当前数据时点起算；按现有经济模型估算产量，跨减半周期分段计算。</p>
+          <p>8 天从当前数据时点起算；按标准出块速度估算产量，跨减半区块分段计算。</p>
           <p>本页为参考测算，活动参数及执行时间以官方公告为准。</p>
         </details>"""
     if mobile:
         return f"""
       <article class="m-burn-calculator" data-burn-calculator data-burn-rate="{burn_rate}">
-        <div><span class="m-kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力，查看含未来 8 天产量的销毁参考。</p></div>
+        <div><span class="m-kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力查看当前膨胀所需参考。</p></div>
         <div class="m-burn-stats">
           <div class="m-burn-stat"><span>8 天预计产量</span><b data-burn-field="event_emission_display">{event_emission}</b></div>
           <div class="m-burn-stat"><span>参考销毁规模 · 35%</span><b data-burn-field="burn_pool_display">{burn_pool}</b></div>
@@ -3501,7 +3515,7 @@ def _build_burn_calculator(estimate: dict[str, object], *, mobile: bool = False)
       </article>"""
     return f"""
     <div class="burn-calculator reveal" data-burn-calculator data-burn-rate="{burn_rate}">
-      <div class="burn-copy"><span class="kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力，查看含未来 8 天产量的销毁参考。</p><p class="forecast-member-note" data-burn-field="calculation_note">{note}</p></div>
+      <div class="burn-copy"><span class="kicker">方程式参考测算</span><h3>算力销毁测算</h3><p>输入算力查看当前膨胀所需参考。</p><p class="forecast-member-note" data-burn-field="calculation_note">{note}</p></div>
       <div class="burn-form">
         <div class="burn-stats">
           <div class="line"><span>8 天预计产量</span><b data-burn-field="event_emission_display">{event_emission}</b></div>
@@ -4155,7 +4169,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
             _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
             {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
         ),
-        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", daily_emission_points, merged_output_extra),
+        ("daily_emission", "每日产币量", daily_total, "当前区块奖励估算", daily_emission_points, merged_output_extra),
         ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
         (
             "daily_transaction_volume",
@@ -4385,7 +4399,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       <div class="timeline panel reveal">{timeline_rows}</div>
       <article class="risk panel reveal">
         <h3>公开口径说明</h3>
-        <p>榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：{escape(total_supply)} 枚永不增发；每日产币量按官方公式与当前链龄计算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。</p>
+        <p>榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：{escape(total_supply)} 枚永不增发；每日产币量按当前区块奖励和标准出块数量估算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。</p>
       </article>
     </div>
   </section>
@@ -4878,36 +4892,28 @@ const setupMobilePaidDownloadPanel = (panel) => {
 };
 
 const setupMobileBurnCalculator = (panel) => {
-  const rate = Number(panel.dataset.burnRate || 0);
   const input = panel.querySelector('[data-burn-power]');
   const result = panel.querySelector('[data-burn-result]');
   const note = panel.querySelector('[data-burn-note]');
   if (!input || !result) return;
   const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
   const parsePower = (value) => {
-    let text = String(value || '').replace(/,/g, '').replace(/\s+/g, '').toLowerCase();
-    let multiplier = 1;
-    if (text.includes('万亿')) {
-      multiplier = 1_0000_0000_0000;
-      text = text.replace(/万亿/g, '');
-    } else if (text.includes('亿')) {
-      multiplier = 1_0000_0000;
-      text = text.replace(/亿/g, '');
-    } else if (text.includes('万')) {
-      multiplier = 1_0000;
-      text = text.replace(/万/g, '');
-    } else if (text.endsWith('b')) {
-      multiplier = 1_000_000_000;
-      text = text.slice(0, -1);
-    } else if (text.endsWith('m')) {
-      multiplier = 1_000_000;
-      text = text.slice(0, -1);
-    } else if (text.endsWith('k')) {
-      multiplier = 1_000;
-      text = text.slice(0, -1);
-    }
-    if (!/^\+?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/.test(text)) return NaN;
-    return Number(text) * multiplier;
+    const text = String(value ?? '').trim().toLowerCase();
+    // Validate the entire value before removing valid thousands separators.
+    const match = text.match(/^\+?((?:\d+|[1-9]\d{0,2}(?:,\d{3})+)(?:\.\d+)?|\.\d+)\s*(万亿|亿|万|千|百|b|m|k)?$/);
+    if (!match) return NaN;
+    const multipliers = {
+      '万亿': 1_0000_0000_0000,
+      '亿': 1_0000_0000,
+      '万': 1_0000,
+      '千': 1_000,
+      '百': 100,
+      b: 1_000_000_000,
+      m: 1_000_000,
+      k: 1_000,
+    };
+    const power = Number(match[1].replace(/,/g, '')) * (multipliers[match[2]] ?? 1);
+    return Number.isFinite(power) && power > 0 ? power : NaN;
   };
   const formatChinese = (number, suffix = '') => {
     if (!Number.isFinite(number)) return '待刷新';
@@ -4918,13 +4924,30 @@ const setupMobileBurnCalculator = (panel) => {
     return `${trimZeros(number.toLocaleString('zh-CN', { maximumFractionDigits: 3 }))}${suffix}`;
   };
   const update = () => {
+    const rate = Number(panel.dataset.burnRate || 0);
     const power = parsePower(input.value);
-    if (!Number.isFinite(power) || power <= 0 || rate <= 0) {
+    if (!Number.isFinite(power) || power <= 0) {
+      input.setAttribute('aria-invalid', 'true');
       result.textContent = '请输入有效算力';
       if (note) note.textContent = '支持 1亿、5亿、1000万 或纯数字。';
+      window.applyMarsLanguage?.();
+      return;
+    }
+    input.removeAttribute('aria-invalid');
+    if (!Number.isFinite(rate) || rate <= 0) {
+      result.textContent = '待刷新';
+      if (note) note.textContent = '参考参数暂不可用，请稍后重试。';
+      window.applyMarsLanguage?.();
       return;
     }
     const burned = power * rate;
+    if (!Number.isFinite(burned) || burned <= 0) {
+      input.setAttribute('aria-invalid', 'true');
+      result.textContent = '请输入有效算力';
+      if (note) note.textContent = '算力数值超出可计算范围，请调整后重试。';
+      window.applyMarsLanguage?.();
+      return;
+    }
     result.textContent = `当前约 ${burned.toLocaleString('zh-CN', burned >= 1 ? { maximumFractionDigits: 0 } : { maximumSignificantDigits: 3 })} MARS`;
     if (note) note.textContent = `按现有 ${formatChinese(power)} 算力占比测算。`;
     window.applyMarsLanguage?.();
@@ -6483,8 +6506,8 @@ LANGUAGE_TOGGLE_JS = r"""
     if (match) return `Transaction found. Waiting for confirmations ${match[1]}`;
     match = text.match(/^本轮覆盖率为\s*(.+?)，低于目标\s*(.+?)。页面仍发布当轮最佳扫描结果，请结合风险说明理解数据边界。$/);
     if (match) return `This scan coverage is ${match[1]}, below the ${match[2]} target. The page still publishes the best available scan results; read the data notes for boundaries.`;
-    match = text.match(/^榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：(.+?) 枚永不增发；每日产币量按官方公式与当前链龄计算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。$/);
-    if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${translateChineseNumericUnit(match[1]) || match[1]} coins with no additional issuance. Daily emission follows the official formula and current chain age. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
+    match = text.match(/^榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：(.+?) 枚永不增发；每日产币量按当前区块奖励和标准出块数量估算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。$/);
+    if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${translateChineseNumericUnit(match[1]) || match[1]} coins with no additional issuance. Estimated daily emission uses current block rewards and the standard daily block count. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
     match = text.match(/^基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：(.+) · 统计周期：(.+)$/);
     if (match) return `Best-effort ranking generated from public APIs, RPC, and contract logs · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
     match = text.match(/^MarsChain Rank 手机版 · 最近刷新：(.+) · 统计周期：(.+)$/);
@@ -6844,7 +6867,7 @@ def build_mobile_html(payload: dict) -> str:
             _trend_points(meta, "network_current_price", [meta.get("network_current_price")]),
             {"highest_price": highest_price, "oracle_trigger_price": oracle_trigger_price},
         ),
-        ("daily_emission", "每日产币量", daily_total, "官方经济模型口径", daily_emission_points, merged_output_extra),
+        ("daily_emission", "每日产币量", daily_total, "当前区块奖励估算", daily_emission_points, merged_output_extra),
         ("total_wallets", "钱包地址", _fmt_chinese_number(explorer_total_addresses), "公开地址规模", total_wallet_points, merged_address_extra),
         ("daily_transaction_volume", "每日交易币量", daily_transaction_volume_display, "08:00统计窗口内交易 value 汇总", daily_transaction_volume_points, merged_transaction_extra),
         ("period_7d_new_power", "7 天增长", _fmt_power(period_7d_new_power), "最近 7 个统计日 · 点开对照趋势", _trend_points(meta, "period_7d_new_power"), {
