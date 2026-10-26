@@ -1,9 +1,10 @@
 """Lightweight preview metrics, with immutable Beijing 08:00 statistics.
 
 Only this module's ``preview_metric_*`` tables are written here.  Existing daily
-figures stay at their published timestamp until a whole observed window and both
-boundary contract states can be verified.  Minute refreshes never append a daily
-history point.  No historical block or log scan is performed by this module.
+figures stay at their published timestamp until a whole observed daily window can
+be verified. Rolling periods recover each field independently at that daily cutoff;
+missing evidence stays missing. Minute refreshes never append a daily history point.
+No historical block or log scan is performed by this module.
 """
 from __future__ import annotations
 
@@ -160,7 +161,7 @@ def _price(value: Any) -> str | None:
 
 
 def _is_daily(key: str) -> bool:
-    return key.startswith(("statistics_", "today_", "period_7d_", "period_30d_", "daily_total_power_history", "daily_power_history", "blackhole_", "full_scan_statistics_"))
+    return key == "period_statistics_schema" or key.startswith(("statistics_", "today_", "period_7d_", "period_30d_", "daily_total_power_history", "daily_power_history", "blackhole_", "full_scan_statistics_"))
 
 
 def _daily_trends(meta: dict, history: list[dict], reviewed_legacy: list[dict] | None = None) -> dict:
@@ -754,14 +755,21 @@ class MetricStore:
             sources["daily_new_addresses"] = growth_source
         for days in (7, 30):
             prefix = f"period_{days}d"
-            if _integer(meta.get(f"{prefix}_end_timestamp")) == end:
-                for suffix, field in (("new_power", "new_power"), ("new_addresses", "new_candidate_address_count"), ("burned", "burned_tokens")):
+            period = (daily_status.get("periods") or {}).get(str(days)) or {}
+            if (_integer(meta.get(f"{prefix}_end_timestamp")) == end
+                    and period.get("end_timestamp") == end):
+                for suffix, field, status_key in (("new_power", "new_power", "power"),
+                        ("new_addresses", "new_candidate_address_count", "new_addresses"),
+                        ("burned", "burned_tokens", "burned")):
                     key = f"{prefix}_{suffix}"
-                    values[key] = meta.get(f"{prefix}_{field}")
-                    if values[key] is not None:
-                        sources[key] = (meta.get(f"{prefix}_new_candidate_address_sample") or {}) if suffix == "new_addresses" else {
-                            "source": "verified_node_cutoff_difference", "start_timestamp": meta.get(f"{prefix}_start_timestamp"),
-                            "end_timestamp": end}
+                    provenance = (period.get("field_status") or {}).get(status_key) or {}
+                    # A shared window label does not prove every metric. Never
+                    # turn an old period's value into a new verified trend point.
+                    if provenance.get("available") is True:
+                        values[key] = meta.get(f"{prefix}_{field}")
+                        if values[key] is not None:
+                            sources[key] = {**provenance, "start_timestamp": meta.get(f"{prefix}_start_timestamp"),
+                                            "end_timestamp": end}
         existing = next((item for item in self.history() if item.get("statistics_window_end_timestamp") == end), {})
         created = int(existing.get("generated_at") or now)
         snapshot = {"generated_at": created, "generated_at_local": _local(created), "statistics_window_end_timestamp": end,
@@ -902,6 +910,7 @@ class MetricStore:
         meta["preview_metric_sources"] = sources
         meta["preview_official_stats_status"] = {"stats": stats_source, "power_stats": power_source}
         self._refresh_contract_history(meta, block_info, now)
+        self._advance_periods(meta, now, block)
         self._apply_sampled_growth(meta)
         self._enrich_daily_history(meta, now)
         legacy = self._get("reviewed_legacy_history", {})
@@ -928,14 +937,6 @@ class MetricStore:
         # previously it continued claiming that growth was unavailable forever.
         if status.get("frozen_end_timestamp") == end and self._get("daily_status") != status:
             self._put("daily_status", status)
-        for days in (7, 30):
-            prefix = f"period_{days}d"
-            if _integer(meta.get(f"{prefix}_end_timestamp")) == end:
-                value, provenance = self._sampled_address_growth(end - days * 86400, end)
-                meta.update({f"{prefix}_new_candidate_address_count": value,
-                             f"{prefix}_new_candidate_address_display": f"{value:,}个（近截点采样）" if value is not None else "缺少08:00地址采样",
-                             f"{prefix}_new_candidate_address_basis": "official near-08:00 sample difference; not exact boundary state",
-                             f"{prefix}_new_candidate_address_sample": provenance})
 
     def _refresh_emission(self, meta: dict, now: int, sources: dict):
         genesis = _integer(meta.get("emission_genesis_timestamp"))
@@ -1021,6 +1022,268 @@ class MetricStore:
         self._put(f"historical_power:{cutoff}", str(result))
         return result
 
+    def _period_boundary(self, cutoff: int, source_block: int, now: int, *, capture: bool = False) -> dict | None:
+        """Reuse verified cutoff states; only the two period endpoints may retry RPC."""
+        if not capture:
+            with self._db() as conn:
+                exists = conn.execute("SELECT 1 FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,)).fetchone()
+            if not exists and self.observation_database.resolve() != self.db_path.resolve():
+                try:
+                    with self._observations() as conn:
+                        exists = conn.execute("SELECT 1 FROM preview_metric_boundaries WHERE timestamp=?", (cutoff,)).fetchone()
+                except sqlite3.Error:
+                    pass
+            if not exists:
+                return None
+        return self._capture_boundary(cutoff, source_block, now)
+
+    def _period_power_at(self, cutoff: int, boundary: dict | None, meta: dict) -> tuple[int, dict]:
+        if boundary is not None:
+            value = _integer(boundary.get("power"))
+            if value is not None and value >= 0:
+                return value, {"source": "verified_local_rpc_cutoff", "boundary": boundary}
+        immutable = _integer(self._get(f"historical_power:{cutoff}"))
+        if immutable is not None and immutable >= 0:
+            return immutable, {"source": "immutable_completed_contract_day_cache", "cutoff_timestamp": cutoff}
+        completed = _integer(meta.get("daily_power_history_completed_through"))
+        candidates = []
+        if completed is not None and completed >= cutoff:
+            for point in meta.get("daily_total_power_history") or []:
+                if not isinstance(point, dict):
+                    continue
+                day, value = _integer(point.get("day")), _integer(point.get("value"))
+                if day is not None and 0 <= day < cutoff // 86400 and value is not None and value >= 0:
+                    candidates.append((day, value))
+        if not candidates:
+            raise ValueError("no verified cutoff state or immutable completed contract power history")
+        day, value = max(candidates)
+        return value, {"source": "completed_contract_day_power_history", "cutoff_timestamp": cutoff,
+                       "contract_day": day, "completed_through": completed,
+                       **(meta.get("daily_power_history_source") or {})}
+
+    def _observed_cutoff_block(self, cutoff: int, source_block: int) -> dict | None:
+        """Find the proven last block before a cutoff without an RPC/history replay."""
+        try:
+            with self._observations() as conn:
+                marker = conn.execute("SELECT number,block_hash,parent_hash,timestamp FROM preview_blocks WHERE timestamp>=? AND number<=? ORDER BY number LIMIT 1",
+                                      (cutoff, source_block)).fetchone()
+                before = conn.execute("SELECT number,block_hash,parent_hash,timestamp FROM preview_blocks WHERE number=?",
+                                      (marker["number"] - 1,)).fetchone() if marker else None
+        except sqlite3.Error:
+            return None
+        if (before is None or before["timestamp"] >= cutoff or marker["timestamp"] < cutoff
+                or before["block_hash"] != marker["parent_hash"]):
+            return None
+        return {"number": before["number"], "hash": before["block_hash"]}
+
+    def _period_burn_day(self, end: int, source_block: int, now: int, history: dict) -> dict:
+        start = end - 86400
+        before = self._period_boundary(start, source_block, now)
+        after = self._period_boundary(end, source_block, now)
+        if before is not None and after is not None:
+            amount = _integer(after.get("burned"))
+            left = _integer(before.get("burned"))
+            if amount is None or left is None or amount < left:
+                raise ValueError("invalid cumulative burned cutoff difference")
+            return {"start_timestamp": start, "end_timestamp": end,
+                    "start_block": before["number"] + 1, "end_block": after["number"],
+                    "start_anchor_hash": before["hash"], "end_block_hash": after["hash"],
+                    "amount_wei": amount - left, "source": "verified_local_rpc_cutoff_difference"}
+        recovered = self._get(f"period_burn_day:{end}")
+        if recovered is not None:
+            # The private scanner's receipt is checked again before use. A
+            # truthy 'verified' flag or a caller-supplied amount is insufficient.
+            from .period_recovery import validate_recovered_burn_day
+            result = validate_recovered_burn_day(recovered)
+            if result.get("start_timestamp") != start or result.get("end_timestamp") != end:
+                raise ValueError("recovered burn receipt belongs to another statistics day")
+            if result.get("end_block", source_block + 1) > source_block:
+                raise ValueError("recovered burn receipt exceeds the confirmed publisher block")
+            anchor = before or self._observed_cutoff_block(start, source_block)
+            last = after or self._observed_cutoff_block(end, source_block)
+            if ((anchor is not None and (result["start_block"] != anchor["number"] + 1
+                                        or result["start_anchor_hash"].lower() != anchor["hash"].lower()))
+                    or (last is not None and (result["end_block"] != last["number"]
+                                             or result["end_block_hash"].lower() != last["hash"].lower()))):
+                raise ValueError("recovered burn receipt disagrees with known canonical cutoff blocks")
+            return result
+        snapshot = history.get(end) or {}
+        provenance = (snapshot.get("field_sources") or {}).get("daily_burned") or {}
+        amount = _integer((snapshot.get("values") or {}).get("daily_burned"))
+        if (snapshot.get("source") != "verified_node_window" or amount is None or amount < 0
+                or provenance.get("source") != "verified_node_window" or provenance.get("cutoff_timestamp") != end):
+            raise ValueError(f"no verified burn evidence for statistics day ending {end}")
+        anchor = self._observed_cutoff_block(start, source_block)
+        last = self._observed_cutoff_block(end, source_block)
+        if (anchor is None or last is None or snapshot.get("source_block") != last["number"]
+                or last["number"] < anchor["number"]):
+            raise ValueError("verified daily burn has no matching canonical local cutoff identities")
+        # Older history has no receipt hash. Require its amount to match the
+        # collector's independently complete event coverage before aggregating.
+        checked = self._complete_burn_sum(anchor["number"] + 1, last["number"])
+        if checked is None or checked != amount:
+            raise ValueError("verified daily burn lacks matching complete local event coverage")
+        return {"start_timestamp": start, "end_timestamp": end,
+                "start_block": anchor["number"] + 1, "end_block": last["number"],
+                "start_anchor_hash": anchor["hash"], "end_block_hash": last["hash"],
+                "amount_wei": amount, "source": "verified_node_window_and_complete_power_burn_events"}
+
+    def _period_burn(self, start: int, end: int, before: dict | None, after: dict | None,
+                     source_block: int, now: int) -> tuple[int, dict]:
+        if before is not None and after is not None:
+            left, right = _integer(before.get("burned")), _integer(after.get("burned"))
+            if left is not None and right is not None and 0 <= left <= right:
+                return right - left, {"source": "verified_local_rpc_cutoff_difference", "start": before, "end": after}
+            raise ValueError("period cumulative burned cutoff difference is invalid")
+        history = {item.get("statistics_window_end_timestamp"): item for item in self.history()}
+        days = []
+        for cutoff in range(start + 86400, end + 1, 86400):
+            day = self._period_burn_day(cutoff, source_block, now, history)
+            if days and (day["start_block"] != days[-1]["end_block"] + 1
+                         or day["start_anchor_hash"] != days[-1]["end_block_hash"]):
+                raise ValueError("period burn days do not join at the same canonical cutoff block")
+            days.append(day)
+        if (not days or days[0]["start_timestamp"] != start or days[-1]["end_timestamp"] != end
+                or (before is not None and (days[0]["start_block"] != before["number"] + 1
+                                            or days[0]["start_anchor_hash"] != before["hash"]))
+                or (after is not None and (days[-1]["end_block"] != after["number"]
+                                          or days[-1]["end_block_hash"] != after["hash"]))):
+            raise ValueError("period burn coverage does not match its exact cutoff blocks")
+        return sum(day["amount_wei"] for day in days), {"source": "continuous_verified_daily_burn_evidence",
+                    "start_timestamp": start, "end_timestamp": end, "days": days}
+
+    @staticmethod
+    def _period_result_valid(value: Any, start: int, end: int, prefix: str, now: int) -> bool:
+        if (not isinstance(value, dict) or value.get("schema") != 2 or value.get("start_timestamp") != start
+                or value.get("end_timestamp") != end or type(value.get("checked_at")) is not int
+                or not 0 <= value["checked_at"] <= now + 60 or not isinstance(value.get("meta"), dict)
+                or not isinstance(value.get("field_status"), dict)):
+            return False
+        digest = hashlib.sha256(json.dumps({k: v for k, v in value.items() if k != "sha256"},
+                    ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if value.get("sha256") != digest:
+            return False
+        fields, statuses = value["meta"], value["field_status"]
+        if (fields.get(f"{prefix}_start_timestamp") != start or fields.get(f"{prefix}_end_timestamp") != end
+                or set(statuses) != {"power", "burned", "new_addresses"}):
+            return False
+        available = []
+        for name, field in (("power", "new_power"), ("burned", "burned_tokens"), ("new_addresses", "new_candidate_address_count")):
+            status, amount = statuses[name], fields.get(f"{prefix}_{field}")
+            if not isinstance(status, dict) or type(status.get("available")) is not bool:
+                return False
+            if status["available"]:
+                if type(amount) is not int or (name != "power" and amount < 0):
+                    return False
+            elif amount is not None:
+                return False
+            available.append(status["available"])
+        return (fields.get(f"{prefix}_complete") is all(available)
+                and (value.get("state") == "complete") is all(available))
+
+    def _advance_periods(self, meta: dict, now: int, source_block: int):
+        """Refresh independently of daily freeze, retry missing fields every five minutes.
+
+        A successful field at an immutable completed cutoff needs no further RPC.
+        Missing fields never retain facts from an older seven/thirty-day window.
+        """
+        end = _integer(meta.get("statistics_window_end_timestamp"))
+        meta["period_statistics_schema"] = 2
+        status = meta.setdefault("preview_daily_status", {})
+        if end is None or end <= 0 or end % 86400 or end > now // 86400 * 86400:
+            status["periods"] = {str(days): {"end_timestamp": end, "state": "unavailable",
+                "reason": "daily statistics cutoff is not a completed Beijing 08:00 boundary"} for days in (7, 30)}
+            return
+        persisted = self._get("daily_meta", {})
+        persisted["period_statistics_schema"] = 2
+        periods = {}
+        boundaries = {}
+        for days in (7, 30):
+            prefix, start = f"period_{days}d", end - days * 86400
+            key = f"period_statistics_result:{end}:{days}"
+            prior = self._get(key, {})
+            valid = self._period_result_valid(prior, start, end, prefix, now)
+            if valid and (prior.get("state") == "complete" or now - int(prior.get("checked_at") or 0) < 300):
+                fields = prior["meta"]
+                period = {k: v for k, v in prior.items() if k not in {"meta", "schema", "sha256"}}
+            else:
+                fields = {f"{prefix}_start_timestamp": start, f"{prefix}_end_timestamp": end,
+                          f"{prefix}_start_local": _local(start), f"{prefix}_end_local": _local(end),
+                          f"{prefix}_label": f"{_local(start)} 至 {_local(end)}",
+                          f"{prefix}_start_day": start // 86400, f"{prefix}_end_day": end // 86400,
+                          f"{prefix}_start_total_power": None, f"{prefix}_end_total_power": None,
+                          f"{prefix}_new_power": None, f"{prefix}_new_power_basis": "verified period power unavailable",
+                          f"{prefix}_burned_tokens": None, f"{prefix}_burned_display": "待补齐",
+                          f"{prefix}_burned_basis": "complete canonical period burn evidence unavailable",
+                          f"{prefix}_new_candidate_address_count": None,
+                          f"{prefix}_new_candidate_address_display": "缺少08:00地址采样",
+                          f"{prefix}_new_candidate_address_basis": "official near-08:00 sample difference; unavailable samples remain missing",
+                          f"{prefix}_new_candidate_address_sample": {}, f"{prefix}_complete": False}
+                field_status = {}
+                if valid:
+                    for name, suffixes in {"power": ("start_total_power", "end_total_power", "new_power", "new_power_basis"),
+                            "burned": ("burned_tokens", "burned_display", "burned_basis"),
+                            "new_addresses": ("new_candidate_address_count", "new_candidate_address_display", "new_candidate_address_basis", "new_candidate_address_sample")}.items():
+                        checked = prior["field_status"].get(name) or {}
+                        if checked.get("available") is True:
+                            field_status[name] = checked
+                            for suffix in suffixes:
+                                fields[f"{prefix}_{suffix}"] = prior["meta"].get(f"{prefix}_{suffix}")
+                if any(name not in field_status for name in ("power", "burned")):
+                    for cutoff in (start, end):
+                        if cutoff not in boundaries:
+                            try:
+                                boundaries[cutoff] = self._period_boundary(cutoff, source_block, now, capture=True)
+                            except Exception:
+                                boundaries[cutoff] = None
+                for name in ("power", "burned", "new_addresses"):
+                    if name in field_status:
+                        continue
+                    try:
+                        if name == "power":
+                            left, left_source = self._period_power_at(start, boundaries.get(start), meta)
+                            right, right_source = self._period_power_at(end, boundaries.get(end), meta)
+                            fields.update({f"{prefix}_start_total_power": left, f"{prefix}_end_total_power": right,
+                                           f"{prefix}_new_power": right - left,
+                                           f"{prefix}_new_power_basis": "exact cutoff state preferred; immutable completed contract day history fallback"})
+                            provenance = {"source": "verified_completed_power_cutoff_difference", "start": left_source, "end": right_source}
+                        elif name == "burned":
+                            value, provenance = self._period_burn(start, end, boundaries.get(start), boundaries.get(end), source_block, now)
+                            fields.update({f"{prefix}_burned_tokens": value, f"{prefix}_burned_display": _token(value),
+                                           f"{prefix}_burned_basis": provenance["source"]})
+                        else:
+                            value, provenance = self._sampled_address_growth(start, end)
+                            if value is None:
+                                raise ValueError(provenance.get("reason") or "official address cutoff samples unavailable")
+                            fields.update({f"{prefix}_new_candidate_address_count": value,
+                                           f"{prefix}_new_candidate_address_display": f"{value:,}个（近截点采样）",
+                                           f"{prefix}_new_candidate_address_sample": provenance})
+                        field_status[name] = {"state": "sampled_near_cutoff" if name == "new_addresses" else "verified",
+                                              "available": True, "checked_at": now, **provenance}
+                    except Exception as exc:
+                        field_status[name] = {"state": "unavailable", "available": False, "checked_at": now, "reason": str(exc)}
+                complete = all(item.get("available") is True for item in field_status.values())
+                fields[f"{prefix}_complete"] = complete
+                period = {"start_timestamp": start, "end_timestamp": end, "checked_at": now,
+                          "state": "complete" if complete else "partial" if any(item.get("available") for item in field_status.values()) else "unavailable",
+                          "field_status": field_status}
+                result = {"schema": 2, **period, "meta": fields}
+                result["sha256"] = hashlib.sha256(json.dumps(result, ensure_ascii=False, sort_keys=True,
+                                        separators=(",", ":")).encode()).hexdigest()
+                self._put(key, result)
+            # Replace this period's entire prefix, including explicitly missing
+            # amounts/displays; otherwise stale seed keys can survive a reset.
+            for target in (meta, persisted):
+                for old_key in [key for key in target if key.startswith(prefix + "_")]:
+                    target.pop(old_key)
+                target.update(fields)
+            periods[str(days)] = period
+        status["periods"] = periods
+        if self._get("daily_meta") != persisted:
+            self._put("daily_meta", persisted)
+        if self._get("daily_status") != status:
+            self._put("daily_status", status)
+
     def _advance_daily(self, meta: dict, now: int, source_block: int) -> dict:
         end = now // 86400 * 86400  # UTC midnight == Beijing 08:00.
         existing = self._get("daily_meta", {})
@@ -1042,32 +1305,10 @@ class MetricStore:
                 if boundary.get("burned") is not None:
                     conn.execute("INSERT OR IGNORE INTO preview_metric_boundaries VALUES (?,?,?,?,?,?)",
                                  (boundary["timestamp"], boundary["number"], boundary["hash"], str(boundary["power"]), str(boundary["burned"]), now))
-        for days in (7, 30):
-            prefix = f"period_{days}d"
-            start = end - days * 86400
-            with self._db() as conn:
-                point = conn.execute("SELECT * FROM preview_metric_boundaries WHERE timestamp=?", (start,)).fetchone()
-            if point:
-                daily.update({f"{prefix}_start_timestamp": start, f"{prefix}_end_timestamp": end, f"{prefix}_start_local": _local(start),
-                              f"{prefix}_end_local": _local(end), f"{prefix}_label": f"{_local(start)} 至 {_local(end)}",
-                              f"{prefix}_start_day": start // 86400, f"{prefix}_end_day": end // 86400,
-                              f"{prefix}_start_total_power": int(point["power"]), f"{prefix}_end_total_power": boundaries[1]["power"],
-                              f"{prefix}_new_power": boundaries[1]["power"] - int(point["power"]),
-                              f"{prefix}_new_power_basis": "exact local RPC state at confirmed block immediately before each Beijing 08:00 cutoff",
-                              f"{prefix}_burned_tokens": boundaries[1]["burned"] - int(point["burned"]),
-                              f"{prefix}_burned_display": _token(boundaries[1]["burned"] - int(point["burned"])),
-                              f"{prefix}_burned_basis": "exact totalBurnedTokens difference between verified cutoff blocks",
-                              f"{prefix}_new_candidate_address_count": None,
-                              f"{prefix}_new_candidate_address_display": "待日结地址快照",
-                              f"{prefix}_new_candidate_address_basis": "exact official totalAddresses snapshots unavailable; not inferred from discovered addresses"})
-            else:
-                daily.update({k: v for k, v in existing.items() if k.startswith(prefix + "_")})
         status = {"state": "verified_node_window", "source": "local_rpc_and_contiguous_observed_blocks", "checked_at": now,
                   "frozen_end_timestamp": end, "expected_end_timestamp": end, "source_block": boundaries[1]["number"],
                   "detail": "Daily tx/activity/power/burn verified. Address growth unavailable without exact official boundary snapshots.",
-                  "field_sources": daily.pop("_field_sources", {}),
-                  "periods": {str(days): {"end_timestamp": daily.get(f"period_{days}d_end_timestamp"),
-                             "state": "verified_node_boundaries" if daily.get(f"period_{days}d_end_timestamp") == end else "preserved_previous_snapshot"} for days in (7, 30)}}
+                  "field_sources": daily.pop("_field_sources", {})}
         self._put("daily_meta", daily)
         self._put("daily_status", status)
         # Exact integers are preserved; do not use float normalizers for wei.

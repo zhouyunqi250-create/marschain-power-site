@@ -38,6 +38,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from node_preview.bootstrap import atomic_json
+from node_preview.metrics import _token as format_burn_tokens
 
 
 STATIC_NAMES = ("index.html", "m/index.html", "live_preview.js")
@@ -292,6 +293,56 @@ def validate_fresh(preview: dict, max_age: int) -> None:
             raise SnapshotUnavailable(f"Snapshot {name} is missing or older than {max_age} seconds")
 
 
+def validate_period_statistics(meta: dict, report: dict) -> None:
+    """Do not publish a new statistics window carrying an older period's facts.
+
+    Schema 2 permits an explicitly unavailable field while other independently
+    verified fields advance. Older deployed snapshots remain readable during
+    the migration; the new producer always emits this schema marker.
+    """
+    if meta.get("period_statistics_schema") != 2:
+        return
+    end = meta.get("statistics_window_end_timestamp")
+    if isinstance(end, bool) or not isinstance(end, int) or end <= 0 or end % 86400:
+        raise SnapshotUnavailable("Daily statistics cutoff is invalid")
+    periods = (report.get("daily") or {}).get("periods") or {}
+    for days in (7, 30):
+        prefix = f"period_{days}d"
+        period = periods.get(str(days)) or {}
+        if (meta.get(f"{prefix}_end_timestamp") != end
+                or meta.get(f"{prefix}_start_timestamp") != end - days * 86400
+                or period.get("end_timestamp") != end
+                or period.get("start_timestamp") != end - days * 86400):
+            raise SnapshotUnavailable(f"{days}-day statistics have not advanced to the daily cutoff")
+        available = []
+        for field, status_key in (("new_power", "power"), ("burned_tokens", "burned"),
+                                  ("new_candidate_address_count", "new_addresses")):
+            value = meta.get(f"{prefix}_{field}")
+            evidence = (period.get("field_status") or {}).get(status_key) or {}
+            if evidence.get("available") is not (value is not None):
+                raise SnapshotUnavailable(f"{days}-day {field} disagrees with private verification status")
+            if value is None:
+                available.append(False)
+                continue
+            if isinstance(value, bool) or not isinstance(value, int) or (field != "new_power" and value < 0):
+                raise SnapshotUnavailable(f"{days}-day {field} is not a verified integer or explicit missing value")
+            available.append(True)
+        if available[0]:
+            left, right = (meta.get(f"{prefix}_{side}_total_power") for side in ("start", "end"))
+            if (type(left) is not int or type(right) is not int or min(left, right) < 0
+                    or right - left != meta[f"{prefix}_new_power"]):
+                raise SnapshotUnavailable(f"{days}-day power disagrees with its cutoff values")
+        if meta.get(f"{prefix}_complete") is not all(available):
+            raise SnapshotUnavailable(f"{days}-day statistics completeness disagrees with its fields")
+        if not available[1] and meta.get(f"{prefix}_burned_display") not in ("待补齐", "待刷新", "待核验"):
+            raise SnapshotUnavailable(f"{days}-day burn is missing but its old display value was retained")
+        if available[1] and meta.get(f"{prefix}_burned_display") != format_burn_tokens(meta[f"{prefix}_burned_tokens"]):
+            raise SnapshotUnavailable(f"{days}-day burn display disagrees with its numeric value")
+        if not available[2] and meta.get(f"{prefix}_new_candidate_address_display") not in (
+                "暂无可比采样", "缺少08:00地址采样", "待日结地址快照", "待刷新", "待核验"):
+            raise SnapshotUnavailable(f"{days}-day address growth is missing but its old display value was retained")
+
+
 def forbid_private(value: object) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
@@ -344,6 +395,7 @@ def load_bundle(root: Path, config: Config, max_age: int) -> Bundle:
     validated_preview = {**preview, "last_collection_success": report.get("last_collection_success")}
     validate_fresh(validated_preview, max_age)
     meta = payload["meta"]
+    validate_period_statistics(meta, report)
     if meta.get("paid_download", {}).get("enabled") is not False or meta.get("public_rank_limit") != 100:
         raise ValueError("The public top-100 boundary or disabled download setting is missing")
     if payload.get("view", {}).get("schema") != 1:

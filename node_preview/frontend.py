@@ -103,6 +103,7 @@ PUBLIC_META_FIELDS = frozenset({
     "emission_daily_miner_display", "emission_daily_node_tokens", "emission_daily_node_display",
     "emission_total_supply_cap_tokens", "emission_total_supply_cap_display", "emission_miner_share",
     "emission_node_share", "emission_genesis_timestamp",
+    "period_statistics_schema",
     *{f"period_{days}d_{field}" for days in (7, 30) for field in (
         "label", "start_timestamp", "end_timestamp", "start_local", "end_local", "start_total_power",
         "end_total_power", "new_power", "new_candidate_address_count", "new_candidate_address_display",
@@ -125,6 +126,16 @@ def _public_meta(value: dict) -> dict:
     scalar = (str, int, float, bool, type(None))
     meta = {key: copy.deepcopy(item) for key, item in value.items()
             if key in PUBLIC_META_FIELDS and isinstance(item, scalar)}
+    if meta.get("period_statistics_schema") == 2:
+        # A display string is not evidence of an available numeric value. The
+        # independent period refresh may recover power before burns/addresses.
+        # Never let a retained formatted seed disguise a missing current field.
+        for days in (7, 30):
+            prefix = f"period_{days}d"
+            if meta.get(f"{prefix}_burned_tokens") is None:
+                meta[f"{prefix}_burned_display"] = "待补齐"
+            if meta.get(f"{prefix}_new_candidate_address_count") is None:
+                meta[f"{prefix}_new_candidate_address_display"] = "暂无可比采样"
     meta["paid_download"] = {"enabled": False}
     meta["public_rank_limit"] = 100
     raw = value.get("node_preview") or {}
@@ -212,6 +223,38 @@ def _period_note(meta: dict, days: int) -> str:
     return _window_note(meta, f"period_{days}d") + "（北京时间）"
 
 
+def _period_missing_copy(markup: str, meta: dict, days: int | None = None) -> str:
+    """Apply missingness per field, including the compact secondary figures."""
+    if meta.get("period_statistics_schema") != 2:
+        return markup
+    for period in ((days,) if days is not None else (7, 30)):
+        prefix = f"period_{period}d"
+        fields = (
+            ("new_power", ("新增算力",), "待补齐"),
+            ("new_candidate_address_count", ("新增地址",), "暂无可比采样"),
+            ("burned_tokens", ("销毁数量", "销毁"), "待补齐"),
+        )
+        for field, labels, replacement in fields:
+            if meta.get(f"{prefix}_{field}") is not None:
+                continue
+            all_labels = [f"{period} 天{label}" for label in labels]
+            all_labels += [f"{period}天{label}" for label in labels]
+            if days is not None:
+                all_labels += list(labels)
+            names = "|".join(re.escape(label) for label in all_labels)
+            # Desktop lines, mobile secondary rows and timeline labels.
+            markup = re.sub(
+                rf'(<span>(?:{names})</span>\s*<(?:strong|b)>)[^<]*(</(?:strong|b)>)',
+                lambda match: match[1] + replacement + match[2], markup,
+            )
+            # The footer marquee keeps its label and number in one span.
+            markup = re.sub(
+                rf'(<span>(?:{names})\s*<b>)[^<]*(</b>)',
+                lambda match: match[1] + replacement + match[2], markup,
+            )
+    return markup
+
+
 def _annotate_period_cards(markup: str, meta: dict) -> str:
     def card(match):
         opening, inner, closing = match.groups()
@@ -221,6 +264,7 @@ def _annotate_period_cards(markup: str, meta: dict) -> str:
         if not period:
             return match.group(0)
         days = int(next(group for group in period.groups() if group))
+        inner = _period_missing_copy(inner, meta, days)
         state = _period_state(meta, days)
         badge = (f'<div class="node-period-state" data-node-period-state="{days}"'
                  + ("" if state else " hidden") + f'>{escape(state)}</div>')
@@ -274,10 +318,19 @@ def _daily_markup(markup: str) -> str:
     return re.sub(r"(?<=>)[^<>]+(?=<)", lambda match: _daily_text(match.group(0)), markup)
 
 
-def _daily_trend_copy(trends: list[dict]) -> list[dict]:
+def _daily_trend_copy(trends: list[dict], meta: dict | None = None) -> list[dict]:
     """Relabel the six core popup series; dates, numbers and keys stay intact."""
     for trend in trends:
         if str(trend.get("key") or "").startswith("period_"):
+            if meta and meta.get("period_statistics_schema") == 2:
+                match = re.fullmatch(r"period_(7|30)d_new_power", str(trend.get("key")))
+                if match:
+                    days = int(match[1])
+                    prefix = f"period_{days}d"
+                    if meta.get(f"{prefix}_new_power") is None:
+                        trend["value"] = "待补齐"
+                    trend["note"] = ("新增算力、新增地址与销毁数量按日期联动展示。"
+                                     "当前窗口缺失项单独标示；历史曲线按各自实际统计日期展示，缺失不补值。")
             continue
         for name in ("label", "note"):
             if isinstance(trend.get(name), str):
@@ -386,15 +439,15 @@ def public_payload(payload: dict) -> dict:
         "desktop": {
             "metrics": _metric_views(_annotate_metric_cards(_address_missing_copy(desktop["metric_cards"], meta), meta)),
             "growth": _annotate_period_cards(desktop["growth_cards"], meta),
-            "timeline": _daily_markup(_address_missing_copy(desktop["timeline_rows"], meta)),
-            "marquee": _daily_markup(_address_missing_copy(desktop["marquee_html"], meta)),
-            "trends": _daily_trend_copy(json.loads(desktop["metric_trend_payload"])),
+            "timeline": _daily_markup(_period_missing_copy(_address_missing_copy(desktop["timeline_rows"], meta), meta)),
+            "marquee": _daily_markup(_period_missing_copy(_address_missing_copy(desktop["marquee_html"], meta), meta)),
+            "trends": _daily_trend_copy(json.loads(desktop["metric_trend_payload"]), meta),
             "warning": desktop["warning_html"],
         },
         "mobile": {
             "metrics": _metric_views(_annotate_metric_cards(_annotate_period_cards(_address_missing_copy(mobile["key_cards"] + mobile["growth_cards"], meta), meta), meta)),
-            "timeline": _daily_markup(_address_missing_copy(mobile["meta_rows"], meta)),
-            "trends": _daily_trend_copy(json.loads(mobile["metric_trend_payload"])),
+            "timeline": _daily_markup(_period_missing_copy(_address_missing_copy(mobile["meta_rows"], meta), meta)),
+            "trends": _daily_trend_copy(json.loads(mobile["metric_trend_payload"]), meta),
             "warning": mobile["warning_html"],
         },
         "burn": desktop["burn_estimate"],
@@ -610,7 +663,7 @@ _DATA_NOTES = """
  <p data-preview-frequency>榜单约每分钟刷新，已确认交易可能稍后显示；每日统计按北京时间 08:00 日结。</p>
  <p data-preview-daily></p>
  <p data-preview-sources>算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。</p>
- <p data-preview-sampling>官方价格、地址的日历史取自北京时间 08:00 附近采样；每日新增地址为相邻统计日采样差额，可能与精确截点值存在差异。</p>
+ <p data-preview-sampling>官方价格、地址的日历史取自北京时间 08:00 附近采样；新增地址按各统计区间起止采样差额计算，可能与精确截点值存在差异。缺少可比地址采样时，仅该项暂缺，算力和销毁独立更新。</p>
  <p data-preview-source-notes hidden></p>
 </details>"""
 
@@ -660,7 +713,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     def safe_json(match):
         content = json.loads(match.group(2))
         if match.group(1).startswith('<script id="metricTrendData"'):
-            content = _daily_trend_copy(content)
+            content = _daily_trend_copy(content, public_meta)
         safe = json.dumps(content, ensure_ascii=False).replace("<", "\\u003c")
         return match.group(1) + safe + match.group(3)
     html = re.sub(r'(<script id="(?:rankData|metricTrendData)" type="application/json">)(.*?)(</script>)', safe_json, html, flags=re.S)
@@ -675,6 +728,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     markup = markup.replace("<span>覆盖率<b", "<span>算力覆盖率<b")
     markup = markup.replace("本轮覆盖率", "本轮算力覆盖率")
     markup = _annotate_metric_cards(_annotate_period_cards(_address_missing_copy(markup, public_meta), public_meta), public_meta)
+    markup = _period_missing_copy(markup, public_meta)
     markup = _daily_markup(markup)
     core_caption = '<p class="node-core-daily-caption">每日统计 · 北京时间 08:00 结算</p>'
     old_caption = ('<p>先看结果，再看口径。</p>' if mobile else
@@ -715,6 +769,9 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "保留上次统计": "Previous statistics retained",
         "保留上次日统计": "Previous daily statistics retained",
         "部分数据待补齐": "Some statistics are pending",
+        "待补齐": "Pending recovery",
+        "暂无可比采样": "No comparable samples",
+        "新增算力、新增地址与销毁数量按日期联动展示。当前窗口缺失项单独标示；历史曲线按各自实际统计日期展示，缺失不补值。": "Separate charts for new power, new addresses and burns. Missing current-window figures are marked individually; history keeps its actual statistics dates without filling gaps.",
         "部分日统计待补齐": "Some daily statistics are pending",
         "统计时间待核验": "Statistics time pending verification",
         "每日新增算力 · 北京时间": "Daily power growth · Beijing time",

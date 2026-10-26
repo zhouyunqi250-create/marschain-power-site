@@ -17,13 +17,19 @@ class FakeNetwork:
         self.calls = []
         self.offline = False
         self.contract_states = {200: (100, 10**30), 99: (60, 10**30 - 10**19), 101: (90, 10**30 - 3 * 10**18)}
-        self.history = None
+        self.block_timestamps = {99: 86399, 100: 86400, 101: 172799, 102: 172800, 200: 172820}
+        # The contract view contains completed days and its mutable current
+        # day; refresh filters the latter out at the verified block timestamp.
+        self.history = abi(64, 64 + 4 * 32, 3, 0, 1, 2, 3, 60, 90, 999)
 
     def __call__(self, url, timeout=10, payload=None):
         self.calls.append((url, payload))
         if self.offline:
             raise OSError("intentional offline")
         if payload:
+            if payload["method"] == "eth_getBlockByNumber":
+                number = int(payload["params"][0], 16)
+                return {"result": {"number": hex(number), "timestamp": hex(self.block_timestamps[number])}}
             self.assert_rpc(payload)
             block = payload["params"][1]
             data = payload["params"][0]["data"]
@@ -81,10 +87,13 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["preview_metric_sources"]["network_total_power"]["block"], 200)
 
     def test_stats_cache_survives_service_restart_and_outage(self):
-        first = self.store.refresh(self.base, 200, now=170000)
+        # The publisher passes the collector's confirmed timestamp even when
+        # RPC is down; cached metric recovery should use that same envelope.
+        block = {"number": 200, "timestamp": self.net.block_timestamps[200]}
+        first = self.store.refresh(self.base, block, now=170000)
         self.net.offline = True
         reopened = MetricStore(self.root / "preview.sqlite3", fetcher=self.net)
-        result = reopened.refresh(self.base, 200, now=170100)
+        result = reopened.refresh(self.base, block, now=170100)
         self.assertEqual(result["explorer_total_addresses"], first["explorer_total_addresses"])
         self.assertEqual(result["network_total_power"], 100)
         self.assertEqual(result["preview_metric_sources"]["network_total_power"]["status"], "stale_cache")
@@ -141,7 +150,11 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["statistics_window_active_wallet_address_count"], 2)
         self.assertEqual(result["statistics_window_transaction_volume_wei"], 2**90)
         self.assertIsNone(result["today_new_wallet_count"])
-        self.assertEqual(result["period_7d_end_timestamp"], 86400)
+        # Period windows now advance independently; an unavailable historical
+        # endpoint must not pin the card to the previous daily cutoff.
+        self.assertEqual(result["period_7d_end_timestamp"], 172800)
+        self.assertIsNone(result["period_7d_new_power"])
+        self.assertFalse(result["period_7d_complete"])
         self.assertEqual(len(self.store.history()), 1)
         count = len(self.net.calls)
         result2 = self.store.refresh(result, 200, now=172850)

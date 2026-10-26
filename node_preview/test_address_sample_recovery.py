@@ -123,11 +123,12 @@ class AddressSampleRecoveryTests(unittest.TestCase):
         self.store._apply_sampled_growth(meta)
         public = public_payload({"meta": meta, "rows": []})
         self.assertEqual(public["meta"]["statistics_window_new_candidate_address_count"], 113)
+        self.assertIn("近截点采样", public["meta"]["statistics_window_new_candidate_address_display"])
         for device in ("desktop", "mobile"):
             with self.subTest(device=device):
                 html = public["view"][device]["metrics"]["钱包地址"]["html"]
                 self.assertIn("113", html)
-                self.assertIn("近截点采样", html)
+                self.assertNotIn("近截点采样", html)
                 self.assertNotIn("暂无可比快照", html)
 
     def test_official_source_alias_and_full_url_are_both_accepted(self):
@@ -242,10 +243,15 @@ class AddressSampleRecoveryTests(unittest.TestCase):
             meta[f"period_{days}d_end_timestamp"] = self.end
         original = copy.deepcopy(meta)
         self.store._apply_sampled_growth(meta)
+        # Period fields have their own retry/schema path; the daily sample
+        # helper no longer owns seven/thirty-day values.
+        self.store._advance_periods(meta, self.end + 3600, 0)
         self.assertIsNone(meta["statistics_window_new_candidate_address_count"])
         self.assertEqual(meta["statistics_window_new_candidate_address_sample"]["status"], "unavailable")
+        self.assertEqual(meta["period_statistics_schema"], 2)
         for days in (7, 30):
             self.assertIsNone(meta[f"period_{days}d_new_candidate_address_count"])
+            self.assertFalse(meta["preview_daily_status"]["periods"][str(days)]["field_status"]["new_addresses"]["available"])
         self.assertEqual(meta["explorer_total_addresses"], original["explorer_total_addresses"])
 
     def test_incomplete_http_stats_preserves_old_payload_and_real_receipt(self):

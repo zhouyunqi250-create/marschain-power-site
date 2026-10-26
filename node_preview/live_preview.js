@@ -263,15 +263,29 @@
       '算力和累计销毁来自自建节点；价格、全网地址总数、流通量来自官方浏览器。',
       'Power and cumulative burns come from the self-hosted node. Prices, total addresses and circulation come from the official explorer.'));
     setText(dataNotes.querySelector('[data-preview-sampling]'), copy(
-      '官方价格、地址的日历史取自北京时间 08:00 附近采样；每日新增地址为相邻统计日采样差额，可能与精确截点值存在差异。',
-      'Daily price and address history is sampled near 08:00 Beijing time. Daily new addresses are the difference between adjacent daily samples and may differ from exact cutoff measurements.'));
+      '官方价格、地址的日历史取自北京时间 08:00 附近采样；新增地址按各统计区间起止采样差额计算，可能与精确截点值存在差异。缺少可比地址采样时，仅该项暂缺，算力和销毁独立更新。',
+      'Daily price and address history is sampled near 08:00 Beijing time. New addresses use the difference between samples at each window’s endpoints and may differ from exact cutoff measurements. Missing comparable address samples affect only that figure; power and burns update independently.'));
     const cutoff = meta.statistics_window_end_timestamp;
     const expected = timestamp(meta.preview_daily_status?.expected_end_timestamp);
     const dailyBehind = Number.isFinite(expected) && expected > timestamp(cutoff);
     const dailyNote = dailyBehind ? copy('（保留原截止数据）', ' (previous close retained)') : '';
+    const periodSummary = (days) => {
+      const prefix = `period_${days}d`;
+      const end = meta[`${prefix}_end_timestamp`];
+      const missing = [];
+      if (meta.period_statistics_schema === 2) {
+        if (meta[`${prefix}_new_power`] === null || meta[`${prefix}_new_power`] === undefined) missing.push(copy('算力待补齐', 'power pending recovery'));
+        if (meta[`${prefix}_burned_tokens`] === null || meta[`${prefix}_burned_tokens`] === undefined) missing.push(copy('销毁待补齐', 'burns pending recovery'));
+        if (meta[`${prefix}_new_candidate_address_count`] === null || meta[`${prefix}_new_candidate_address_count`] === undefined) missing.push(copy('新增地址暂无可比采样', 'no comparable new-address samples'));
+      }
+      const note = missing.length ? copy(`（${missing.join('，')}）`, ` (${missing.join('; ')})`) : '';
+      return english()
+        ? `${days}-day statistics through ${displayTime(end)}${note}`
+        : `${days} 天统计截至 ${displayTime(end)}${note}`;
+    };
     setText(dataNotes.querySelector('[data-preview-daily]'), english()
-      ? `Daily statistics through ${displayTime(cutoff)}${dailyNote}. 7-day statistics through ${displayTime(meta.period_7d_end_timestamp)}. 30-day statistics through ${displayTime(meta.period_30d_end_timestamp)}.`
-      : `每日统计截至 ${displayTime(cutoff)}${dailyNote}；7 天统计截至 ${displayTime(meta.period_7d_end_timestamp)}；30 天统计截至 ${displayTime(meta.period_30d_end_timestamp)}。`);
+      ? `Daily statistics through ${displayTime(cutoff)}${dailyNote}. ${periodSummary(7)}. ${periodSummary(30)}.`
+      : `每日统计截至 ${displayTime(cutoff)}${dailyNote}；${periodSummary(7)}；${periodSummary(30)}。`);
     const labels = {
       network_total_power: copy('算力', 'Power'),
       network_total_burned_tokens: copy('累计销毁', 'Cumulative burns'),

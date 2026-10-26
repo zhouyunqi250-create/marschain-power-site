@@ -26,7 +26,7 @@ class Metrics:
     rpc_url = "mock-node"
     stale = False
 
-    def refresh(self, meta, block):
+    def refresh(self, meta, block, observed_counts=None):
         result = copy.deepcopy(meta)
         result.update(network_total_power=100, network_total_burned_tokens=0)
         result["preview_metric_sources"] = {key: {"status": "stale_cache" if self.stale else "ok"}
@@ -84,8 +84,11 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(len(payload["rows"]), 1)
         self.assertEqual(payload["rows"][0]["power"], "100")
         self.assertEqual(payload["meta"]["node_preview"]["source_block"], 500)
-        self.assertEqual(payload["meta"]["node_preview"]["calibration_count"], 1)
-        self.assertTrue(payload["meta"]["target_met"])
+        self.assertNotIn("calibration_count", payload["meta"]["node_preview"])
+        self.assertNotIn("target_met", payload["meta"])
+        self.assertEqual(report["known_addresses"], 1)
+        self.assertTrue(report["calibration_done"])
+        self.assertTrue(report["power_sum_verified"])
         self.assertEqual(report["state"], "ready")
         self.assertFalse(payload["meta"]["paid_download"]["enabled"])
         self.assertNotIn("PRIVATE_MARS_BALANCE", str(payload))
