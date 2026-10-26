@@ -321,6 +321,12 @@ def validate_period_statistics(meta: dict, report: dict) -> None:
             evidence = (period.get("field_status") or {}).get(status_key) or {}
             if evidence.get("available") is not (value is not None):
                 raise SnapshotUnavailable(f"{days}-day {field} disagrees with private verification status")
+            if field == "new_candidate_address_count":
+                estimated = meta.get(f"{prefix}_new_candidate_address_estimated", False)
+                private_estimated = evidence.get("estimated", False)
+                if (type(estimated) is not bool or type(private_estimated) is not bool
+                        or estimated is not private_estimated or (value is None and estimated)):
+                    raise SnapshotUnavailable(f"{days}-day address estimate disagrees with private verification status")
             if value is None:
                 available.append(False)
                 continue
@@ -341,6 +347,11 @@ def validate_period_statistics(meta: dict, report: dict) -> None:
         if not available[2] and meta.get(f"{prefix}_new_candidate_address_display") not in (
                 "暂无可比采样", "缺少08:00地址采样", "待日结地址快照", "待刷新", "待核验"):
             raise SnapshotUnavailable(f"{days}-day address growth is missing but its old display value was retained")
+        if available[2]:
+            expected_display = (("约" if meta.get(f"{prefix}_new_candidate_address_estimated", False) else "")
+                                + f"{meta[f'{prefix}_new_candidate_address_count']:,}个")
+            if meta.get(f"{prefix}_new_candidate_address_display") != expected_display:
+                raise SnapshotUnavailable(f"{days}-day address display disagrees with its numeric value")
 
 
 def forbid_private(value: object) -> None:

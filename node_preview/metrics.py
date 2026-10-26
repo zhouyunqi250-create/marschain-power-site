@@ -39,9 +39,10 @@ TREND_KEYS = (
     "power_per_coin", "one_yi_power_output",
 )
 
-# These reviewed old site observations may supplement charts, never current
-# cards or exact boundary calculations. Legacy address counts and increments
-# used different coverage/cutoffs and must not enter a verified daily series.
+# These reviewed old site observations may supplement charts, never exact
+# boundary calculations. The period address cards alone may use a reviewed
+# official total within 30 minutes after a missing cutoff, marked estimated.
+# Legacy address counts and increments never enter a verified daily series.
 LEGACY_SAMPLE_KEYS = frozenset((
     "network_total_circulation", "network_current_price", "total_burned", "total_wallets",
     "total_supply", "daily_emission", "power_per_coin", "one_yi_power_output",
@@ -693,6 +694,71 @@ class MetricStore:
         return right - left, {"status": "sampled", "timing_status": "sampled_near_cutoff", "exact_cutoff": False,
                               "source": "official_totalAddresses_sample_difference", "start": before_source, "end": after_source}
 
+    def _period_address_growth(self, start: int, end: int) -> tuple[int | None, dict]:
+        """Recover period cards only; legacy build times are never HTTP receipts.
+
+        The strict daily sampler and its cutoff table keep their existing rules.
+        A reviewed old official total can fill a missing period endpoint, with
+        its real build time retained and the resulting difference estimated.
+        """
+        if (type(start) is not int or type(end) is not int or start < 0
+                or start % 86400 or end % 86400 or end <= start):
+            return None, {"status": "unavailable", "estimated": False, "exact_cutoff": False,
+                          "reason": "period address endpoints must be completed daily cutoffs"}
+        value, provenance = self._sampled_address_growth(start, end)
+        if value is not None:
+            return value, {**provenance, "estimated": False, "start_timestamp": start, "end_timestamp": end}
+
+        reviewed = self._get("reviewed_legacy_history", {})
+        snapshots = reviewed.get("snapshots", []) if isinstance(reviewed, dict) else []
+        if not isinstance(snapshots, list):
+            snapshots = []
+
+        def endpoint(cutoff: int) -> tuple[int | None, dict]:
+            values, source = self._cutoff_sample("official_stats", cutoff)
+            total = _integer(values.get("total_wallets"))
+            if total is not None and total >= 0:
+                return total, {**source, "total_wallets": total, "estimated": False}
+            candidates = []
+            for snapshot in snapshots:
+                if not isinstance(snapshot, dict) or snapshot.get("source") != "legacy_site_capture":
+                    continue
+                stamp, captured = snapshot.get("statistics_window_end_timestamp"), snapshot.get("generated_at")
+                values, sources = snapshot.get("values"), snapshot.get("field_sources")
+                if (type(stamp) is not int or stamp != cutoff or type(captured) is not int
+                        or not cutoff <= captured <= cutoff + 1800
+                        or not isinstance(values, dict) or not isinstance(sources, dict)):
+                    continue
+                total, source = values.get("total_wallets"), sources.get("total_wallets")
+                if (type(total) is not int or total < 0 or not isinstance(source, dict)
+                        or source.get("timing_status") != "legacy_sample"
+                        or source.get("source") != EXPLORER_API + "/stats"):
+                    continue
+                candidates.append((captured, total, source))
+            if not candidates:
+                return None, {}
+            captured, total, source = min(candidates, key=lambda item: (item[0], item[1]))
+            return total, {"source": EXPLORER_API + "/stats", "timing_status": "legacy_sample",
+                           "estimated": True, "exact_cutoff": False, "cutoff_timestamp": cutoff,
+                           "recorded_at": captured, "generated_at": captured, "offset_seconds": captured - cutoff,
+                           "total_wallets": total, "record_source": "legacy_site_capture",
+                           "recovery_source": "reviewed_legacy_history", "reviewed_field_source": copy.deepcopy(source),
+                           "reason": "original reviewed site build time; official HTTP receipt time is unknown"}
+
+        left, before_source = endpoint(start)
+        right, after_source = endpoint(end)
+        if left is None or right is None or right < left:
+            return None, {"status": "unavailable", "estimated": False, "exact_cutoff": False,
+                          "reason": "missing compatible official period endpoint totals, including reviewed legacy samples"}
+        # A direct sampler may have filled both cutoffs after the first check.
+        estimated = before_source.get("estimated") is True or after_source.get("estimated") is True
+        return right - left, {"status": "estimated" if estimated else "sampled", "estimated": estimated,
+                              "timing_status": "estimated_legacy_sample_difference" if estimated else "sampled_near_cutoff",
+                              "exact_cutoff": False, "start_timestamp": start, "end_timestamp": end,
+                              "source": "reviewed_legacy_official_address_sample_difference" if estimated else
+                                        "official_totalAddresses_sample_difference",
+                              "start": before_source, "end": after_source}
+
     def _cutoff_address_counts(self, cutoff: int) -> tuple[dict, dict]:
         """Reuse an existing private freeze manifest; do not query every wallet."""
         name = time.strftime("%Y%m%d-0800", time.gmtime(cutoff))
@@ -765,7 +831,8 @@ class MetricStore:
                     provenance = (period.get("field_status") or {}).get(status_key) or {}
                     # A shared window label does not prove every metric. Never
                     # turn an old period's value into a new verified trend point.
-                    if provenance.get("available") is True:
+                    if (provenance.get("available") is True
+                            and not (status_key == "new_addresses" and provenance.get("estimated") is True)):
                         values[key] = meta.get(f"{prefix}_{field}")
                         if values[key] is not None:
                             sources[key] = {**provenance, "start_timestamp": meta.get(f"{prefix}_start_timestamp"),
@@ -1152,9 +1219,11 @@ class MetricStore:
         return sum(day["amount_wei"] for day in days), {"source": "continuous_verified_daily_burn_evidence",
                     "start_timestamp": start, "end_timestamp": end, "days": days}
 
-    @staticmethod
-    def _period_result_valid(value: Any, start: int, end: int, prefix: str, now: int) -> bool:
-        if (not isinstance(value, dict) or value.get("schema") != 2 or value.get("start_timestamp") != start
+    def _period_result_valid(self, value: Any, start: int, end: int, prefix: str, now: int,
+                             allow_legacy: bool = False) -> bool:
+        if (not isinstance(value, dict) or type(value.get("schema")) is not int
+                or value.get("schema") not in ({2, 3} if allow_legacy else {3})
+                or value.get("start_timestamp") != start
                 or value.get("end_timestamp") != end or type(value.get("checked_at")) is not int
                 or not 0 <= value["checked_at"] <= now + 60 or not isinstance(value.get("meta"), dict)
                 or not isinstance(value.get("field_status"), dict)):
@@ -1170,7 +1239,8 @@ class MetricStore:
         available = []
         for name, field in (("power", "new_power"), ("burned", "burned_tokens"), ("new_addresses", "new_candidate_address_count")):
             status, amount = statuses[name], fields.get(f"{prefix}_{field}")
-            if not isinstance(status, dict) or type(status.get("available")) is not bool:
+            if (not isinstance(status, dict) or type(status.get("available")) is not bool
+                    or type(status.get("checked_at")) is not int or not 0 <= status["checked_at"] <= now + 60):
                 return False
             if status["available"]:
                 if type(amount) is not int or (name != "power" and amount < 0):
@@ -1178,13 +1248,79 @@ class MetricStore:
             elif amount is not None:
                 return False
             available.append(status["available"])
-        return (fields.get(f"{prefix}_complete") is all(available)
-                and (value.get("state") == "complete") is all(available))
+        complete = all(available)
+        state = "complete" if complete else "partial" if any(available) else "unavailable"
+        if fields.get(f"{prefix}_complete") is not complete or value.get("state") != state:
+            return False
+        if value["schema"] == 2:
+            # Migration only: callers may retain its verified power/burn fields,
+            # while addresses must be recomputed under the new period policy.
+            return allow_legacy
+        status = statuses["new_addresses"]
+        estimated = fields.get(f"{prefix}_new_candidate_address_estimated")
+        sample = fields.get(f"{prefix}_new_candidate_address_sample")
+        amount = fields.get(f"{prefix}_new_candidate_address_count")
+        display = fields.get(f"{prefix}_new_candidate_address_display")
+        if (type(estimated) is not bool or status.get("estimated") is not estimated
+                or not isinstance(sample, dict)):
+            return False
+        if not status["available"]:
+            if estimated or sample or display != "缺少08:00地址采样" or status.get("state") != "unavailable":
+                return False
+        else:
+            expected_source = ("reviewed_legacy_official_address_sample_difference" if estimated else
+                               "official_totalAddresses_sample_difference")
+            if (display != f"{'约' if estimated else ''}{amount:,}个"
+                    or sample.get("estimated") is not estimated or sample.get("exact_cutoff") is not False
+                    or sample.get("source") != expected_source
+                    or fields.get(f"{prefix}_new_candidate_address_basis") != expected_source
+                    or sample.get("start_timestamp") != start or sample.get("end_timestamp") != end
+                    or sample.get("status") != ("estimated" if estimated else "sampled")
+                    or sample.get("timing_status") != ("estimated_legacy_sample_difference" if estimated else "sampled_near_cutoff")
+                    or status.get("state") != ("estimated" if estimated else "sampled_near_cutoff")
+                    or sample != {key: item for key, item in status.items() if key not in {"state", "available", "checked_at"}}):
+                return False
+            legacy_endpoints = []
+            totals = []
+            for name, cutoff in (("start", start), ("end", end)):
+                point = sample.get(name)
+                if (not isinstance(point, dict) or point.get("source") != EXPLORER_API + "/stats"
+                        or point.get("cutoff_timestamp") != cutoff or point.get("exact_cutoff") is not False):
+                    return False
+                legacy = point.get("timing_status") == "legacy_sample"
+                if legacy:
+                    recorded, generated = point.get("recorded_at"), point.get("generated_at")
+                    original = point.get("reviewed_field_source")
+                    if (point.get("estimated") is not True or type(recorded) is not int
+                            or type(generated) is not int or generated != recorded
+                            or not cutoff <= recorded <= cutoff + 1800
+                            or point.get("offset_seconds") != recorded - cutoff or "received_at" in point
+                            or point.get("record_source") != "legacy_site_capture"
+                            or point.get("recovery_source") != "reviewed_legacy_history"
+                            or not isinstance(original, dict) or original.get("source") != EXPLORER_API + "/stats"
+                            or original.get("timing_status") != "legacy_sample"):
+                        return False
+                else:
+                    received = point.get("received_at")
+                    if (point.get("estimated", False) is not False or point.get("timing_status") != "sampled_near_cutoff"
+                            or type(received) is not int or abs(received - cutoff) > self.boundary_sample_tolerance_seconds):
+                        return False
+                total = point.get("total_wallets")
+                if (estimated or total is not None) and (type(total) is not int or total < 0):
+                    return False
+                totals.append(total)
+                legacy_endpoints.append(legacy)
+            if estimated is not any(legacy_endpoints):
+                return False
+            if all(type(total) is int for total in totals) and totals[1] - totals[0] != amount:
+                return False
+        return True
 
     def _advance_periods(self, meta: dict, now: int, source_block: int):
-        """Refresh independently of daily freeze, retry missing fields every five minutes.
+        """Refresh independently of daily freeze; retry gaps/estimates every five minutes.
 
-        A successful field at an immutable completed cutoff needs no further RPC.
+        A strict successful field at an immutable cutoff needs no further RPC.
+        Estimated address differences can upgrade when strict samples arrive.
         Missing fields never retain facts from an older seven/thirty-day window.
         """
         end = _integer(meta.get("statistics_window_end_timestamp"))
@@ -1198,12 +1334,22 @@ class MetricStore:
         persisted["period_statistics_schema"] = 2
         periods = {}
         boundaries = {}
+
+        def address_quality(provenance: dict) -> tuple[int, int]:
+            endpoints = [provenance.get(name) or {} for name in ("start", "end")]
+            return (sum(point.get("timing_status") == "legacy_sample" for point in endpoints),
+                    sum(abs(_integer(point.get("offset_seconds")) or 0) for point in endpoints))
+
         for days in (7, 30):
             prefix, start = f"period_{days}d", end - days * 86400
             key = f"period_statistics_result:{end}:{days}"
             prior = self._get(key, {})
             valid = self._period_result_valid(prior, start, end, prefix, now)
-            if valid and (prior.get("state") == "complete" or now - int(prior.get("checked_at") or 0) < 300):
+            legacy_valid = (not valid and isinstance(prior, dict) and prior.get("schema") == 2
+                            and self._period_result_valid(prior, start, end, prefix, now, allow_legacy=True))
+            prior_estimated = valid and prior["field_status"]["new_addresses"].get("estimated") is True
+            if valid and ((prior.get("state") == "complete" and not prior_estimated)
+                          or now - int(prior.get("checked_at") or 0) < 300):
                 fields = prior["meta"]
                 period = {k: v for k, v in prior.items() if k not in {"meta", "schema", "sha256"}}
             else:
@@ -1216,19 +1362,23 @@ class MetricStore:
                           f"{prefix}_burned_tokens": None, f"{prefix}_burned_display": "待补齐",
                           f"{prefix}_burned_basis": "complete canonical period burn evidence unavailable",
                           f"{prefix}_new_candidate_address_count": None,
+                          f"{prefix}_new_candidate_address_estimated": False,
                           f"{prefix}_new_candidate_address_display": "缺少08:00地址采样",
                           f"{prefix}_new_candidate_address_basis": "official near-08:00 sample difference; unavailable samples remain missing",
                           f"{prefix}_new_candidate_address_sample": {}, f"{prefix}_complete": False}
                 field_status = {}
-                if valid:
+                if valid or legacy_valid:
                     for name, suffixes in {"power": ("start_total_power", "end_total_power", "new_power", "new_power_basis"),
                             "burned": ("burned_tokens", "burned_display", "burned_basis"),
-                            "new_addresses": ("new_candidate_address_count", "new_candidate_address_display", "new_candidate_address_basis", "new_candidate_address_sample")}.items():
+                            "new_addresses": ("new_candidate_address_count", "new_candidate_address_estimated", "new_candidate_address_display", "new_candidate_address_basis", "new_candidate_address_sample")}.items():
+                        if legacy_valid and name == "new_addresses":
+                            continue
                         checked = prior["field_status"].get(name) or {}
                         if checked.get("available") is True:
-                            field_status[name] = checked
                             for suffix in suffixes:
                                 fields[f"{prefix}_{suffix}"] = prior["meta"].get(f"{prefix}_{suffix}")
+                            if name != "new_addresses" or checked.get("estimated") is not True:
+                                field_status[name] = checked
                 if any(name not in field_status for name in ("power", "burned")):
                     for cutoff in (start, end):
                         if cutoff not in boundaries:
@@ -1252,22 +1402,35 @@ class MetricStore:
                             fields.update({f"{prefix}_burned_tokens": value, f"{prefix}_burned_display": _token(value),
                                            f"{prefix}_burned_basis": provenance["source"]})
                         else:
-                            value, provenance = self._sampled_address_growth(start, end)
+                            value, provenance = self._period_address_growth(start, end)
                             if value is None:
                                 raise ValueError(provenance.get("reason") or "official address cutoff samples unavailable")
+                            if (prior_estimated and provenance.get("estimated") is True
+                                    and address_quality(prior["meta"][f"{prefix}_new_candidate_address_sample"]) < address_quality(provenance)):
+                                value = prior["meta"][f"{prefix}_new_candidate_address_count"]
+                                provenance = prior["meta"][f"{prefix}_new_candidate_address_sample"]
+                            estimated = provenance.get("estimated") is True
                             fields.update({f"{prefix}_new_candidate_address_count": value,
-                                           f"{prefix}_new_candidate_address_display": f"{value:,}个（近截点采样）",
+                                           f"{prefix}_new_candidate_address_estimated": estimated,
+                                           f"{prefix}_new_candidate_address_display": f"{'约' if estimated else ''}{value:,}个",
+                                           f"{prefix}_new_candidate_address_basis": provenance["source"],
                                            f"{prefix}_new_candidate_address_sample": provenance})
-                        field_status[name] = {"state": "sampled_near_cutoff" if name == "new_addresses" else "verified",
+                        field_status[name] = {"state": ("estimated" if provenance.get("estimated") is True else "sampled_near_cutoff") if name == "new_addresses" else "verified",
                                               "available": True, "checked_at": now, **provenance}
                     except Exception as exc:
-                        field_status[name] = {"state": "unavailable", "available": False, "checked_at": now, "reason": str(exc)}
+                        if name == "new_addresses" and prior_estimated:
+                            # A temporary recovery failure must not erase the
+                            # already validated estimate for this same window.
+                            field_status[name] = prior["field_status"][name]
+                        else:
+                            field_status[name] = {"state": "unavailable", "available": False, "checked_at": now, "reason": str(exc),
+                                                  **({"estimated": False} if name == "new_addresses" else {})}
                 complete = all(item.get("available") is True for item in field_status.values())
                 fields[f"{prefix}_complete"] = complete
                 period = {"start_timestamp": start, "end_timestamp": end, "checked_at": now,
                           "state": "complete" if complete else "partial" if any(item.get("available") for item in field_status.values()) else "unavailable",
                           "field_status": field_status}
-                result = {"schema": 2, **period, "meta": fields}
+                result = {"schema": 3, **period, "meta": fields}
                 result["sha256"] = hashlib.sha256(json.dumps(result, ensure_ascii=False, sort_keys=True,
                                         separators=(",", ":")).encode()).hexdigest()
                 self._put(key, result)

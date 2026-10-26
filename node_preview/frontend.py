@@ -107,6 +107,7 @@ PUBLIC_META_FIELDS = frozenset({
     *{f"period_{days}d_{field}" for days in (7, 30) for field in (
         "label", "start_timestamp", "end_timestamp", "start_local", "end_local", "start_total_power",
         "end_total_power", "new_power", "new_candidate_address_count", "new_candidate_address_display",
+        "new_candidate_address_estimated",
         "burned_tokens", "burned_display", "complete")},
 })
 PUBLIC_TREND_KEYS = frozenset({
@@ -134,8 +135,13 @@ def _public_meta(value: dict) -> dict:
             prefix = f"period_{days}d"
             if meta.get(f"{prefix}_burned_tokens") is None:
                 meta[f"{prefix}_burned_display"] = "待补齐"
-            if meta.get(f"{prefix}_new_candidate_address_count") is None:
+            address_count = meta.get(f"{prefix}_new_candidate_address_count")
+            estimated = meta.setdefault(f"{prefix}_new_candidate_address_estimated", False)
+            if address_count is None:
                 meta[f"{prefix}_new_candidate_address_display"] = "暂无可比采样"
+            elif type(address_count) is int and address_count >= 0:
+                meta[f"{prefix}_new_candidate_address_display"] = (
+                    ("约" if estimated is True else "") + f"{address_count:,}个")
     meta["paid_download"] = {"enabled": False}
     meta["public_rank_limit"] = 100
     raw = value.get("node_preview") or {}
