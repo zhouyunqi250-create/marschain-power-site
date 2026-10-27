@@ -5060,13 +5060,182 @@ ORACLE_COUNTDOWN_JS = r"""
 
 
 SHARE_POSTER_JS = r"""
+/* Share-poster period rows: read public snapshot values without re-deriving them. */
+(() => {
+  'use strict';
+
+  const FONT = '"Microsoft YaHei", "PingFang SC", sans-serif';
+  const MISSING = '待补齐';
+  const ADDRESS_MISSING = '暂无可比采样';
+  const number = (value) => {
+    if (value === null || value === undefined || typeof value === 'boolean') return NaN;
+    if (typeof value !== 'number' && typeof value !== 'string') return NaN;
+    if (typeof value === 'string' && !value.trim()) return NaN;
+    const parsed = Number(typeof value === 'string' ? value.replace(/,/g, '').trim() : value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  };
+  const trimZeros = (value) => value.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
+  const compact = (value) => {
+    const parsed = number(value);
+    if (!Number.isFinite(parsed)) return MISSING;
+    const sign = parsed < 0 ? '-' : '';
+    const absolute = Math.abs(parsed);
+    for (const [threshold, unit] of [[1e12, '万亿'], [1e8, '亿'], [1e4, '万']]) {
+      if (absolute >= threshold) return sign + trimZeros((absolute / threshold).toFixed(3)) + unit;
+    }
+    if (absolute > 0 && absolute < 1) return sign + trimZeros(absolute.toFixed(6));
+    return parsed.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
+  };
+  const localStamp = (value) => {
+    if (typeof value !== 'string') return null;
+    const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::\d{2})?$/);
+    if (!match) return null;
+    const [year, month, day, hour, minute] = match.slice(1).map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day, hour, minute));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1
+      || date.getUTCDate() !== day || date.getUTCHours() !== hour || date.getUTCMinutes() !== minute) return null;
+    return `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}`;
+  };
+  const timestampStamp = (value) => {
+    const stamp = number(value);
+    if (!Number.isFinite(stamp) || stamp <= 0) return null;
+    const date = new Date((stamp + 8 * 3600) * 1000);
+    if (!Number.isFinite(date.getTime())) return null;
+    return date.toISOString().slice(0, 16).replace('T', ' ');
+  };
+  const windowDetails = (meta, prefix) => {
+    const start = localStamp(meta[`${prefix}_start_local`]) || timestampStamp(meta[`${prefix}_start_timestamp`]);
+    const end = localStamp(meta[`${prefix}_end_local`]) || timestampStamp(meta[`${prefix}_end_timestamp`]);
+    if (start && end) return { available: true, text: `${start} 至 ${end}` };
+    if (end) return { available: false, text: `截至 ${end} · 起始时间待核验` };
+    return { available: false, text: '统计时间待核验' };
+  };
+  const addressText = (meta, prefix) => {
+    const count = number(meta[`${prefix}_new_candidate_address_count`]);
+    if (!Number.isSafeInteger(count) || count < 0) return ADDRESS_MISSING;
+    const display = meta[`${prefix}_new_candidate_address_display`];
+    const estimated = meta[`${prefix}_new_candidate_address_estimated`] === true
+      || (typeof display === 'string' && display.trim().startsWith('约'));
+    return `${estimated ? '约' : ''}${count.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}个`;
+  };
+  const burnText = (meta, prefix) => {
+    const raw = number(meta[`${prefix}_burned_tokens`]);
+    if (!Number.isFinite(raw) || raw < 0) return MISSING;
+    const display = meta[`${prefix}_burned_display`];
+    if (typeof display === 'string') {
+      const cleaned = display.trim();
+      if (/^\d[\d,]*(?:\.\d+)?(?:万亿|亿|万)?(?:枚)?$/.test(cleaned)) {
+        return cleaned.endsWith('枚') ? cleaned : `${cleaned}枚`;
+      }
+    }
+    // This field is an integer amount in wei, including values below 1 MARS.
+    return `${compact(raw / 1e18)}枚`;
+  };
+  const periodSummary = (meta, days) => {
+    const prefix = `period_${days}d`;
+    const window = windowDetails(meta, prefix);
+    const power = compact(meta[`${prefix}_new_power`]);
+    const addresses = addressText(meta, prefix);
+    const burned = burnText(meta, prefix);
+    const end = number(meta[`${prefix}_end_timestamp`]);
+    const dailyEnd = number(meta.statistics_window_end_timestamp);
+    let state = '';
+    if (!window.available) state = '统计时间待核验';
+    else if (Number.isFinite(end) && Number.isFinite(dailyEnd) && end < dailyEnd) state = '保留上次统计';
+    else if (meta[`${prefix}_complete`] === false || [power, burned].includes(MISSING) || addresses === ADDRESS_MISSING) state = '部分数据待补齐';
+    return {
+      days,
+      title: `${days}天增长`,
+      power,
+      addresses,
+      burned,
+      values: [power, addresses, burned],
+      windowText: window.text,
+      state,
+      estimatedAddresses: addresses.startsWith('约'),
+    };
+  };
+
+  const summaries = (meta = {}) => [7, 30].map((days) => periodSummary(meta || {}, days));
+  const draw = (ctx, meta, helpers) => {
+    const { fillRound, fitText } = helpers;
+    const periods = summaries(meta);
+    ctx.save();
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#c7d5eb';
+    ctx.font = `950 28px ${FONT}`;
+    ctx.fillText('周期增长', 54, 1298);
+    ctx.fillStyle = '#8fa6c7';
+    ctx.font = `850 18px ${FONT}`;
+    ctx.textAlign = 'right';
+    ctx.fillText('北京时间 08:00 结算', 970, 1298);
+    ctx.textAlign = 'left';
+
+    periods.forEach((period, index) => {
+      const x = 54;
+      const y = index === 0 ? 1326 : 1520;
+      const width = 916;
+      const height = 178;
+      const accent = index === 0 ? '#8cdae7' : '#ded09c';
+      const fill = ctx.createLinearGradient(x, y, x + width, y + height);
+      fill.addColorStop(0, index === 0 ? 'rgba(21,48,67,.92)' : 'rgba(41,43,48,.92)');
+      fill.addColorStop(1, 'rgba(8,20,42,.92)');
+      fillRound(ctx, x, y, width, height, 20, fill,
+        index === 0 ? 'rgba(140,218,231,.26)' : 'rgba(222,208,156,.24)');
+      fillRound(ctx, x, y + 20, 4, height - 40, 2, accent);
+      ctx.fillStyle = accent;
+      ctx.font = `950 26px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText(period.title, x + 26, y + 38);
+      ctx.fillStyle = '#a4b4cb';
+      fitText(ctx, period.windowText, x + width - 26, y + 36, 650,
+        `850 17px ${FONT}`, 16, 'right');
+
+      const columns = [
+        { label: '新增算力', value: period.power },
+        { label: '新增地址', value: period.addresses },
+        { label: '销毁量', value: period.burned },
+      ];
+      const columnWidth = (width - 52) / 3;
+      columns.forEach((column, columnIndex) => {
+        const left = x + 26 + columnIndex * columnWidth;
+        ctx.fillStyle = '#aebed4';
+        ctx.font = `850 21px ${FONT}`;
+        ctx.textAlign = 'left';
+        ctx.fillText(column.label, left, y + 82);
+        ctx.fillStyle = [MISSING, ADDRESS_MISSING].includes(column.value) ? '#9eacc3' : '#f6fbff';
+        fitText(ctx, column.value, left, y + 126, columnWidth - 25,
+          `950 34px ${FONT}`, 22, 'left');
+        if (columnIndex < 2) {
+          ctx.beginPath();
+          ctx.moveTo(left + columnWidth - 18, y + 65);
+          ctx.lineTo(left + columnWidth - 18, y + 129);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(174,190,212,.14)';
+          ctx.stroke();
+        }
+      });
+      if (period.state) {
+        ctx.fillStyle = '#9eacc3';
+        ctx.font = `850 17px ${FONT}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(period.state, x + width - 26, y + 159);
+      }
+    });
+    ctx.restore();
+  };
+
+  window.MarsPosterPeriods = Object.freeze({ draw, summaries });
+})();
+
 (() => {
   const buttons = Array.from(document.querySelectorAll('[data-share-poster]'));
   if (!buttons.length) return;
 
   const SITE_URL = 'https://www.marschainrank.com/';
   const POSTER_WIDTH = 1024;
-  const POSTER_HEIGHT = 1536;
+  const POSTER_HEIGHT = 1984;
   let modal = null;
   let canvas = null;
 
@@ -5176,16 +5345,16 @@ SHARE_POSTER_JS = r"""
   };
   const dailyDeltaText = (value, formatter = compactNumber) => {
     const number = asNumber(value);
-    if (!Number.isFinite(number)) return '日新增 待刷新';
-    if (Math.abs(number) < 1e-12) return '日新增 持平';
-    return number > 0 ? `日新增 +${formatter(number)}` : `日减少 -${formatter(Math.abs(number))}`;
+    if (!Number.isFinite(number)) return '每日新增 待刷新';
+    if (Math.abs(number) < 1e-12) return '每日新增 持平';
+    return number > 0 ? `每日新增 +${formatter(number)}` : `每日减少 -${formatter(Math.abs(number))}`;
   };
   const sublineFromMetricDelta = (key, current, formatter = compactNumber) => {
     const text = metricDelta(key, current, formatter);
-    if (!text || text === '等待下一期') return '日新增 等待下一期';
-    if (text.includes('持平')) return '日新增 持平';
-    if (text.startsWith('新增 ')) return `日新增 +${text.slice(3)}`;
-    if (text.startsWith('减少 ')) return `日减少 -${text.slice(3)}`;
+    if (!text || text === '等待下一期') return '每日新增 等待下一期';
+    if (text.includes('持平')) return '每日新增 持平';
+    if (text.startsWith('新增 ')) return `每日新增 +${text.slice(3)}`;
+    if (text.startsWith('减少 ')) return `每日减少 -${text.slice(3)}`;
     return text;
   };
   const daysOnline = (meta) => {
@@ -5380,7 +5549,13 @@ SHARE_POSTER_JS = r"""
   };
   const drawSparkline = (ctx, x, y, w, h, values) => {
     const clean = Array.isArray(values) ? values.map(asNumber).filter(Number.isFinite).slice(-10) : [];
-    const points = clean.length >= 2 ? clean : [0, 0, 1, 1];
+    if (clean.length < 2) {
+      ctx.fillStyle = '#91a7b9';
+      ctx.font = '500 19px sans-serif';
+      ctx.fillText('暂无趋势数据', x, y + h / 2);
+      return;
+    }
+    const points = clean;
     const min = Math.min(...points);
     const max = Math.max(...points);
     const span = Math.max(max - min, Math.max(Math.abs(max), Math.abs(min)) * 0.08, Number.EPSILON);
@@ -5591,8 +5766,8 @@ SHARE_POSTER_JS = r"""
     drawSnapshotCard(ctx, 54, 592, 450, 118, '产1币所需算力', data.powerPerCoin, data.powerPerCoinDelta, '#56efff', { align: 'left', valueY: 662, valueWidth: 270, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 18px "Microsoft YaHei", sans-serif', sublineY: 696, sublineBadge: true });
     drawSnapshotCard(ctx, 520, 592, 450, 118, '1亿算力产出', data.oneYiOutput, data.oneYiOutputDelta, '#ffe86a', { align: 'left', valueY: 662, valueWidth: 300, font: '950 31px "Microsoft YaHei", sans-serif', minSize: 21, subFont: '900 18px "Microsoft YaHei", sans-serif', sublineY: 696, sublineBadge: true });
 
-    drawSnapshotCard(ctx, 54, 738, 450, 112, '日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 794, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif', subFont: '900 17px "Microsoft YaHei", sans-serif', sublineY: 834, sublineBadge: true });
-    drawSnapshotCard(ctx, 520, 738, 450, 112, '日交易币量', data.dailyTransactionVolume, data.dailyTransactionVolumeDelta, '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
+    drawSnapshotCard(ctx, 54, 738, 450, 112, '每日活跃地址', data.dailyActiveAddresses, data.dailyActiveAddressesDelta, '#75f3a9', { valueY: 794, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif', subFont: '900 17px "Microsoft YaHei", sans-serif', sublineY: 834, sublineBadge: true });
+    drawSnapshotCard(ctx, 520, 738, 450, 112, '每日交易量', data.dailyTransactionVolume, data.dailyTransactionVolumeDelta, '#7e8cff', { valueY: 798, valueWidth: 250, font: '950 29px "Microsoft YaHei", sans-serif' });
 
     const cards = [
       ['最新区块', data.latestBlock, data.latestBlockDelta, '#63ee91'],
@@ -5614,28 +5789,30 @@ SHARE_POSTER_JS = r"""
       }
     });
 
+    window.MarsPosterPeriods.draw(ctx, data.meta, { fillRound, fitText, compactNumber });
+
     ctx.fillStyle = '#8fa0bc';
     ctx.font = '800 18px "Microsoft YaHei", sans-serif';
-    ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1368);
-    ctx.fillText(`生成时间：${data.generatedAt}`, 54, 1400);
+    ctx.fillText('数据来源：官方浏览器 / POWER合约 / MarsChain Rank', 54, 1816);
+    ctx.fillText(`生成时间：${data.generatedAt}`, 54, 1848);
     ctx.fillStyle = '#dce9ff';
     ctx.font = '950 25px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 850, 1430);
+    ctx.fillText(SITE_URL.replace(/^https:\/\//, ''), 850, 1878);
     ctx.textAlign = 'left';
-    const logo = ctx.createConicGradient(3.8, 894, 1378);
+    const logo = ctx.createConicGradient(3.8, 894, 1826);
     logo.addColorStop(0, '#7bffcb');
     logo.addColorStop(.26, '#52f2ff');
     logo.addColorStop(.55, '#f58aff');
     logo.addColorStop(.78, '#ffe86a');
     logo.addColorStop(1, '#7bffcb');
-    fillRound(ctx, 892, 1358, 78, 78, 22, logo);
+    fillRound(ctx, 892, 1806, 78, 78, 22, logo);
     ctx.fillStyle = '#071124';
-    fillRound(ctx, 904, 1370, 54, 54, 14, '#071124');
+    fillRound(ctx, 904, 1818, 54, 54, 14, '#071124');
     ctx.fillStyle = '#ffffff';
     ctx.font = '950 46px "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('M', 931, 1414);
+    ctx.fillText('M', 931, 1862);
     ctx.textAlign = 'left';
   };
 
@@ -5684,7 +5861,7 @@ SHARE_POSTER_JS = r"""
             <div><span>SHARE POSTER</span><h3 id="posterTitle">生成快报图片</h3></div>
             <button class="poster-close" type="button" data-poster-close aria-label="关闭">×</button>
           </div>
-          <p>图片会读取当前页面数据，在本地生成 1024×1536 快报图，适合朋友圈、社群和私聊转发。</p>
+          <p>图片会读取当前页面数据，在本地生成 1024×1984 快报图，适合朋友圈、社群和私聊转发。</p>
           <ul class="poster-meta">
             <li><span>二维码</span><b>官网榜单</b></li>
             <li><span>价格</span><b>读取实时小文件</b></li>

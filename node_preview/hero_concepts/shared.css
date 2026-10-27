@@ -1,0 +1,38 @@
+/* Only the isolated concept pages receive these preview treatments. */
+body.mc-concept-page { background: #090c12; }
+body.mc-concept-page::before,body.mc-concept-page::after { display:none; }
+body.mc-concept-page .scroll-progress { display:none; }
+body.mc-concept-page .shell { width:min(1320px,calc(100% - 64px)); }
+body.mc-concept-page .node-preview-info,body.mc-concept-page .node-data-notes { display:none; }
+body.mc-concept-page .topbar { position:relative;top:auto;margin:0;padding:23px 0;border:0;border-bottom:1px solid #ffffff14;border-radius:0;background:none;box-shadow:none;backdrop-filter:none; }
+body.mc-concept-page .topbar::after { display:none; }
+body.mc-concept-page .brand { font-size:14px;font-weight:650;letter-spacing:-.02em;gap:10px; }
+body.mc-concept-page .mark { width:23px;height:23px;border-radius:7px;animation:none;box-shadow:none; }
+body.mc-concept-page .nav { gap:20px; }
+body.mc-concept-page .nav a { border:0;border-radius:0;background:none;padding:7px 0;font-size:12px;font-weight:500;color:#9ba4b4; }
+body.mc-concept-page .nav a:hover { color:#fff;box-shadow:none;transform:none;background:none; }
+body.mc-concept-page .lang-toggle,body.mc-concept-page .share-trigger { display:none; }
+body.mc-concept-page .mc-hero { position:relative;isolation:isolate;margin-top:20px;max-width:100%; }
+body.mc-concept-page .mc-hero h1 { color:inherit;background:none;background-clip:initial;-webkit-background-clip:initial;-webkit-text-fill-color:currentColor;text-shadow:none;animation:none; }
+body.mc-concept-page .mc-hero [data-hero-data-time] { white-space:nowrap; }
+body.mc-concept-page .mc-hero a:focus-visible { outline:2px solid currentColor;outline-offset:6px; }
+body.mc-concept-page .section.rank-section { padding-top:40px; }
+body.mc-concept-page .section-head h2 { font-size:clamp(24px,3vw,36px); }
+body.mc-concept-page .m-shell { max-width:420px; }
+body.mc-concept-page .m-top { position:relative;top:auto;margin-top:0;padding:17px 0 15px;border:0;border-bottom:1px solid #ffffff19;border-radius:0;background:none;backdrop-filter:none;box-shadow:none; }
+body.mc-concept-page .m-brand-main { font-size:13px;font-weight:650; }
+body.mc-concept-page .m-mark { width:22px;height:22px;border-radius:7px;box-shadow:none; }
+body.mc-concept-page .m-brand-actions { display:none; }
+body.mc-concept-page .m-nav { gap:22px;margin-top:16px; }
+body.mc-concept-page .m-nav a { padding:0;border:0;border-radius:0;background:none;color:#a4acb9;font-weight:500;font-size:11px; }
+body.mc-concept-page .m-section { padding-top:30px; }
+body.mc-concept-page .m-section h2 { font-size:24px; }
+@media(max-width:720px){
+ body.mc-concept-page .shell{width:calc(100% - 28px)}
+ body.mc-concept-page .topbar{padding:18px 0}
+ body.mc-concept-page .nav{gap:12px;overflow:auto}
+ body.mc-concept-page .nav a{font-size:11px;white-space:nowrap}
+ body.mc-concept-page .brand{font-size:12px}
+ body.mc-concept-page .mc-hero{margin-top:12px}
+}
+@media(prefers-reduced-motion:reduce){body.mc-concept-page .mc-hero *,body.mc-concept-page .mc-hero::before,body.mc-concept-page .mc-hero::after{animation:none!important;transition:none!important}}

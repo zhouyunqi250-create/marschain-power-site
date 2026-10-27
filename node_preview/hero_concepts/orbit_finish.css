@@ -1,0 +1,329 @@
+/* Chosen orbit direction: public content only, isolated to the finish preview. */
+body.mc-orbit-finish {
+  --bg: #090f17;
+  --panel: #101a25;
+  --panel2: #14212e;
+  --line: #b2d0df20;
+  --line2: #b2d0df3b;
+  --text: #e9f0f3;
+  --muted: #a2b0bd;
+  --cyan: #b7d3dd;
+  --blue: #8da9bc;
+  --green: #b5ccc0;
+  --amber: #c9ab92;
+  background: #090f17;
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+body.mc-orbit-finish :is(button, input, select) { font-family: inherit; }
+body.mc-orbit-finish :is(button, a, input, select, [tabindex="0"]):focus-visible {
+  outline: 2px solid #bad5df;
+  outline-offset: 4px;
+}
+
+/* A quiet frame keeps the focus on the figures rather than illuminated edges. */
+body.mc-orbit-finish :is(.topbar, .m-top) { border-bottom-color: #b3cedc24; }
+body.mc-orbit-finish :is(.brand, .m-brand-main) { color: #e3edf2; }
+body.mc-orbit-finish :is(.mark, .m-mark) {
+  background: linear-gradient(140deg, #d7e6ea, #83a8b8 57%, #a4826f);
+  border: 1px solid #d7e7ec30;
+  box-shadow: none;
+}
+body.mc-orbit-finish :is(.nav a, .m-nav a) {
+  color: #a8b8c4;
+  font-weight: 500;
+  transition: color .18s ease;
+}
+body.mc-orbit-finish :is(.nav a, .m-nav a):hover { color: #edf5f7; }
+body.mc-orbit-finish .section { padding-top: 86px; padding-bottom: 34px; }
+body.mc-orbit-finish .section.rank-section { padding-top: 48px; }
+body.mc-orbit-finish .section::before { display: none; }
+body.mc-orbit-finish :is(.section-head, .m-section-head) { gap: 20px; }
+body.mc-orbit-finish :is(.section-head h2, .m-section h2) {
+  color: #e8f0f4;
+  font-weight: 550;
+  letter-spacing: -.035em;
+  line-height: 1.18;
+}
+body.mc-orbit-finish .section-head h2 { font-size: clamp(27px, 2.5vw, 35px); }
+body.mc-orbit-finish .m-section h2 { font-size: 24px; }
+body.mc-orbit-finish :is(.section-head p, .m-section-head p) {
+  color: #9bafbe;
+  font-size: 12px;
+  line-height: 1.75;
+}
+body.mc-orbit-finish :is(.kicker, .m-kicker) {
+  color: #8fa6b6;
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+/* Keep existing responsive grids and interaction targets. */
+body.mc-orbit-finish :is(.rank-card, .metric, .growth-card, .fcard, .panel,
+  .m-rank-card, .m-card, .m-flow-card, .m-meta) {
+  border: 1px solid #b3cbdc24;
+  border-radius: 13px;
+  background: #101a25;
+  box-shadow: none;
+  backdrop-filter: none;
+  transform-style: flat;
+  transition: border-color .2s ease, background-color .2s ease;
+}
+body.mc-orbit-finish :is(.metric, .growth-card, .fcard, .rank-card, .panel)::before,
+body.mc-orbit-finish .metric::after { display: none; }
+body.mc-orbit-finish :is(.rank-card, .metric, .growth-card, .fcard, .panel):hover {
+  transform: none;
+  border-color: #b4cfdf4a;
+  background: #14202c;
+  box-shadow: none;
+}
+body.mc-orbit-finish .rank-card {
+  border-radius: 10px;
+  background: #0f1923;
+  padding-top: 17px;
+  padding-bottom: 17px;
+}
+body.mc-orbit-finish .rank-grid { gap: 8px; }
+body.mc-orbit-finish :is(.rank-top em, .m-rank-top em) { color: #8fa6b8; font-size: 13px; }
+body.mc-orbit-finish :is(.rank-top strong, .m-rank-top strong) {
+  color: #e4edf1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+body.mc-orbit-finish .rank-top strong { font-size: 22px; }
+body.mc-orbit-finish :is(.rank-card code, .m-rank-card code) { color: #c2d1db; }
+body.mc-orbit-finish .node-rank-actions { gap: 16px; }
+body.mc-orbit-finish .node-rank-actions :is(a, button) { color: #a0b9c8; font-weight: 500; }
+body.mc-orbit-finish .node-rank-actions :is(a, button):hover { color: #e5f1f5; }
+body.mc-orbit-finish :is(.rank-page-button, .m-rank-page-button,
+  .trend-controls button, .trend-legend button) {
+  background: #111d28;
+  border: 1px solid #accddd2e;
+  border-radius: 7px;
+  color: #abbfce;
+  box-shadow: none;
+  font-weight: 500;
+  animation: none;
+}
+body.mc-orbit-finish :is(.rank-page-button, .m-rank-page-button,
+  .trend-controls button, .trend-legend button).is-active {
+  background: #d0e1e7;
+  border-color: #d0e1e7;
+  color: #10212b;
+}
+body.mc-orbit-finish :is(.rank-page-button, .m-rank-page-button):disabled { opacity: .4; }
+body.mc-orbit-finish :is(.rank-count, .m-rank-count) {
+  color: #8fa6b8;
+  font-weight: 400;
+  line-height: 1.8;
+}
+
+/* Shared numeric hierarchy across core data, period growth and equations. */
+body.mc-orbit-finish .metric > span {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  max-width: 100%;
+  color: #b4c5d1;
+  font-weight: 500;
+  line-height: 1.6;
+}
+body.mc-orbit-finish :is(.m-card > span, .fcard label, .m-flow-card label) {
+  color: #b4c5d1;
+  font-weight: 500;
+  opacity: 1;
+}
+body.mc-orbit-finish :is(.metric > b, .m-card > b, .fcard > strong, .m-flow-card > strong) {
+  color: #e7f0f3;
+  font-weight: 600;
+  letter-spacing: -.045em;
+  font-variant-numeric: tabular-nums;
+}
+body.mc-orbit-finish :is(.metric small, .m-card small, .fcard small, .m-flow-card small) {
+  color: #92a6b7;
+  line-height: 1.75;
+}
+body.mc-orbit-finish :is(.metric-secondary, .metric-secondary-row, .price-stack span) {
+  border-color: #aecddd14;
+  border-radius: 7px;
+  background: #b7d4df05;
+}
+body.mc-orbit-finish :is(.metric-secondary span, .metric-secondary-row span,
+  .m-card .metric-secondary span, .m-card .metric-secondary-row span) {
+  color: #a2b6c5;
+  font-weight: 400;
+}
+body.mc-orbit-finish :is(.metric-secondary strong, .metric-secondary-row strong,
+  .m-card .metric-secondary strong, .m-card .metric-secondary-row strong) {
+  color: #c1d4ce;
+  font-weight: 600;
+}
+body.mc-orbit-finish :is(.metric-secondary em, .metric-secondary-row em,
+  .m-card .metric-secondary em, .m-card .metric-secondary-row em) { color: #91a7b9; }
+body.mc-orbit-finish :is(.node-daily-window, .node-period-cutoff) { color: #a0b3c3 !important; }
+body.mc-orbit-finish .node-daily-window { border-top-color: #afccda1a; }
+body.mc-orbit-finish .node-daily-window span:first-child { color: #8fa6b7 !important; }
+body.mc-orbit-finish .node-core-daily-caption { color: #9bb1c2 !important; }
+body.mc-orbit-finish .node-card-trend-entry { color: #9bb7c7; }
+body.mc-orbit-finish [data-core-compact]:hover .node-card-trend-entry { color: #d4e5ed; }
+body.mc-orbit-finish .growth-card h3 {
+  margin: 10px 0 20px;
+  font-weight: 550;
+  font-size: 30px;
+  letter-spacing: -.035em;
+}
+body.mc-orbit-finish :is(.line, .growth-card .line, .m-meta-row, .m-burn-stat) {
+  border-bottom-color: #adc6d61c;
+}
+body.mc-orbit-finish :is(.line span, .m-meta-row span, .m-burn-stat span) { color: #a2b5c5; }
+body.mc-orbit-finish :is(.line b, .m-meta-row b, .m-burn-stat b) {
+  color: #dae6ed;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+body.mc-orbit-finish .growth-card .line b { font-size: 19px; }
+body.mc-orbit-finish .equation-grid .fcard {
+  min-height: 208px;
+  background: linear-gradient(155deg, #19232d, #101a25 70%);
+}
+body.mc-orbit-finish .fcard label span { color: #8ca2b4; font-weight: 400; font-size: 11px; }
+body.mc-orbit-finish .equation-grid .fcard > strong { margin-top: 30px; }
+body.mc-orbit-finish :is(.equation-note, .burn-method-note, .forecast-member-note) {
+  color: #a0b3c1;
+  line-height: 1.8;
+}
+
+/* Forecasts keep the Mars earth accent without turning into a second hero. */
+body.mc-orbit-finish :is(.burn-calculator, .m-burn-calculator, .christmas-forecast) {
+  border: 1px solid #c8a79030;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #1a2027, #101a25 60%);
+  box-shadow: none;
+}
+body.mc-orbit-finish :is(.burn-copy h3, .m-burn-calculator h3, .christmas-head h3) {
+  color: #e5edf0;
+  font-weight: 550;
+  letter-spacing: -.035em;
+  line-height: 1.25;
+}
+body.mc-orbit-finish .burn-copy h3 { font-size: 29px; }
+body.mc-orbit-finish :is(.burn-copy p, .m-burn-calculator p, .christmas-intro,
+  .christmas-model, .christmas-method) { color: #a0b2c1; }
+body.mc-orbit-finish :is(.burn-input-row label, .m-burn-input label) { color: #bfcfd9; font-weight: 500; }
+body.mc-orbit-finish :is(.burn-input-row input, .m-burn-input input) {
+  border: 1px solid #b1cbd940;
+  border-radius: 8px;
+  background: #0c1620;
+  color: #edf4f6;
+  font-weight: 500;
+}
+body.mc-orbit-finish :is(.burn-input-row input, .m-burn-input input)::placeholder { color: #7e96a9; }
+body.mc-orbit-finish :is(.burn-input-row input, .m-burn-input input):focus {
+  border-color: #b6d2de9c;
+  box-shadow: 0 0 0 3px #b6d2de0a;
+}
+body.mc-orbit-finish :is(.burn-result, .m-burn-result) {
+  border-color: #bfd7df25;
+  border-radius: 9px;
+  background: #b3d0dc08;
+}
+body.mc-orbit-finish :is(.burn-result span, .m-burn-result span) { color: #abc2d0; font-weight: 500; }
+body.mc-orbit-finish :is(.burn-result b, .m-burn-result b) { color: #e6f1f4; font-weight: 600; }
+body.mc-orbit-finish :is(.burn-result small, .m-burn-result small) { color: #9bb0c1; }
+body.mc-orbit-finish .christmas-kicker { color: #c5aa94; font-weight: 500; }
+body.mc-orbit-finish .christmas-date { border-color: #c3a18335; background: #b4947208; color: #c4ad98; }
+body.mc-orbit-finish :is(.christmas-components, .forecast-facts) { background: #0d1721; border-radius: 8px; }
+body.mc-orbit-finish :is(.christmas-total, .christmas-method) { border-color: #adc7d520; }
+body.mc-orbit-finish :is(.christmas-total > b, .christmas-results b) { color: #d3dbd4; font-weight: 600; }
+body.mc-orbit-finish .christmas-results > div { border-left: 2px solid #b89b8270; }
+body.mc-orbit-finish .christmas-method summary { color: #bdcbd3; }
+body.mc-orbit-finish .christmas-total > small { color: #94aaba; }
+
+/* Chart dialogs follow the same materials; preserve distinct data series. */
+body.mc-orbit-finish :is(.trend-modal, .poster-modal) { background: #050b13cc; backdrop-filter: blur(12px); }
+body.mc-orbit-finish .trend-panel {
+  background: #101b26 !important;
+  border-color: #b1cddb35 !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 90px #0007;
+}
+body.mc-orbit-finish .trend-title h3 { color: #e5edf1; font-weight: 550; letter-spacing: -.035em; }
+body.mc-orbit-finish .trend-title span { color: #a6bbca; font-weight: 500; }
+body.mc-orbit-finish .trend-title p { color: #a0b2c1 !important; }
+body.mc-orbit-finish .trend-close {
+  border-radius: 8px;
+  border-color: #b2d0de30;
+  background: #b5d4e008;
+  color: #cddde6;
+}
+body.mc-orbit-finish .trend-close:hover { background: #b5d4e014; }
+body.mc-orbit-finish .trend-chart {
+  background: #0b1620 !important;
+  border-color: #b1cddb1f !important;
+  border-radius: 8px !important;
+}
+body.mc-orbit-finish .trend-chart.power-pair-chart { background: transparent !important; }
+body.mc-orbit-finish .power-pair-panel { border-color: #b1cddb1f; border-radius: 8px; background: #0b1620; }
+body.mc-orbit-finish .trend-chart .line { stroke: #a7c7d6 !important; filter: none !important; }
+body.mc-orbit-finish .trend-chart .line.series-secondary { stroke: #a8c9b7 !important; }
+body.mc-orbit-finish .trend-chart .line.series-tertiary { stroke: #c7a58b !important; }
+body.mc-orbit-finish .trend-chart .area { fill: #a7c7d614; }
+body.mc-orbit-finish .trend-chart .area.series-secondary { fill: #a8c9b714; }
+body.mc-orbit-finish .trend-chart .area.series-tertiary { fill: #c7a58b14; }
+body.mc-orbit-finish .trend-chart .bar { fill: #7fa9bc !important; }
+body.mc-orbit-finish .power-pair-panel .bar { fill: #91b5a5 !important; }
+body.mc-orbit-finish .trend-chart .cursor-dot { fill: #d3e6ed !important; }
+body.mc-orbit-finish .trend-chart .value-label { font-weight: 500; }
+body.mc-orbit-finish .trend-chart .date-label { fill: #91a8ba !important; }
+body.mc-orbit-finish .trend-stat {
+  background: #14222f !important;
+  border-color: #b1cddb1a !important;
+  border-radius: 8px !important;
+}
+body.mc-orbit-finish :is(.trend-stat b, .trend-stat strong) { color: #dae8f0; font-weight: 600; }
+body.mc-orbit-finish .trend-tooltip { background: #1b2b38; border-color: #7998ad5c; color: #e0ebf1; box-shadow: 0 4px 16px #0004; }
+body.mc-orbit-finish .trend-foot { color: #9bb0c0 !important; }
+body.mc-orbit-finish .poster-panel { background: #101b26; border-color: #b1cddb35; border-radius: 14px; }
+body.mc-orbit-finish .poster-preview { background: #0c1721; border-color: #b1cddb20; }
+body.mc-orbit-finish :is(.poster-close, .poster-actions button) { background: #172735; border-color: #b1cddb35; color: #c8dbe5; border-radius: 8px; box-shadow: none; }
+
+/* Keep contextual warnings visible and visually distinct from ordinary notes. */
+body.mc-orbit-finish :is(.alert, .m-note) {
+  border-color: #c2a28635;
+  border-radius: 10px;
+  background: #bd98700a;
+  color: #d0bea9;
+}
+body.mc-orbit-finish .node-period-state { background: #bd98700a; border-color: #c2a28640; color: #d0bea9; }
+body.mc-orbit-finish :is(.risk p, .m-meta-row, .equation-note) { color: #a4b6c6; }
+body.mc-orbit-finish :is(.footer, .m-footer) { color: #899fb1; }
+body.mc-orbit-finish .marquee { background: #0f1a25; border-color: #b1cddb20; box-shadow: none; border-radius: 10px; }
+body.mc-orbit-finish .track span { color: #a0b5c4; border-color: #afcad91a; background: #afcad906; font-weight: 500; }
+body.mc-orbit-finish .track b { color: #dfebf1; font-weight: 600; }
+
+@media (max-width: 720px) {
+  body.mc-orbit-finish .section { padding-top: 54px; padding-bottom: 20px; }
+  body.mc-orbit-finish .section.rank-section { padding-top: 32px; }
+  body.mc-orbit-finish .section-head h2 { font-size: 28px; }
+  body.mc-orbit-finish .growth-card h3 { font-size: 27px; }
+  body.mc-orbit-finish :is(.burn-copy h3, .christmas-head h3) { font-size: 25px; }
+}
+@media (max-width: 620px) {
+  body.mc-orbit-finish :is(.m-card, .m-flow-card, .m-meta, .m-burn-calculator, .christmas-forecast) { border-radius: 11px; }
+  body.mc-orbit-finish .m-rank-card { border-radius: 10px; }
+  body.mc-orbit-finish .m-rank-top strong { font-size: 23px; }
+  body.mc-orbit-finish .m-section { padding-bottom: 22px; }
+  body.mc-orbit-finish .m-section-head { gap: 12px; }
+  body.mc-orbit-finish .m-section-head p { font-size: 11px; }
+  body.mc-orbit-finish .m-card > span { line-height: 1.55; }
+  body.mc-orbit-finish .m-flow-card > strong { font-size: 34px; }
+  body.mc-orbit-finish .m-flow-card > .oracle-countdown-value { font-size: clamp(26px, 7.5vw, 34px); }
+  body.mc-orbit-finish .m-burn-calculator h3 { font-size: 23px; }
+  body.mc-orbit-finish .m-card .metric-secondary-row,
+  body.mc-orbit-finish .m-card .metric-secondary { background: none; border-left: 0; border-right: 0; border-radius: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.mc-orbit-finish :is(.nav a, .m-nav a, .rank-card, .metric, .growth-card, .fcard, .panel) { transition: none; }
+}

@@ -1,0 +1,36 @@
+/* The chosen first concept, refined without changing its visual direction. */
+body.mc-orbit-finish .mc-hero--orbit { background:radial-gradient(ellipse at 84% 46%,#132232 0%,#0b141f 46%,#0a1018 78%);border-color:#b1d4e31a; }
+body.mc-orbit-finish .orbit-copy { padding-top:43px;padding-bottom:76px; }
+body.mc-orbit-finish .orbit-description { color:#a0afbd;line-height:1.8;margin-top:23px; }
+body.mc-orbit-finish .orbit-actions { margin-top:26px; }
+body.mc-orbit-finish .orbit-secondary { color:#adbdca; }
+body.mc-orbit-finish .orbit-footer { height:54px;color:#8b9fae;border-top-color:#b6d1dd17; }
+body.mc-orbit-finish .orbit-footer span span { color:#b1c0ca; }
+body.mc-orbit-finish .orbit-footer>span:last-of-type { display:none; }
+body.mc-orbit-finish .orbit-eyebrow { color:#a9bdca; }
+body.mc-orbit-finish .orbit-visual { right:-24px; }
+body.mc-orbit-finish :is(.lang-toggle,.share-trigger) { display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:0 11px;border:1px solid #afc7d329;border-radius:5px;background:#afc7d308;color:#b3c6d2;font-size:11px;font-weight:500;box-shadow:none; }
+body.mc-orbit-finish .m-brand-actions { display:flex;gap:5px;align-items:center; }
+body.mc-orbit-finish .m-nav { gap:0;justify-content:space-between;overflow-x:auto; }
+body.mc-orbit-finish .m-nav a { flex:0 0 auto;white-space:nowrap;min-height:32px;display:inline-flex;align-items:center; }
+body.mc-orbit-finish :is(.m-desktop-link,.m-lang-toggle,.m-share-button) { border:1px solid #afc7d326;border-radius:5px;background:#afc7d306;color:#b3c6d2;padding:7px;font-size:10px;font-weight:500; }
+@media(max-width:620px){
+ body.mc-orbit-finish .mc-hero--orbit { min-height:494px; }
+ body.mc-orbit-finish .orbit-copy { padding:23px 22px 0; }
+ body.mc-orbit-finish .orbit-eyebrow { margin-bottom:20px;font-size:9px; }
+ body.mc-orbit-finish .orbit-brand { font-size:clamp(42px,12.9vw,55px); }
+ body.mc-orbit-finish .orbit-title { font-size:clamp(32px,9.3vw,40px);margin-top:7px; }
+ body.mc-orbit-finish .orbit-description { font-size:11px;line-height:1.8;margin-top:17px; }
+ body.mc-orbit-finish .orbit-actions { margin-top:18px;gap:23px; }
+ body.mc-orbit-finish .orbit-visual { top:238px;right:-21px;width:350px;max-width:115%;height:235px; }
+ body.mc-orbit-finish .orbit-footer { left:22px;right:22px;height:46px;font-size:8px; }
+ body.mc-orbit-finish .orbit-footer span span { margin-left:2px; }
+ body.mc-orbit-finish .m-section { padding-top:26px; }
+}
+@media(max-width:355px){
+ body.mc-orbit-finish .orbit-copy { padding-left:18px;padding-right:18px; }
+ body.mc-orbit-finish .orbit-brand { font-size:42px; }
+ body.mc-orbit-finish .orbit-title { font-size:32px; }
+ body.mc-orbit-finish .orbit-actions { gap:17px; }
+ body.mc-orbit-finish .orbit-footer { left:18px;right:18px; }
+}

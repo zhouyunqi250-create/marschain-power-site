@@ -22,11 +22,11 @@ from typing import Any
 import build_frontend_dashboard as dashboard
 from node_preview.metrics import PUBLIC_HISTORY_NOTES
 from node_preview.christmas import christmas_forecast
+from node_preview.orbit_design import ORBIT_SOURCES, ORBIT_RUNTIME_SOURCES, apply_orbit_design
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
-OPENING_SOURCES = tuple(Path(__file__).with_name(name) for name in
-                        ("intro_orbit_resonance.js", "rank_opening.js"))
+OPENING_SOURCES = ORBIT_RUNTIME_SOURCES
 
 
 def _presentation_function(function, names: tuple[str, ...]):
@@ -922,7 +922,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         # Selector references in old JS are harmless; an actual panel is forbidden.
         if re.search(r'<[^>]+\sdata-paid-panel(?:\s|=|>)', html):
             raise RuntimeError("Paid download panel unexpectedly present in preview")
-    return html
+    return apply_orbit_design(html, mobile=mobile) if production else html
 
 
 def build_preview(payload: dict, output_dir: str | Path, *, production: bool = False) -> dict[str, str]:
@@ -931,7 +931,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
                Path(__file__).with_name("emission.py"),
-               *OPENING_SOURCES)
+               *ORBIT_SOURCES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"

@@ -1,0 +1,32 @@
+/* The chosen foldable navigation gives the report a clear primary action. */
+body.mc-report-highlight .mc-report-icon { display:block;flex:0 0 15px;width:15px;height:15px; }
+body.mc-report-highlight .mc-sidebar.mc-has-report .mc-sidebar-brand { margin-bottom:26px; }
+body.mc-report-highlight .mc-sidebar-report { flex:0 0 auto;margin:0 0 28px; }
+body.mc-report-highlight .mc-sidebar-report .share-trigger,
+body.mc-report-highlight .m-brand-actions .m-share-button {
+ display:inline-flex;align-items:center;justify-content:center;gap:7px;
+ border:1px solid #dfedf1;border-radius:6px;background:#c9dfe7;color:#102631;
+ box-shadow:0 3px 12px #00000012;font-weight:650;line-height:1.2;white-space:nowrap;
+ transition:background-color .18s ease,border-color .18s ease;
+}
+body.mc-report-highlight .mc-sidebar-report .share-trigger { width:100%;min-height:42px;padding:0 10px;font-size:12px; }
+body.mc-report-highlight .m-brand-actions .m-share-button { min-height:36px;padding:0 11px;font-size:11px; }
+body.mc-report-highlight .mc-sidebar-report .share-trigger:hover,
+body.mc-report-highlight .m-brand-actions .m-share-button:hover { background:#e0edf2;border-color:#eff8fa;box-shadow:0 3px 12px #00000012;transform:none; }
+body.mc-report-highlight .mc-sidebar-report .share-trigger:active,
+body.mc-report-highlight .m-brand-actions .m-share-button:active { background:#b6d0db; }
+body.mc-report-highlight .m-brand { gap:8px; }
+body.mc-report-highlight .m-brand-main { min-width:0;white-space:nowrap; }
+body.mc-report-highlight .m-brand-actions { flex:0 0 auto;gap:6px; }
+body.mc-report-highlight .mc-sidebar-actions .m-desktop-link { display:flex;align-items:center;justify-content:center;min-height:34px;padding:7px 10px;border:1px solid #bdd4e026;border-radius:4px;background:transparent;color:#adc1ce;font-size:11px; }
+@media(max-width:359px){
+ body.mc-report-highlight .m-brand-main { font-size:11px;gap:4px; }
+ body.mc-report-highlight .m-brand-actions { gap:5px; }
+ body.mc-report-highlight .m-brand-actions .m-share-button { padding:0 8px;gap:5px; }
+ body.mc-report-highlight .m-brand-actions .m-lang-toggle { min-width:36px;padding:7px 5px; }
+ body.mc-report-highlight .mc-report-icon { flex-basis:14px;width:14px;height:14px; }
+}
+@media(prefers-reduced-motion:reduce){
+ body.mc-report-highlight .mc-sidebar-report .share-trigger,
+ body.mc-report-highlight .m-brand-actions .m-share-button { transition:none; }
+}
