@@ -21,7 +21,7 @@ ORBIT_RUNTIME_SOURCES = tuple(_ROOT / name for name in (
 ORBIT_SOURCES = (Path(__file__), _ASSETS / "orbit.html",
                  *(_ASSETS / name for name in _CSS_NAMES), *ORBIT_RUNTIME_SOURCES)
 
-_SIDEBAR = '''<aside class="mc-sidebar" id="mc-sidebar-menu" aria-label="板块导航"><a class="mc-sidebar-brand" href="#top">MarsChain<span>算力排行榜</span></a><nav><a href="#top">概览</a><a href="#rank">算力排行</a><a href="#pulse">核心数据</a><a href="#growth">周期增长</a><a href="#equation">方程系数</a><a href="#risk">数据说明</a></nav><p>链上数据 · 每分钟更新</p></aside><button class="mc-sidebar-toggle" type="button" aria-expanded="false" aria-controls="mc-sidebar-menu">☰ 板块导航</button>'''
+_SIDEBAR = '''<aside class="mc-sidebar" id="mc-sidebar-menu" aria-label="板块导航"><a class="mc-sidebar-brand" href="#top">MarsChain<span>算力排行榜</span></a><nav><a href="#top">概览</a><a href="#rank">算力排行</a><a href="#pulse">核心数据</a><a href="#growth">周期增长</a><a href="#equation">方程系数</a><a href="#risk">数据说明</a></nav><div class="mc-sidebar-feedback"><span class="mc-feedback-label">意见反馈</span><span class="mc-feedback-email">yunqihaoyun521@163.com</span></div><p>链上数据 · 每分钟更新</p></aside><button class="mc-sidebar-toggle" type="button" aria-expanded="false" aria-controls="mc-sidebar-menu">☰ 板块导航</button>'''
 _REPORT_ICON = '''<svg class="mc-report-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M5 2.5h7l3 3v12H5zM12 2.5v4h3M8 10h4M8 13h4" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
 _TRANSLATIONS = {
     "链上数据 · 每分钟更新": "On-chain data · Minute updates",
@@ -37,6 +37,7 @@ _TRANSLATIONS = {
     "周期增长": "Period Growth",
     "方程系数": "Equation Factors",
     "生成快报": "Create Report",
+    "意见反馈": "Feedback",
     "☰ 板块导航": "☰ Navigation",
 }
 
