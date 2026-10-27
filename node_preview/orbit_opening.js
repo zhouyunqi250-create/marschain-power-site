@@ -34,15 +34,6 @@ body.mc-orbit-finish .mc-opening-skip {
   cursor: pointer; pointer-events: auto;
 }
 body.mc-orbit-finish .mc-opening-skip:hover { color: #eff8fc; border-color: #a3c8d570; }
-body.mc-orbit-finish .mc-opening-replay {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  height: 32px; min-height: 32px; margin: 0; padding: 0 0 0 12px;
-  border: 0; border-radius: 2px; background: transparent; color: #91a5b5;
-  font: 400 10px/1.4 -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
-  letter-spacing: .025em; text-decoration: none; white-space: nowrap; cursor: pointer;
-}
-body.mc-orbit-finish .mc-opening-replay:hover { color: #e4f1f5; }
-body.mc-orbit-finish .mc-opening-replay:focus-visible,
 body.mc-orbit-finish .mc-opening-skip:focus-visible { outline: 2px solid #b4d6e1; outline-offset: 3px; }
 body.mc-orbit-finish.mc-opening-reveal .mc-hero--orbit .orbit-copy,
 body.mc-orbit-finish.mc-opening-reveal .mc-hero--orbit .orbit-footer {
@@ -77,15 +68,6 @@ body.mc-orbit-finish .mc-opening-shell.is-static { animation: mc-opening-static-
 }
 `;
   body.append(style);
-
-  const footer = body.querySelector('.mc-hero--orbit .orbit-footer');
-  const replay = document.createElement('button');
-  replay.type = 'button';
-  replay.className = 'mc-opening-replay';
-  replay.textContent = english() ? 'Replay intro' : '重播开场';
-  replay.setAttribute('aria-label', english() ? 'Replay opening animation' : '重播开场动画');
-  replay.title = english() ? 'Orbital resonance · 2-second intro' : '轨道共振 · 2 秒开场';
-  if (footer) footer.append(replay);
 
   const reveal = () => {
     window.clearTimeout(revealTimer);
@@ -194,9 +176,6 @@ body.mc-orbit-finish .mc-opening-shell.is-static { animation: mc-opening-static-
   };
 
   const syncLanguage = () => {
-    replay.textContent = english() ? 'Replay intro' : '重播开场';
-    replay.setAttribute('aria-label', english() ? 'Replay opening animation' : '重播开场动画');
-    replay.title = english() ? 'Orbital resonance · 2-second intro' : '轨道共振 · 2 秒开场';
     const shell = body.querySelector('.mc-opening-shell');
     const skip = shell?.querySelector('.mc-opening-skip');
     if (shell) shell.setAttribute('aria-label', english() ? 'MarsChain opening animation' : 'MarsChain 开场动画');
@@ -214,14 +193,9 @@ body.mc-orbit-finish .mc-opening-shell.is-static { animation: mc-opening-static-
   new MutationObserver(syncLanguage).observe(document.documentElement, {attributes: true, attributeFilter: ['lang']});
   syncLanguage();
 
-  replay.addEventListener('click', play);
-
   let seen = false;
-  let forced = false;
   try { seen = window.localStorage.getItem(storageKey) === today; } catch (_) { /* Storage is optional. */ }
-  try { forced = new URLSearchParams(window.location.search).get('intro') === '1'; } catch (_) { /* Use the daily rule. */ }
-  // A replay URL does not override the visitor's reduced-motion choice.
-  if (motionQuery.matches || (seen && !forced)) return;
+  if (motionQuery.matches || seen) return;
   if (!document.hidden) play();
   else {
     const whenVisible = () => {
