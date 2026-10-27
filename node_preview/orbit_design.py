@@ -12,7 +12,7 @@ import re
 _ROOT = Path(__file__).parent
 _ASSETS = _ROOT / "hero_concepts"
 _CSS_NAMES = ("shared.css", "orbit.css", "orbit_finish.css", "orbit_finish_hero.css",
-              "orbit_sidebar.css", "orbit_report.css")
+              "orbit_sidebar.css", "orbit_report.css", "orbit_time.css")
 
 # The caller includes these in its content version so changing a visual asset
 # cannot leave the static HTML cached behind an unchanged builder hash.
@@ -22,6 +22,13 @@ ORBIT_SOURCES = (Path(__file__), _ASSETS / "orbit.html",
                  *(_ASSETS / name for name in _CSS_NAMES), *ORBIT_RUNTIME_SOURCES)
 
 _SIDEBAR = '''<aside class="mc-sidebar" id="mc-sidebar-menu" aria-label="板块导航"><a class="mc-sidebar-brand" href="#top">MarsChain<span>算力排行榜</span></a><nav><a href="#top">概览</a><a href="#rank">算力排行</a><a href="#pulse">核心数据</a><a href="#growth">周期增长</a><a href="#equation">方程系数</a><a href="#risk">数据说明</a></nav><div class="mc-sidebar-feedback"><span class="mc-feedback-label">意见反馈</span><span class="mc-feedback-email">yunqihaoyun521@163.com</span></div><p>链上数据 · 每分钟更新</p></aside><button class="mc-sidebar-toggle" type="button" aria-expanded="false" aria-controls="mc-sidebar-menu">☰ 板块导航</button>'''
+_DUAL_TIME_FOOTER = '''<div class="orbit-footer mc-dual-time" aria-label="数据时间">
+  <div class="mc-time-caption" data-dual-time-caption>数据时间</div>
+  <div class="mc-time-pair">
+    <div class="mc-time-item"><div class="mc-time-zone"><b data-dual-beijing-label>北京时间</b><small>UTC+8</small></div><time data-dual-beijing>待刷新</time></div>
+    <div class="mc-time-item"><div class="mc-time-zone"><b>UTC</b><small data-dual-utc-label>世界标准时间</small></div><time data-dual-utc>待刷新</time></div>
+  </div>
+</div>'''
 _REPORT_ICON = '''<svg class="mc-report-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true" focusable="false"><path d="M5 2.5h7l3 3v12H5zM12 2.5v4h3M8 10h4M8 13h4" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg>'''
 _TRANSLATIONS = {
     "链上数据 · 每分钟更新": "On-chain data · Minute updates",
@@ -67,8 +74,9 @@ def apply_orbit_design(markup: str, mobile: bool) -> str:
     hero = re.sub(r'<span class="orbit-art-label">.*?</span>', '', hero, count=1)
     hero = _once(hero, '洞察算力分布，追踪网络增长。<br>以更清晰的视野，看见链上每一步。',
                  '洞察算力分布，追踪网络增长。')
-    hero = _once(hero, '数据时间 <span data-hero-data-time>',
-                 '<span data-hero-time-label>数据时间</span> <span data-hero-data-time>')
+    hero = _once(hero,
+                 '<div class="orbit-footer"><span>数据时间 <span data-hero-data-time></span></span><span>让算力，有迹可循。</span></div>',
+                 _DUAL_TIME_FOOTER)
     hero = _once(hero, '<i aria-hidden="true"></i>链上数据 · 每分钟更新',
                  '<i aria-hidden="true"></i><span data-orbit-update-state>链上数据 · 每分钟更新</span>')
     pattern = r'<section\s+class="' + ('m-hero' if mobile else 'hero') + r'"[^>]*>.*?</section>'
