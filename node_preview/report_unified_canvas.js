@@ -66,7 +66,7 @@
     liveHeader.addColorStop(0,'#9edfd912');liveHeader.addColorStop(1,'#9edfd900');
     ctx.fillStyle=liveHeader;ctx.fillRect(48,184,928,90);ctx.restore();
     fillRound(ctx,48,212,4,518,2,'#7bc8c0');
-    text('实时快照',76,230,32,C.heading,600);
+    text(l.retained ? '上次有效快照' : '实时快照',76,230,32,C.heading,600);
     text(`快照时间 ${l.snapshotTimeText}（北京时间）`,948,226,19,C.ink,400,'right',650);
     text(`UTC ${l.snapshotUtcText}`,948,253,17,C.muted,400,'right',650);
     line(76,274,948,274);

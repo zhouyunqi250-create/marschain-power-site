@@ -237,6 +237,7 @@
       periods: [7, 30].map((days) => period(dm, days, archive.target)),
     };
     const live = {
+      retained: bundle.state === 'retained',
       timeText: liveReady ? atTime(liveTime) : MISSING,
       utcText: liveReady ? atTime(liveTime, 0) : MISSING,
       snapshotTimeText: snapshotReady ? atTime(snapshotTime) : MISSING,

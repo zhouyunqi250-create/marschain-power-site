@@ -8,6 +8,8 @@
   const HEIGHT = 1776;
   const DAY = 86400;
   const OFFICIAL_FIELDS = ['price', 'highestPrice', 'triggerPrice', 'circulation', 'addresses'];
+  const RETAINED_FIELDS = [...OFFICIAL_FIELDS, 'totalPower', 'perCoin', 'oneYiOutput',
+    'top100Share', 'burned', 'snapshotTimeText', 'snapshotUtcText'];
   let modal = null;
   let canvas = null;
   let panel = null;
@@ -29,6 +31,7 @@
       share: '分享图片',
       refresh: '重新生成',
       scope: '实时快照展示当前数据；每日统计按北京时间 08:00 结算。图片保留实际数据时点及每日、7天、30天统计区间。',
+      retainedScope: '本次保留上次完整快照，数据时间保持原样。每日统计按北京时间 08:00 结算，实际统计区间见图片。',
       snapshot: '快照时间',
       daily: '每日统计区间',
       awaiting: '生成后显示',
@@ -40,6 +43,8 @@
       failed: '快报暂未生成，请稍后重试。',
       oldFailed: '重新生成未完成，当前保留的是上次图片。请重新生成后再下载或分享。',
       ready: '快报已生成，可下载或分享。',
+      retained: '更新暂缓，保留上次完整快照。',
+      shareAgain: '已按原时间保留快照，请再次点击分享图片。',
       downloaded: '图片已准备下载。',
       downloadFailed: '下载暂未完成，请重新点击下载图片。',
       fallback: '当前浏览器不支持图片分享，已改为下载图片。',
@@ -58,6 +63,7 @@
       share: 'Share Image',
       refresh: 'Regenerate',
       scope: 'The live snapshot shows current data. Daily statistics settle at 08:00 Beijing time. The image retains the actual snapshot time and daily, 7-day and 30-day reporting windows.',
+      retainedScope: 'The last complete snapshot is retained with its original data time. Daily statistics settle at 08:00 Beijing time; the actual reporting windows remain on the image.',
       snapshot: 'Snapshot Time',
       daily: 'Daily Reporting Window',
       awaiting: 'Shown after generation',
@@ -69,6 +75,8 @@
       failed: 'The report could not be generated. Please try again shortly.',
       oldFailed: 'Regeneration did not complete. The previous image remains visible. Regenerate before downloading or sharing.',
       ready: 'The report is ready to download or share.',
+      retained: 'Updates are delayed. The last complete snapshot is retained.',
+      shareAgain: 'The snapshot has been retained with its original time. Click Share Image again.',
       downloaded: 'The image is ready to download.',
       downloadFailed: 'The download did not complete. Please click Download Image again.',
       fallback: 'Image sharing is unavailable in this browser. The image has been downloaded instead.',
@@ -103,18 +111,34 @@
       return null;
     }
   };
-  const assertReady = (bundle, current = now()) => {
-    const sourceTime = stamp(bundle?.live?.meta?.node_preview?.source_block_timestamp);
+  const normalizeBundle = (bundle, forceRetained = false, current = now()) => {
+    const node = bundle?.live?.meta?.node_preview;
+    const sourceTime = stamp(node?.source_block_timestamp);
+    const retrieved = stamp(bundle?.retrieved_at);
     const dailyEnd = stamp(bundle?.daily?.meta?.statistics_window_end_timestamp);
-    const expectedEnd = Math.floor(current / DAY) * DAY;
-    if (!bundle || bundle.state !== 'ready' || sourceTime === null
-      || sourceTime > current + 60 || current - sourceTime > 300 || dailyEnd !== expectedEnd) {
+    // Retention never repairs evidence. The original report must have been a
+    // coherent, fresh snapshot when its original retrieved_at was recorded.
+    if (!bundle || bundle.schema !== 1 || !['ready', 'retained'].includes(bundle.state)
+      || node?.state !== 'ready' || stamp(node.source_block) === null
+      || retrieved === null || retrieved > current + 60 || sourceTime === null
+      || sourceTime > current + 60 || sourceTime > retrieved + 60 || retrieved - sourceTime > 300
+      || dailyEnd !== Math.floor(retrieved / DAY) * DAY) {
       throw notReady();
+    }
+    if (bundle.state === 'retained') {
+      const retainedAt = stamp(bundle.retained_at);
+      if (retainedAt === null || retainedAt < retrieved || retainedAt > current + 60) throw notReady();
+      return bundle;
+    }
+    if (forceRetained || current - sourceTime > 300 || dailyEnd !== Math.floor(current / DAY) * DAY) {
+      // This shallow envelope preserves every original value, evidence object
+      // and source clock. Only the retained label and this read time are added.
+      return { ...bundle, state: 'retained', retained_at: current };
     }
     return bundle;
   };
-  const assertOfficialFields = (data) => {
-    const complete = OFFICIAL_FIELDS.every((key) => {
+  const assertOfficialFields = (data, fields = OFFICIAL_FIELDS) => {
+    const complete = fields.every((key) => {
       const value = data?.live?.[key];
       if (typeof value === 'number') return Number.isFinite(value);
       return typeof value === 'string' && value.trim() !== '' && value.trim() !== '待补齐';
@@ -126,6 +150,15 @@
     }
     return data;
   };
+  const candidate = (bundle, forceRetained = false) => {
+    const input = normalizeBundle(bundle, forceRetained);
+    const data = assertOfficialFields(window.MarsReportData.build(input),
+      input.state === 'retained' ? RETAINED_FIELDS : OFFICIAL_FIELDS);
+    if (input.state === 'retained' && data.live.retained !== true) {
+      throw new Error('Retained report labelling is unavailable');
+    }
+    return { bundle: input, data };
+  };
 
   const setStatus = (text, kind = '') => {
     const status = modal?.querySelector('[data-poster-status]');
@@ -133,6 +166,10 @@
     status.textContent = text;
     status.classList.toggle('is-error', kind === 'error');
     status.classList.toggle('is-ok', kind === 'ok');
+  };
+  const imageStatus = (text, kind = 'ok') => {
+    const retained = rendered?.data.live.retained === true;
+    setStatus(retained ? `${copy().retained} ${text}` : text, retained ? '' : kind);
   };
   const syncControls = () => {
     if (!modal) return;
@@ -156,6 +193,7 @@
     if (!modal) return;
     const c = copy();
     const value = rendered?.data;
+    modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope : c.scope;
     modal.querySelector('[data-poster-snapshot]').textContent = value
       ? value.live.snapshotTimeText + c.beijing : c.awaiting;
     modal.querySelector('[data-poster-daily]').textContent = value
@@ -213,8 +251,8 @@
       ? `marschain-report-${date.replace(/\./g, '-')}.png` : 'marschain-report.png';
   };
 
-  const generate = async () => {
-    if (busy || sharing || !modal || modal.hidden) return;
+  const generate = async (options = {}) => {
+    if (busy || sharing || !modal || modal.hidden) return false;
     const token = ++operation;
     busy = true;
     exportable = false;
@@ -222,43 +260,63 @@
     setStatus(rendered ? copy().updating : copy().generating);
     if (!rendered) showImage(false);
     try {
-      assertReady(readBundle());
       if (typeof window.MarsReportData?.build !== 'function'
         || typeof window.MarsUnifiedReport?.prepare !== 'function'
         || typeof window.MarsUnifiedReport?.render !== 'function') {
         throw new Error('Report image is unavailable');
       }
+      const select = () => {
+        if (options.bundle) return candidate(options.bundle, options.forceRetained === true);
+        try {
+          return candidate(readBundle());
+        } catch (error) {
+          // A failed response cannot overwrite the last complete in-memory
+          // image. Revalidate its whole original bundle before retaining it.
+          if (rendered) {
+            try { return candidate(rendered.bundle, true); } catch (_) { /* Keep the current failure. */ }
+          }
+          throw error;
+        }
+      };
+      select();
       await Promise.all([
         document.fonts ? document.fonts.ready : Promise.resolve(),
         window.MarsUnifiedReport.prepare(),
       ]);
-      if (token !== operation || modal.hidden) return;
+      if (token !== operation || modal.hidden) return false;
       // A source update or the Beijing 08:00 boundary can occur while assets load.
-      const bundle = assertReady(readBundle());
-      // A fresh node does not imply that the independent official values are
-      // complete. Leave generation pending instead of fixing a partial image.
-      const data = assertOfficialFields(window.MarsReportData.build(bundle));
+      let chosen = select();
       const staged = document.createElement('canvas');
-      window.MarsUnifiedReport.render(staged, data);
+      window.MarsUnifiedReport.render(staged, chosen.data);
       if (staged.width !== WIDTH || staged.height !== HEIGHT) {
         throw new Error('Report image size is unavailable');
       }
-      const blob = await canvasBlob(staged);
-      if (token !== operation || modal.hidden) return;
-      assertReady(bundle);
+      let blob = await canvasBlob(staged);
+      if (token !== operation || modal.hidden) return false;
+      const afterEncoding = normalizeBundle(chosen.bundle);
+      if (afterEncoding.state !== chosen.bundle.state) {
+        // Crossing the freshness/day boundary during encoding must not leave
+        // an export labelled live. Draw the retained title before committing.
+        chosen = candidate(afterEncoding);
+        window.MarsUnifiedReport.render(staged, chosen.data);
+        blob = await canvasBlob(staged);
+        if (token !== operation || modal.hidden) return false;
+      }
+      normalizeBundle(chosen.bundle);
       // Replace the displayed element only after a complete image is available.
       // No failed attempt can clear the previously successful picture.
       staged.dataset.posterCanvas = '';
       staged.setAttribute('aria-label', copy().image);
       canvas.replaceWith(staged);
       canvas = staged;
-      rendered = { data, bundle, blob, filename: filename(data) };
+      rendered = { ...chosen, blob, filename: filename(chosen.data) };
       exportable = true;
       syncMeta();
       showImage(true);
-      setStatus(copy().ready, 'ok');
+      setStatus(chosen.data.live.retained ? copy().retained : copy().ready, chosen.data.live.retained ? '' : 'ok');
+      return true;
     } catch (error) {
-      if (token !== operation || modal.hidden) return;
+      if (token !== operation || modal.hidden) return false;
       exportable = false;
       const incomplete = error?.code === 'report_live_incomplete';
       const message = incomplete ? copy().incomplete
@@ -269,6 +327,7 @@
         showImage(false);
         setStatus(message, incomplete ? '' : 'error');
       }
+      return false;
     } finally {
       if (token === operation) {
         busy = false;
@@ -281,8 +340,8 @@
     if (busy || sharing || !exportable || !rendered) return false;
     try {
       assertOfficialFields(rendered.data);
-      assertReady(rendered.bundle);
-      return true;
+      const checked = candidate(rendered.bundle);
+      return checked.bundle.state === 'retained' && rendered.data.live.retained !== true ? 'retain' : true;
     } catch (error) {
       exportable = false;
       syncControls();
@@ -291,8 +350,13 @@
       return false;
     }
   };
-  const download = () => {
-    if (!readyForExport()) return false;
+  const download = async () => {
+    const eligible = readyForExport();
+    if (!eligible) return false;
+    if (eligible === 'retain') {
+      const original = rendered.bundle;
+      if (!await generate({ bundle: original, forceRetained: true }) || readyForExport() !== true) return false;
+    }
     let url = null;
     let anchor = null;
     try {
@@ -303,7 +367,7 @@
       anchor.style.display = 'none';
       document.body.appendChild(anchor);
       anchor.click();
-      setStatus(copy().downloaded, 'ok');
+      imageStatus(copy().downloaded);
       return true;
     } catch (_) {
       setStatus(copy().downloadFailed, 'error');
@@ -314,7 +378,14 @@
     }
   };
   const share = async () => {
-    if (!readyForExport()) return;
+    const eligible = readyForExport();
+    if (!eligible) return;
+    if (eligible === 'retain') {
+      // Preparing a newly labelled image uses asynchronous canvas work. Do not
+      // spend the click's native-share activation on that work or auto-share it.
+      if (await generate({ bundle: rendered.bundle, forceRetained: true })) imageStatus(copy().shareAgain, '');
+      return;
+    }
     let file = null;
     let supported = false;
     try {
@@ -327,7 +398,7 @@
       supported = false;
     }
     if (!supported) {
-      if (download()) setStatus(copy().fallback, 'ok');
+      if (await download()) imageStatus(copy().fallback);
       return;
     }
     const token = operation;
@@ -338,10 +409,10 @@
       // The Blob is prepared during generation, so this call keeps the click's
       // user activation rather than awaiting image work before system sharing.
       await navigator.share({ files: [file], title: 'MarsChain 火星快报' });
-      if (token === operation && !modal.hidden) setStatus(copy().shared, 'ok');
+      if (token === operation && !modal.hidden) imageStatus(copy().shared);
     } catch (error) {
       if (token !== operation || modal.hidden) return;
-      if (error?.name === 'AbortError') setStatus(copy().cancelled);
+      if (error?.name === 'AbortError') imageStatus(copy().cancelled, '');
       else setStatus(copy().shareFailed, 'error');
     } finally {
       if (token === operation) {
@@ -388,7 +459,7 @@
     modal.addEventListener('click', (event) => {
       const target = event.target instanceof Element ? event.target : null;
       if (event.target === modal || target?.closest('[data-poster-close]')) close();
-      else if (target?.closest('[data-poster-download]')) download();
+      else if (target?.closest('[data-poster-download]')) void download();
       else if (target?.closest('[data-poster-share]')) void share();
       else if (target?.closest('[data-poster-refresh]')) void generate();
     });
@@ -411,10 +482,20 @@
     event.preventDefault();
     open(target);
   });
-  // A click may precede the first live-data response. Finish that pending
-  // generation when it arrives; an already-generated picture stays fixed.
+  // A complete live picture stays fixed. Pending generation and retained
+  // pictures recover automatically when a complete, newer report arrives.
   window.addEventListener('mars-share-report-data', () => {
-    if (modal && !modal.hidden && !busy && !sharing && !exportable) void generate();
+    if (!modal || modal.hidden || busy || sharing) return;
+    if (!exportable) {
+      void generate();
+      return;
+    }
+    if (rendered?.data.live.retained !== true) return;
+    try {
+      const next = candidate(readBundle());
+      if (next.bundle.state === 'ready'
+        || stamp(next.bundle.retrieved_at) > stamp(rendered.bundle.retrieved_at)) void generate();
+    } catch (_) { /* A broken update cannot displace the retained complete image. */ }
   });
   document.addEventListener('keydown', (event) => {
     if (!modal || modal.hidden) return;
