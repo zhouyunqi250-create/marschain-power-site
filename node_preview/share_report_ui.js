@@ -7,6 +7,7 @@
   const WIDTH = 1024;
   const HEIGHT = 1776;
   const DAY = 86400;
+  const OFFICIAL_FIELDS = ['price', 'highestPrice', 'triggerPrice', 'circulation', 'addresses'];
   let modal = null;
   let canvas = null;
   let panel = null;
@@ -34,6 +35,8 @@
       generating: '正在生成快报…',
       updating: '正在更新快报，当前显示上次生成的图片…',
       gate: '每日统计整理中，请稍后再试',
+      incomplete: '快报数据更新中，补齐后将自动生成。',
+      previous: '当前显示上次生成的图片。',
       failed: '快报暂未生成，请稍后重试。',
       oldFailed: '重新生成未完成，当前保留的是上次图片。请重新生成后再下载或分享。',
       ready: '快报已生成，可下载或分享。',
@@ -61,6 +64,8 @@
       generating: 'Generating the report…',
       updating: 'Updating the report; the previous image remains visible…',
       gate: 'Daily statistics are being prepared. Please try again shortly.',
+      incomplete: 'Report data is updating. The image will be generated automatically when complete.',
+      previous: 'The previously generated image remains visible.',
       failed: 'The report could not be generated. Please try again shortly.',
       oldFailed: 'Regeneration did not complete. The previous image remains visible. Regenerate before downloading or sharing.',
       ready: 'The report is ready to download or share.',
@@ -107,6 +112,19 @@
       throw notReady();
     }
     return bundle;
+  };
+  const assertOfficialFields = (data) => {
+    const complete = OFFICIAL_FIELDS.every((key) => {
+      const value = data?.live?.[key];
+      if (typeof value === 'number') return Number.isFinite(value);
+      return typeof value === 'string' && value.trim() !== '' && value.trim() !== '待补齐';
+    });
+    if (!complete) {
+      const error = new Error('Report values are incomplete');
+      error.code = 'report_live_incomplete';
+      throw error;
+    }
+    return data;
   };
 
   const setStatus = (text, kind = '') => {
@@ -180,6 +198,16 @@
     }
   });
   const filename = (data) => {
+    const snapshot = String(data?.live?.snapshotTimeText || '');
+    const parts = snapshot.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+    if (parts) {
+      const [year, month, day, hour, minute] = parts.slice(1).map(Number);
+      const wall = new Date(Date.UTC(year, month - 1, day, hour, minute));
+      if (wall.getUTCFullYear() === year && wall.getUTCMonth() === month - 1
+        && wall.getUTCDate() === day && wall.getUTCHours() === hour && wall.getUTCMinutes() === minute) {
+        return `marschain-report-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}${parts[5]}.png`;
+      }
+    }
     const date = String(data?.daily?.dateLabel || '');
     return /^\d{4}\.\d{2}\.\d{2}$/.test(date)
       ? `marschain-report-${date.replace(/\./g, '-')}.png` : 'marschain-report.png';
@@ -207,7 +235,9 @@
       if (token !== operation || modal.hidden) return;
       // A source update or the Beijing 08:00 boundary can occur while assets load.
       const bundle = assertReady(readBundle());
-      const data = window.MarsReportData.build(bundle);
+      // A fresh node does not imply that the independent official values are
+      // complete. Leave generation pending instead of fixing a partial image.
+      const data = assertOfficialFields(window.MarsReportData.build(bundle));
       const staged = document.createElement('canvas');
       window.MarsUnifiedReport.render(staged, data);
       if (staged.width !== WIDTH || staged.height !== HEIGHT) {
@@ -230,12 +260,14 @@
     } catch (error) {
       if (token !== operation || modal.hidden) return;
       exportable = false;
-      const message = error?.code === 'report_not_ready' ? copy().gate : copy().failed;
-      if (rendered) setStatus(`${message} ${copy().oldFailed}`, 'error');
+      const incomplete = error?.code === 'report_live_incomplete';
+      const message = incomplete ? copy().incomplete
+        : error?.code === 'report_not_ready' ? copy().gate : copy().failed;
+      if (rendered) setStatus(`${message} ${incomplete ? copy().previous : copy().oldFailed}`, incomplete ? '' : 'error');
       else {
         placeholder.textContent = message;
         showImage(false);
-        setStatus(message, 'error');
+        setStatus(message, incomplete ? '' : 'error');
       }
     } finally {
       if (token === operation) {
@@ -248,12 +280,14 @@
   const readyForExport = () => {
     if (busy || sharing || !exportable || !rendered) return false;
     try {
+      assertOfficialFields(rendered.data);
       assertReady(rendered.bundle);
       return true;
-    } catch (_) {
+    } catch (error) {
       exportable = false;
       syncControls();
-      setStatus(copy().expired, 'error');
+      const incomplete = error?.code === 'report_live_incomplete';
+      setStatus(incomplete ? copy().incomplete : copy().expired, incomplete ? '' : 'error');
       return false;
     }
   };
