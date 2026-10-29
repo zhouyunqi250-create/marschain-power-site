@@ -19,6 +19,7 @@ import sqlite3
 import ssl
 from node_preview.emission import build_emission_meta, MODEL_VERSION
 import time
+import urllib.error
 import urllib.request
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -904,10 +905,30 @@ class MetricStore:
         cached = dict(row) if row else {}
         payload = json.loads(cached["payload"]) if cached.get("payload") else {}
         checked = _integer(cached.get("checked_at")) or 0
-        if now - checked >= self.cache_seconds:
+        # A failed attempt must not suppress a recovered official endpoint for
+        # the whole successful-cache interval. Zero still means a fresh read.
+        interval = min(self.cache_seconds, 10) if cached.get("error") else self.cache_seconds
+        if now - checked >= interval:
             try:
                 began = time.monotonic()
-                value = self.fetcher(url, self.timeout, None)
+                # These two public GETs already run concurrently. Retry one
+                # transient transport failure: two attempts with a per-socket
+                # timeout capped at 10s;
+                # never change RPC/POST behavior or retry invalid JSON/data,
+                # HTTP errors (including rate limits), or certificate errors.
+                timeout = min(self.timeout, 10)
+                for attempt in range(2):
+                    try:
+                        value = self.fetcher(url, timeout, None)
+                        break
+                    except Exception as exc:
+                        reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+                        transient = (not isinstance(exc, urllib.error.HTTPError)
+                                     and not isinstance(reason, ssl.SSLCertVerificationError)
+                                     and isinstance(reason, (OSError, http.client.RemoteDisconnected,
+                                                             http.client.IncompleteRead)))
+                        if attempt or path not in ("/stats", "/power/stats") or not transient:
+                            raise
                 expected = ("totalAddresses", "totalCirculation", "currentPrice") if path == "/stats" else ("totalPower", "totalBurnedTokens")
                 if not isinstance(value, dict) or not any(key in value for key in expected):
                     raise ValueError("unexpected official stats response")
