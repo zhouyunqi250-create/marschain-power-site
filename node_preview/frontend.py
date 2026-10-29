@@ -23,6 +23,7 @@ import build_frontend_dashboard as dashboard
 from node_preview.metrics import PUBLIC_HISTORY_NOTES
 from node_preview.christmas import christmas_forecast
 from node_preview.orbit_design import ORBIT_SOURCES, ORBIT_RUNTIME_SOURCES, apply_orbit_design
+from node_preview.report_runtime import REPORT_SOURCES, report_runtime
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
@@ -680,6 +681,9 @@ _DATA_NOTES = """
 
 
 def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, production: bool = False) -> str:
+    # One approved report controller owns both desktop and mobile buttons.
+    # The image and report program live in the existing versioned runtime.
+    html = _once(html, dashboard.SHARE_POSTER_JS, "/* Report is supplied by the shared runtime. */")
     # Original pagination captures the first cards forever. Use one runtime-owned
     # paginator so replacements preserve the reader's current page.
     if mobile:
@@ -931,7 +935,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
                Path(__file__).with_name("emission.py"),
-               *ORBIT_SOURCES)
+               *ORBIT_SOURCES, *REPORT_SOURCES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"
@@ -946,7 +950,8 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     # Keep the approved opening in the same content-addressed runtime. It needs
     # no additional public objects, permissions, requests or data dependencies.
     opening = "\n".join(path.read_text(encoding="utf-8") for path in OPENING_SOURCES) if production else ""
-    runtime = (opening + "\n" if opening else "") + RUNTIME.read_text(encoding="utf-8")
+    runtime = ((opening + "\n" if opening else "") + report_runtime() + "\n"
+               + RUNTIME.read_text(encoding="utf-8"))
     artifacts = {
         "index.html": _adapt_html(dashboard.build_html(public), mobile=False, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),
         "m/index.html": _adapt_html(dashboard.build_mobile_html(public), mobile=True, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),

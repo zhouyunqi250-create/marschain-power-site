@@ -321,14 +321,17 @@
     const version = String(preview.version || payload.meta.generated_at_unix || payload.meta.generated_at || '');
     if (!version) throw new Error('排行榜缺少数据版本');
     latestPayload = payload;
+    window.MarsShareReportPayload = payload.share_report || null;
     if (version !== lastVersion) {
       renderMetrics(payload.view);
       renderRanks(payload.rows);
-      if (rankDataNode) rankDataNode.textContent = JSON.stringify({ meta: payload.meta, rows: payload.rows });
+      if (rankDataNode) rankDataNode.textContent = JSON.stringify({ meta: payload.meta, rows: payload.rows,
+        share_report: payload.share_report || null });
       lastVersion = version;
       window.applyMarsLanguage?.();
     }
     updateBanner();
+    window.dispatchEvent(new Event('mars-share-report-data'));
   };
   const refresh = async () => {
     if (document.hidden || pending) return;

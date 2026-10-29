@@ -1,0 +1,9 @@
+{
+  "asset": "mars-masthead-20261029.png",
+  "sha256": "219a50ca1ee2b52d1fd5a23b8814a018c7836fc68ce3986ec829680604b0c1be",
+  "dimensions": [2172, 724],
+  "creation": "Built-in image_gen, original publication masthead artwork",
+  "approved_text": ["火星快报", "MARSCHAIN", "此刻链上，一目了然。"],
+  "placement": "Centered 4:1 framing without stretching; decoded before PNG export",
+  "public_delivery": "Inline original PNG bytes in the existing versioned runtime"
+}
