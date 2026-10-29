@@ -18,6 +18,7 @@ import socket
 import sqlite3
 import ssl
 from node_preview.emission import build_emission_meta, MODEL_VERSION
+from node_preview.official_transport import OfficialGetRoute, direct_official_route_allowed
 import time
 import urllib.error
 import urllib.request
@@ -917,9 +918,19 @@ class MetricStore:
                 # never change RPC/POST behavior or retry invalid JSON/data,
                 # HTTP errors (including rate limits), or certificate errors.
                 timeout = min(self.timeout, 10)
+                route = None
+                use_route = (path in ("/stats", "/power/stats") and self.fetcher is fetch_json
+                             and direct_official_route_allowed())
                 for attempt in range(2):
                     try:
-                        value = self.fetcher(url, timeout, None)
+                        if use_route:
+                            if route is None:
+                                route = OfficialGetRoute(url)
+                            value = route.fetch(timeout, attempt)
+                        else:
+                            # Dependency-injected fetchers and configured HTTPS
+                            # proxies retain their original transport behavior.
+                            value = self.fetcher(url, timeout, None)
                         break
                     except Exception as exc:
                         reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
