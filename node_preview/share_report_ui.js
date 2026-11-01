@@ -56,7 +56,7 @@
       sharing: '正在打开系统分享…',
       cancelled: '已取消分享，图片仍可下载。',
       expired: '数据已更新，请重新生成快报后下载或分享。',
-      beijing: '（北京时间）',
+      timezone: '（北京时间）',
     },
     en: {
       title: 'MarsChain Report',
@@ -66,8 +66,8 @@
       download: 'Download Image',
       share: 'Share Image',
       refresh: 'Regenerate',
-      scope: 'The live snapshot shows current data. Daily statistics settle at 08:00 Beijing time. The image retains the actual snapshot time and daily, 7-day and 30-day reporting windows.',
-      retainedScope: 'The last complete snapshot is retained with its original data time. Daily statistics settle at 08:00 Beijing time; the actual reporting windows remain on the image.',
+      scope: 'The live snapshot shows current data. Daily statistics close at 00:00 UTC. The image retains the actual snapshot time and daily, 7-day and 30-day reporting windows.',
+      retainedScope: 'The last complete snapshot is retained with its original data time. Daily statistics close at 00:00 UTC; the actual reporting windows remain on the image.',
       snapshot: 'Snapshot Time',
       daily: 'Daily Reporting Window',
       awaiting: 'Shown after generation',
@@ -89,7 +89,7 @@
       sharing: 'Opening system sharing…',
       cancelled: 'Sharing was cancelled. The image remains available to download.',
       expired: 'The data has changed. Regenerate the report before downloading or sharing.',
-      beijing: ' (Beijing time)',
+      timezone: ' (UTC)',
     },
   };
   const websiteLanguage = () => String(document.documentElement.lang || '').toLowerCase().split('-')[0] === 'en' ? 'en' : 'zh';
@@ -202,12 +202,25 @@
   const syncMeta = () => {
     if (!modal) return;
     const c = copy();
-    const value = visibleReport()?.data;
+    const report = visibleReport();
+    const value = report?.data;
+    const english = report?.language === 'en';
+    let dailyText = value?.daily.rangeText;
+    if (english) {
+      // Convert the original verified endpoints, rather than relabelling the
+      // Beijing wall-clock text or changing the reporting day.
+      const meta = report.bundle.daily.meta;
+      const start = stamp(meta.statistics_window_start_timestamp);
+      const end = stamp(meta.statistics_window_end_timestamp);
+      dailyText = start !== null && end !== null
+        ? [start, end].map(time => new Date(time * 1000).toISOString().slice(0, 16).replace('T', ' ')).join(' to ')
+        : null;
+    }
     modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope : c.scope;
     modal.querySelector('[data-poster-snapshot]').textContent = value
-      ? value.live.snapshotTimeText + c.beijing : c.awaiting;
-    modal.querySelector('[data-poster-daily]').textContent = value
-      ? value.daily.rangeText + c.beijing : c.awaiting;
+      ? (english ? value.live.snapshotUtcText : value.live.snapshotTimeText) + c.timezone : c.awaiting;
+    modal.querySelector('[data-poster-daily]').textContent = value && dailyText
+      ? dailyText + c.timezone : c.awaiting;
   };
   const syncLanguage = () => {
     if (!modal) return;
