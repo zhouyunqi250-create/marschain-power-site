@@ -457,6 +457,9 @@
     } finally {
       sharing = false;
       syncControls();
+      // Reopening during native sharing resets the report to Chinese. Prepare
+      // that image after the share finishes without opening another share.
+      if (!modal.hidden && !visibleReport()) void generate();
     }
   };
 
@@ -512,8 +515,14 @@
     if (!modal.hidden) return;
     lastTrigger = trigger || document.activeElement;
     previousOverflow = document.body.style.overflow;
-    if (reportLanguage === null) reportLanguage = websiteLanguage();
+    reportLanguage = 'zh';
     syncLanguage();
+    if (!visibleReport()) {
+      exportable = false;
+      showImage(false);
+      setStatus(copy().generating);
+    }
+    syncControls();
     modal.hidden = false;
     document.body.style.overflow = 'hidden';
     panel.scrollTop = 0;

@@ -417,32 +417,35 @@ test('crossing Beijing 08:00 retains the old actual daily range instead of relab
   assert.equal(h.api.state().rendered.data.live.snapshotTimeText, '2026-10-30 00:42');
 });
 
-test('report language defaults to the website on first open and persists independently across reopen', async () => {
+test('every report open defaults to Chinese regardless of website language or previous selection', async () => {
   for (const initial of ['zh-CN', 'en-US']) {
-    const firstLanguage = initial.startsWith('en') ? 'en' : 'zh';
-    const otherLanguage = firstLanguage === 'en' ? 'zh' : 'en';
     const h = harness(model(), { websiteLanguage: initial });
     h.modal.hidden = true;
     h.api.open();
     await flush();
-    assert.equal(h.api.state().language, firstLanguage);
-    assert.equal(h.api.state().rendered.language, firstLanguage);
-    assert.equal(h.displayed().height, firstLanguage === 'en' ? 1840 : 1776);
+    assert.equal(h.api.state().language, 'zh');
+    assert.equal(h.api.state().rendered.language, 'zh');
+    assert.equal(h.displayed().height, 1776);
     for (const button of h.languages) {
-      assert.equal(button.attributes['aria-pressed'], String(button.dataset.posterLanguage === firstLanguage));
+      assert.equal(button.attributes['aria-pressed'], String(button.dataset.posterLanguage === 'zh'));
       assert.equal(button.disabled, false);
     }
-    await h.api.changeLanguage(otherLanguage);
-    assert.equal(h.api.state().rendered.language, otherLanguage);
-    h.api.close();
-    h.document.documentElement.lang = initial;
+    await h.api.changeLanguage('en');
+    assert.equal(h.api.state().rendered.language, 'en');
     h.api.open();
+    assert.equal(h.api.state().language, 'en', 'an already open modal preserves its chosen language');
+    h.api.close();
+    h.document.documentElement.lang = 'en-US';
+    h.api.open();
+    assert.equal(h.api.state().language, 'zh');
+    assert.equal(h.displayed().hidden, true, 'the previous English image stays hidden while Chinese is generating');
+    assert.equal(h.nodes.download.disabled, true);
     await flush();
-    assert.equal(h.api.state().language, otherLanguage);
-    assert.equal(h.api.state().rendered.language, otherLanguage);
-    h.document.documentElement.lang = firstLanguage;
+    assert.equal(h.api.state().rendered.language, 'zh');
+    assert.equal(h.displayed().height, 1776);
+    assert.equal(h.displayed().hidden, false);
     assert.equal(await h.api.download(), true);
-    assert.equal(h.calls.downloads.at(-1).endsWith('-en.png'), otherLanguage === 'en');
+    assert.equal(h.calls.downloads.at(-1), 'marschain-report-2026-10-30-0042.png');
     assert.equal(h.calls.shares.length, 0, 'opening and changing language never shares externally');
   }
 });
@@ -545,12 +548,15 @@ test('a pending system share disables language changes even across close and reo
   h.api.open();
   assert.equal(h.languages.every(button => button.disabled), true);
   assert.equal(h.api.changeLanguage('zh'), false);
-  assert.equal(h.api.state().language, 'en');
+  assert.equal(h.api.state().language, 'zh', 'reopening resets to Chinese even while the English share is pending');
+  assert.equal(h.displayed().hidden, true);
   completeShare();
   await sharing;
+  await flush();
   assert.equal(h.api.state().sharing, false);
   assert.equal(h.languages.every(button => button.disabled === false), true);
-  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.api.state().rendered.language, 'zh');
+  assert.equal(h.displayed().hidden, false);
   assert.equal(h.calls.shares.length, 1);
 });
 
