@@ -1,8 +1,11 @@
-/* Isolated daily/live poster data model. No DOM reads, network calls or writes. */
+/* Shared Chinese/English report model. No DOM reads, network calls or writes. */
 (() => {
   'use strict';
 
-  const MISSING = '待补齐';
+  const createModel = (english = false) => {
+  const MISSING = english ? 'Pending' : '待补齐';
+  const locale = english ? 'en-US' : 'zh-CN';
+  const choose = (zh, en) => english ? en : zh;
   const DAY = 86400;
   const WEI = 10n ** 18n;
   const own = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
@@ -52,7 +55,7 @@
       if (own(meta, `${prefix}_${name}_local`)
         && localTimestamp(meta[`${prefix}_${name}_local`]) !== expected) return null;
     }
-    return { start, end, text: `${atTime(start)} 至 ${atTime(end)}` };
+    return { start, end, text: `${atTime(start)}${choose(' 至 ', ' to ')}${atTime(end)}` };
   };
 
   // Integer arithmetic keeps wei differences exact. Only the final display is
@@ -62,7 +65,10 @@
     const absolute = value < 0n ? -value : value;
     let denominator = scale;
     let suffix = '';
-    for (const [threshold, unit] of [[10n ** 12n, '万亿'], [10n ** 8n, '亿'], [10n ** 4n, '万']]) {
+    const units = english
+      ? [[10n ** 12n, 'T'], [10n ** 9n, 'B'], [10n ** 6n, 'M'], [10n ** 3n, 'K']]
+      : [[10n ** 12n, '万亿'], [10n ** 8n, '亿'], [10n ** 4n, '万']];
+    for (const [threshold, unit] of units) {
       if (absolute >= threshold * scale) { denominator *= threshold; suffix = unit; break; }
     }
     const digits = absolute > 0n && absolute < scale ? 6 : 3;
@@ -72,26 +78,28 @@
     const fraction = String(rounded % factor).padStart(digits, '0').replace(/0+$/, '');
     const sign = value < 0n ? '−' : signed && value > 0n ? '+' : '';
     const text = rounded === 0n && absolute > 0n ? `<0.${'0'.repeat(digits - 1)}1`
-      : main.toLocaleString('zh-CN') + (fraction ? `.${fraction}` : '');
+      : main.toLocaleString(locale) + (fraction ? `.${fraction}` : '');
     return sign + text + suffix;
   };
   const power = (value, signed = false) => compactInteger(integer(value), 1n, signed);
   const tokens = (value) => {
     const parsed = unsigned(value);
-    return parsed === null ? MISSING : `${compactInteger(parsed, WEI)}枚`;
+    return parsed === null ? MISSING : `${compactInteger(parsed, WEI)}${choose('枚', ' MARS')}`;
   };
   const count = (value, suffix) => {
     const parsed = unsigned(value);
-    return parsed === null ? MISSING : parsed.toLocaleString('zh-CN') + suffix;
+    return parsed === null ? MISSING : parsed.toLocaleString(locale) + (english ? '' : suffix);
   };
   const compactNumber = (value) => {
     const parsed = numeric(value);
     if (parsed === null || parsed < 0) return MISSING;
-    for (const [threshold, unit] of [[1e12, '万亿'], [1e8, '亿'], [1e4, '万']]) {
+    const units = english ? [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]
+      : [[1e12, '万亿'], [1e8, '亿'], [1e4, '万']];
+    for (const [threshold, unit] of units) {
       if (parsed >= threshold) return trim((parsed / threshold).toFixed(3)) + unit;
     }
     return parsed > 0 && parsed < 1 ? trim(parsed.toFixed(6))
-      : parsed.toLocaleString('zh-CN', { maximumFractionDigits: 3 });
+      : parsed.toLocaleString(locale, { maximumFractionDigits: 3 });
   };
   const price = (value) => {
     const parsed = numeric(value);
@@ -115,17 +123,19 @@
     const validRange = range && range.end - range.start === days * DAY
       && range.end <= dailyEnd && range.end % DAY === 0;
     if (!validRange) return { days, power: MISSING, addresses: MISSING, burned: MISSING,
-      rangeText: '统计时间待核验', state: '统计时间待核验' };
+      rangeText: choose('统计时间待核验', 'Window pending verification'),
+      state: choose('统计时间待核验', 'Window pending verification') };
     const address = unsigned(meta[`${prefix}_new_candidate_address_count`]);
     const estimated = meta[`${prefix}_new_candidate_address_estimated`] === true
       || (typeof meta[`${prefix}_new_candidate_address_display`] === 'string'
         && meta[`${prefix}_new_candidate_address_display`].trim().startsWith('约'));
     const summary = { days, power: power(meta[`${prefix}_new_power`]),
-      addresses: address === null ? '暂无可比采样' : `${estimated ? '约' : ''}${count(address, '个')}`,
+      addresses: address === null ? choose('暂无可比采样', 'No comparable samples')
+        : `${estimated ? choose('约', '~') : ''}${count(address, '个')}`,
       burned: tokens(meta[`${prefix}_burned_tokens`]), rangeText: range.text, state: '' };
-    if (range.end < dailyEnd) summary.state = '保留上次统计';
+    if (range.end < dailyEnd) summary.state = choose('保留上次统计', 'Last verified period');
     else if (meta[`${prefix}_complete`] === false || summary.power === MISSING
-      || summary.burned === MISSING || address === null) summary.state = '部分数据待补齐';
+      || summary.burned === MISSING || address === null) summary.state = choose('部分数据待补齐', 'Partially available');
     return summary;
   };
 
@@ -148,15 +158,16 @@
       || block === null || block === 0n || unsigned(node.source_block) !== block
       || node.state !== 'frozen' || (own(node, 'target_timestamp') && stamp(node.target_timestamp) !== target)
       || !/^[a-f0-9]{64}$/i.test(String(evidence.sha256 || ''))) {
-      throw new Error('日报归档的日结状态、统计区间或固定区块证据不一致');
+      throw new Error(choose('日报归档的日结状态、统计区间或固定区块证据不一致',
+        'Daily archive evidence does not match its window or fixed block'));
     }
     return { meta, range, target, block };
   };
 
   const build = (bundle) => {
-    if (!bundle || bundle.schema !== 1) throw new Error('日报 / 快报数据版本不受支持');
+    if (!bundle || bundle.schema !== 1) throw new Error(choose('日报 / 快报数据版本不受支持', 'Unsupported report data version'));
     const retrieved = stamp(bundle.retrieved_at);
-    if (retrieved === null) throw new Error('缺少本次数据实际读取时间');
+    if (retrieved === null) throw new Error(choose('缺少本次数据实际读取时间', 'Missing snapshot retrieval timestamp'));
     const archive = validateDaily(bundle);
     const dm = archive.meta;
     const lm = (bundle.live || {}).meta || {};
@@ -198,7 +209,7 @@
     const firstTime = times.length ? Math.min(...times) : null;
     const lastTime = times.length ? Math.max(...times) : null;
     const officialTimeText = firstTime === null ? MISSING : firstTime === lastTime
-      ? atTime(firstTime) : `${atTime(firstTime)} 至 ${atTime(lastTime)}`;
+      ? atTime(firstTime) : `${atTime(firstTime)}${choose(' 至 ', ' to ')}${atTime(lastTime)}`;
     // The one poster clock describes the server's assembled snapshot. Redrawing
     // or fetching that snapshot locally must not give the underlying data a new time.
     const snapshotTime = stamp(lm.generated_at);
@@ -214,13 +225,15 @@
     const burnComparable = ordered && startBurned !== null && burnedValue !== null && burnedValue >= startBurned;
     const intraday = {
       available: powerComparable || burnComparable,
-      rangeText: ordered ? `${atTime(archive.target)} 至 ${atTime(liveTime)}` : '统计时间待核验',
+      rangeText: ordered ? `${atTime(archive.target)}${choose(' 至 ', ' to ')}${atTime(liveTime)}`
+        : choose('统计时间待核验', 'Window pending verification'),
       power: powerComparable ? power(powerValue - startPower, true) : MISSING,
       burned: burnComparable ? tokens(burnedValue - startBurned) : MISSING,
       // Address samples have their own receipt clock. The fixed-block archive's
       // latest official total is not proof of an exact 08:00 address baseline.
       addresses: MISSING,
-      state: powerComparable && burnComparable ? '统计中' : '统计中 · 部分数据待补齐',
+      state: powerComparable && burnComparable ? choose('统计中', 'In progress')
+        : choose('统计中 · 部分数据待补齐', 'In progress / partially available'),
     };
     const daily = {
       rangeText: archive.range.text,
@@ -233,7 +246,7 @@
       newAddresses: count(dm.statistics_window_new_candidate_address_count, '个'),
       endPower: compactInteger(unsigned(dm.statistics_window_end_total_power)),
       totalBurned: tokens(dm.network_total_burned_tokens),
-      blockText: archive.block.toLocaleString('zh-CN'),
+      blockText: archive.block.toLocaleString(locale),
       periods: [7, 30].map((days) => period(dm, days, archive.target)),
     };
     const live = {
@@ -242,10 +255,10 @@
       utcText: liveReady ? atTime(liveTime, 0) : MISSING,
       snapshotTimeText: snapshotReady ? atTime(snapshotTime) : MISSING,
       snapshotUtcText: snapshotReady ? atTime(snapshotTime, 0) : MISSING,
-      blockText: liveReady ? liveBlock.toLocaleString('zh-CN') : MISSING,
+      blockText: liveReady ? liveBlock.toLocaleString(locale) : MISSING,
       totalPower: compactInteger(powerValue),
       perCoin: perCoinOkay ? compactNumber(required) : MISSING,
-      oneYiOutput: perCoinOkay ? `${compactNumber(100000000 / required)}枚/日` : MISSING,
+      oneYiOutput: perCoinOkay ? `${compactNumber(100000000 / required)}${choose('枚/日', ' MARS/day')}` : MISSING,
       top100Share,
       addresses: addressesOkay ? count(lm.explorer_total_addresses, '个') : MISSING,
       price: priceOkay ? price(lm.network_current_price) : MISSING,
@@ -255,11 +268,16 @@
       circulation: circulationOkay ? tokens(lm.network_total_circulation_tokens) : MISSING,
       burned: tokens(burnedValue),
       officialTimeText,
-      modelNote: '产出按当前区块奖励与全网算力估算',
+      modelNote: choose('产出按当前区块奖励与全网算力估算', 'Estimated from current block rewards and network power'),
       intraday,
     };
     return { daily, live };
   };
 
-  window.MarsReportData = Object.freeze({ build });
+  return build;
+  };
+  const models = {zh: createModel(), en: createModel(true)};
+  window.MarsReportData = Object.freeze({
+    build: (bundle, options = {}) => models[options.language === 'en' ? 'en' : 'zh'](bundle),
+  });
 })();

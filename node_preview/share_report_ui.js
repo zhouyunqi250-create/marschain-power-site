@@ -5,7 +5,7 @@
   window.__marsShareReportUiBound = true;
 
   const WIDTH = 1024;
-  const HEIGHT = 1776;
+  const HEIGHTS = { zh: 1776, en: 1840 };
   const DAY = 86400;
   const OFFICIAL_FIELDS = ['price', 'highestPrice', 'triggerPrice', 'circulation', 'addresses'];
   const RETAINED_FIELDS = [...OFFICIAL_FIELDS, 'totalPower', 'perCoin', 'oneYiOutput',
@@ -21,10 +21,13 @@
   let sharing = false;
   let exportable = false;
   let rendered = null;
+  let reportLanguage = null;
+  let activeBundle = null;
 
   const COPY = {
     zh: {
       title: '火星快报',
+      language: '快报语言',
       image: '火星快报图片',
       close: '关闭',
       download: '下载图片',
@@ -57,6 +60,7 @@
     },
     en: {
       title: 'MarsChain Report',
+      language: 'Report Language',
       image: 'MarsChain report image',
       close: 'Close',
       download: 'Download Image',
@@ -88,7 +92,10 @@
       beijing: ' (Beijing time)',
     },
   };
-  const copy = () => COPY[String(document.documentElement.lang || '').toLowerCase().split('-')[0] === 'en' ? 'en' : 'zh'];
+  const websiteLanguage = () => String(document.documentElement.lang || '').toLowerCase().split('-')[0] === 'en' ? 'en' : 'zh';
+  const selectedLanguage = () => reportLanguage || websiteLanguage();
+  const copy = () => COPY[selectedLanguage()];
+  const visibleReport = () => rendered?.language === selectedLanguage() ? rendered : null;
   const now = () => Math.floor(Date.now() / 1000);
   const stamp = (value) => {
     if (typeof value !== 'number' && typeof value !== 'string') return null;
@@ -141,7 +148,7 @@
     const complete = fields.every((key) => {
       const value = data?.live?.[key];
       if (typeof value === 'number') return Number.isFinite(value);
-      return typeof value === 'string' && value.trim() !== '' && value.trim() !== '待补齐';
+      return typeof value === 'string' && value.trim() !== '' && !['待补齐', 'pending'].includes(value.trim().toLowerCase());
     });
     if (!complete) {
       const error = new Error('Report values are incomplete');
@@ -150,9 +157,9 @@
     }
     return data;
   };
-  const candidate = (bundle, forceRetained = false) => {
+  const candidate = (bundle, forceRetained = false, language = selectedLanguage()) => {
     const input = normalizeBundle(bundle, forceRetained);
-    const data = assertOfficialFields(window.MarsReportData.build(input),
+    const data = assertOfficialFields(window.MarsReportData.build(input, { language }),
       input.state === 'retained' ? RETAINED_FIELDS : OFFICIAL_FIELDS);
     if (input.state === 'retained' && data.live.retained !== true) {
       throw new Error('Retained report labelling is unavailable');
@@ -177,7 +184,10 @@
     modal.querySelector('[data-poster-download]').disabled = unavailable;
     modal.querySelector('[data-poster-share]').disabled = unavailable;
     modal.querySelector('[data-poster-refresh]').disabled = busy || sharing;
-    modal.querySelectorAll('.poster-actions button').forEach((button) => {
+    modal.querySelectorAll('[data-poster-language]').forEach((button) => {
+      button.disabled = sharing;
+    });
+    modal.querySelectorAll('.poster-actions button, [data-poster-language]').forEach((button) => {
       button.style.opacity = button.disabled ? '.5' : '';
       button.style.cursor = button.disabled ? 'not-allowed' : '';
     });
@@ -192,7 +202,7 @@
   const syncMeta = () => {
     if (!modal) return;
     const c = copy();
-    const value = rendered?.data;
+    const value = visibleReport()?.data;
     modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope : c.scope;
     modal.querySelector('[data-poster-snapshot]').textContent = value
       ? value.live.snapshotTimeText + c.beijing : c.awaiting;
@@ -208,6 +218,14 @@
       ['[data-poster-download]', c.download], ['[data-poster-share]', c.share],
       ['[data-poster-refresh]', c.refresh],
     ]) modal.querySelector(selector).textContent = text;
+    modal.querySelector('[data-poster-language-group]').setAttribute('aria-label', c.language);
+    modal.querySelectorAll('[data-poster-language]').forEach((button) => {
+      const selected = button.dataset.posterLanguage === selectedLanguage();
+      button.setAttribute('aria-pressed', String(selected));
+      button.style.background = selected ? '#b9f6ff' : 'transparent';
+      button.style.color = selected ? '#07171b' : 'inherit';
+      button.style.borderColor = selected ? '#b9f6ff' : '#507074';
+    });
     modal.querySelector('[data-poster-close]').setAttribute('aria-label', c.close);
     canvas.setAttribute('aria-label', c.image);
     placeholder.textContent = c.generating;
@@ -217,7 +235,7 @@
     if (!modal || modal.hidden) return;
     operation += 1;
     busy = false;
-    sharing = false;
+    activeBundle = null;
     modal.hidden = true;
     document.body.style.overflow = previousOverflow;
     syncControls();
@@ -235,7 +253,8 @@
       reject(error);
     }
   });
-  const filename = (data) => {
+  const filename = (data, language = selectedLanguage()) => {
+    const suffix = language === 'en' ? '-en' : '';
     const snapshot = String(data?.live?.snapshotTimeText || '');
     const parts = snapshot.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
     if (parts) {
@@ -243,52 +262,56 @@
       const wall = new Date(Date.UTC(year, month - 1, day, hour, minute));
       if (wall.getUTCFullYear() === year && wall.getUTCMonth() === month - 1
         && wall.getUTCDate() === day && wall.getUTCHours() === hour && wall.getUTCMinutes() === minute) {
-        return `marschain-report-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}${parts[5]}.png`;
+        return `marschain-report-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}${parts[5]}${suffix}.png`;
       }
     }
     const date = String(data?.daily?.dateLabel || '');
     return /^\d{4}\.\d{2}\.\d{2}$/.test(date)
-      ? `marschain-report-${date.replace(/\./g, '-')}.png` : 'marschain-report.png';
+      ? `marschain-report-${date.replace(/\./g, '-')}${suffix}.png` : `marschain-report${suffix}.png`;
   };
 
   const generate = async (options = {}) => {
     if (busy || sharing || !modal || modal.hidden) return false;
     const token = ++operation;
+    const language = selectedLanguage();
+    const c = COPY[language];
+    const renderer = language === 'en' ? window.MarsEnglishReport : window.MarsUnifiedReport;
     busy = true;
     exportable = false;
     syncControls();
-    setStatus(rendered ? copy().updating : copy().generating);
-    if (!rendered) showImage(false);
+    setStatus(visibleReport() ? c.updating : c.generating);
+    if (!visibleReport()) showImage(false);
     try {
       if (typeof window.MarsReportData?.build !== 'function'
-        || typeof window.MarsUnifiedReport?.prepare !== 'function'
-        || typeof window.MarsUnifiedReport?.render !== 'function') {
+        || typeof renderer?.prepare !== 'function'
+        || typeof renderer?.render !== 'function') {
         throw new Error('Report image is unavailable');
       }
       const select = () => {
-        if (options.bundle) return candidate(options.bundle, options.forceRetained === true);
+        if (options.bundle) return candidate(options.bundle, options.forceRetained === true, language);
         try {
-          return candidate(readBundle());
+          return candidate(readBundle(), false, language);
         } catch (error) {
           // A failed response cannot overwrite the last complete in-memory
           // image. Revalidate its whole original bundle before retaining it.
           if (rendered) {
-            try { return candidate(rendered.bundle, true); } catch (_) { /* Keep the current failure. */ }
+            try { return candidate(rendered.bundle, true, language); } catch (_) { /* Keep the current failure. */ }
           }
           throw error;
         }
       };
-      select();
+      activeBundle = select().bundle;
       await Promise.all([
         document.fonts ? document.fonts.ready : Promise.resolve(),
-        window.MarsUnifiedReport.prepare(),
+        renderer.prepare(),
       ]);
       if (token !== operation || modal.hidden) return false;
       // A source update or the Beijing 08:00 boundary can occur while assets load.
       let chosen = select();
+      activeBundle = chosen.bundle;
       const staged = document.createElement('canvas');
-      window.MarsUnifiedReport.render(staged, chosen.data);
-      if (staged.width !== WIDTH || staged.height !== HEIGHT) {
+      renderer.render(staged, chosen.data);
+      if (staged.width !== WIDTH || staged.height !== HEIGHTS[language]) {
         throw new Error('Report image size is unavailable');
       }
       let blob = await canvasBlob(staged);
@@ -297,8 +320,8 @@
       if (afterEncoding.state !== chosen.bundle.state) {
         // Crossing the freshness/day boundary during encoding must not leave
         // an export labelled live. Draw the retained title before committing.
-        chosen = candidate(afterEncoding);
-        window.MarsUnifiedReport.render(staged, chosen.data);
+        chosen = candidate(afterEncoding, false, language);
+        renderer.render(staged, chosen.data);
         blob = await canvasBlob(staged);
         if (token !== operation || modal.hidden) return false;
       }
@@ -306,22 +329,22 @@
       // Replace the displayed element only after a complete image is available.
       // No failed attempt can clear the previously successful picture.
       staged.dataset.posterCanvas = '';
-      staged.setAttribute('aria-label', copy().image);
+      staged.setAttribute('aria-label', c.image);
       canvas.replaceWith(staged);
       canvas = staged;
-      rendered = { ...chosen, blob, filename: filename(chosen.data) };
+      rendered = { ...chosen, language, blob, filename: filename(chosen.data, language) };
       exportable = true;
       syncMeta();
       showImage(true);
-      setStatus(chosen.data.live.retained ? copy().retained : copy().ready, chosen.data.live.retained ? '' : 'ok');
+      setStatus(chosen.data.live.retained ? c.retained : c.ready, chosen.data.live.retained ? '' : 'ok');
       return true;
     } catch (error) {
       if (token !== operation || modal.hidden) return false;
       exportable = false;
       const incomplete = error?.code === 'report_live_incomplete';
-      const message = incomplete ? copy().incomplete
-        : error?.code === 'report_not_ready' ? copy().gate : copy().failed;
-      if (rendered) setStatus(`${message} ${incomplete ? copy().previous : copy().oldFailed}`, incomplete ? '' : 'error');
+      const message = incomplete ? c.incomplete
+        : error?.code === 'report_not_ready' ? c.gate : c.failed;
+      if (visibleReport()) setStatus(`${message} ${incomplete ? c.previous : c.oldFailed}`, incomplete ? '' : 'error');
       else {
         placeholder.textContent = message;
         showImage(false);
@@ -331,16 +354,33 @@
     } finally {
       if (token === operation) {
         busy = false;
+        activeBundle = null;
         syncControls();
       }
     }
   };
 
+  const changeLanguage = (language) => {
+    if (!['zh', 'en'].includes(language) || language === selectedLanguage() || sharing) return false;
+    // A language choice translates the same verified snapshot, including its
+    // original data clocks. It must not silently adopt a newer live response.
+    const original = rendered?.bundle || activeBundle;
+    operation += 1;
+    busy = false;
+    activeBundle = null;
+    exportable = false;
+    reportLanguage = language;
+    syncLanguage();
+    showImage(Boolean(visibleReport()));
+    syncControls();
+    return generate(original ? { bundle: original } : {});
+  };
+
   const readyForExport = () => {
-    if (busy || sharing || !exportable || !rendered) return false;
+    if (busy || sharing || !exportable || !visibleReport()) return false;
     try {
       assertOfficialFields(rendered.data);
-      const checked = candidate(rendered.bundle);
+      const checked = candidate(rendered.bundle, false, rendered.language);
       return checked.bundle.state === 'retained' && rendered.data.live.retained !== true ? 'retain' : true;
     } catch (error) {
       exportable = false;
@@ -408,17 +448,15 @@
     try {
       // The Blob is prepared during generation, so this call keeps the click's
       // user activation rather than awaiting image work before system sharing.
-      await navigator.share({ files: [file], title: 'MarsChain 火星快报' });
+      await navigator.share({ files: [file], title: rendered.language === 'en' ? COPY.en.title : 'MarsChain 火星快报' });
       if (token === operation && !modal.hidden) imageStatus(copy().shared);
     } catch (error) {
       if (token !== operation || modal.hidden) return;
       if (error?.name === 'AbortError') imageStatus(copy().cancelled, '');
       else setStatus(copy().shareFailed, 'error');
     } finally {
-      if (token === operation) {
-        sharing = false;
-        syncControls();
-      }
+      sharing = false;
+      syncControls();
     }
   };
 
@@ -437,6 +475,10 @@
           <div class="poster-head">
             <div><span>MARSCHAIN</span><h3 id="marsReportTitle" data-poster-title></h3></div>
             <button class="poster-close" type="button" data-poster-close>×</button>
+          </div>
+          <div data-poster-language-group role="group" style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0">
+            <button type="button" data-poster-language="zh" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">中文</button>
+            <button type="button" data-poster-language="en" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">English</button>
           </div>
           <p id="marsReportScope" data-poster-scope></p>
           <ul class="poster-meta">
@@ -462,6 +504,7 @@
       else if (target?.closest('[data-poster-download]')) void download();
       else if (target?.closest('[data-poster-share]')) void share();
       else if (target?.closest('[data-poster-refresh]')) void generate();
+      else if (target?.closest('[data-poster-language]')) void changeLanguage(target.closest('[data-poster-language]').dataset.posterLanguage);
     });
   };
   const open = (trigger) => {
@@ -469,6 +512,7 @@
     if (!modal.hidden) return;
     lastTrigger = trigger || document.activeElement;
     previousOverflow = document.body.style.overflow;
+    if (reportLanguage === null) reportLanguage = websiteLanguage();
     syncLanguage();
     modal.hidden = false;
     document.body.style.overflow = 'hidden';

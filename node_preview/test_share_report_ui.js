@@ -37,9 +37,11 @@ const bundle = (data, options = {}) => ({
 });
 const element = () => {
   const classes = new Set();
+  const attributes = {};
   return {
     style: {}, disabled: false, hidden: false, textContent: '', dataset: {},
-    setAttribute() {}, remove() {},
+    attributes,
+    setAttribute(name, value) { attributes[name] = value; }, remove() {}, focus() {},
     classList: {
       toggle(name, on) { if (on) classes.add(name); else classes.delete(name); },
       contains(name) { return classes.has(name); },
@@ -47,64 +49,80 @@ const element = () => {
   };
 };
 
-const harness = (data) => {
+const harness = (data, options = {}) => {
   let clock = CLOCK;
   class ClockDate extends Date {
     constructor(...args) { super(...(args.length ? args : [clock])); }
     static now() { return clock; }
   }
-  const calls = { render: [], encoded: 0, downloads: [], shares: [], prepare: 0 };
+  const calls = { render: [], renderLanguages: [], build: [], encoded: 0, downloads: [], shares: [], prepare: 0, prepareLanguages: [] };
   const events = new Map();
-  const nodes = Object.fromEntries(['download', 'share', 'refresh', 'status', 'snapshot', 'daily', 'scope']
+  const nodes = Object.fromEntries(['download', 'share', 'refresh', 'status', 'snapshot', 'daily', 'scope',
+    'title', 'snapshot-label', 'daily-label', 'close', 'language-group']
     .map(key => [key, element()]));
+  const languages = ['zh', 'en'].map(language => ({ ...element(), dataset: { posterLanguage: language } }));
   let displayed = null;
   const canvas = () => ({
     ...element(), width: 300, height: 150,
     replaceWith(next) { displayed = next; },
     toBlob(done) {
       calls.encoded += 1;
-      Promise.resolve().then(() => done(new Blob(['encoded-report-state-double'], { type: 'image/png' })));
+      const encode = () => done(new Blob(['encoded-report-state-double'], { type: 'image/png' }));
+      if (options.encode) options.encode(encode);
+      else Promise.resolve().then(encode);
     },
   });
   displayed = canvas();
   const modal = {
     hidden: false,
     querySelector(selector) {
-      const found = selector.match(/^\[data-poster-(download|share|refresh|status|snapshot|daily|scope)\]$/);
+      const found = selector.match(/^\[data-poster-([a-z-]+)\]$/);
       if (!found) throw new Error(`Unexpected controller selector: ${selector}`);
       return nodes[found[1]];
     },
     querySelectorAll(selector) {
-      assert.equal(selector, '.poster-actions button');
-      return [nodes.download, nodes.share, nodes.refresh];
+      if (selector === '[data-poster-language]') return languages;
+      assert.equal(selector, '.poster-actions button, [data-poster-language]');
+      return [nodes.download, nodes.share, nodes.refresh, ...languages];
     },
   };
   const panel = element();
   const placeholder = element();
   const document = {
-    documentElement: { lang: 'zh-CN' }, fonts: { ready: Promise.resolve() },
+    documentElement: { lang: options.websiteLanguage || 'zh-CN' }, fonts: { ready: Promise.resolve() },
     addEventListener() {},
     createElement(tag) {
       if (tag === 'canvas') return canvas();
       assert.equal(tag, 'a');
       return { ...element(), click() { calls.downloads.push(this.download); } };
     },
-    body: { appendChild() {} },
+    body: { appendChild() {}, style: {} },
     getElementById() { return null; },
   };
   const window = {
     MarsShareReportPayload: bundle(data),
-    MarsReportData: { build(value) {
-      const data = structuredClone(value.model);
+    MarsReportData: { build(value, { language } = {}) {
+      calls.build.push({ bundle: value, language });
+      const data = structuredClone(options.build ? options.build(value.model, language) : value.model);
       data.live.retained = value.state === 'retained';
       return data;
     } },
     MarsUnifiedReport: {
-      prepare() { calls.prepare += 1; return Promise.resolve(); },
+      prepare() { calls.prepare += 1; calls.prepareLanguages.push('zh'); return options.prepare ? options.prepare('zh') : Promise.resolve(); },
       render(staged, value) {
         calls.render.push(value);
+        calls.renderLanguages.push('zh');
         staged.width = 1024;
         staged.height = 1776;
+      },
+    },
+    MarsEnglishReport: {
+      prepare() { calls.prepare += 1; calls.prepareLanguages.push('en'); return options.prepare ? options.prepare('en') : Promise.resolve(); },
+      render(staged, value) {
+        calls.render.push(value);
+        calls.renderLanguages.push('en');
+        staged.width = 1024;
+        staged.height = 1840;
       },
     },
     addEventListener(name, handler) { events.set(name, handler); },
@@ -115,22 +133,22 @@ const harness = (data) => {
   const hooks = `
   window.reportHarness = {
     attach(value) { modal=value.modal; panel=value.panel; canvas=value.canvas; placeholder=value.placeholder; },
-    state() { return { busy, exportable, rendered }; },
-    generate, download, share, filename
+    state() { return { busy, sharing, exportable, rendered, language: selectedLanguage() }; },
+    generate, download, share, filename, changeLanguage, open, close
   };
 })();`;
   assert.match(SOURCE, /\}\)\(\);\s*$/);
   const instrumented = SOURCE.replace(/\}\)\(\);\s*$/, hooks);
   vm.runInNewContext(instrumented, {
     window, document, Date: ClockDate, Blob,
-    navigator: { canShare: () => true, share: async value => { calls.shares.push(value); } },
+    navigator: { canShare: () => options.canShare !== false, share: async value => { calls.shares.push(value); if (options.share) await options.share(value); } },
     File: class { constructor(parts, name, options) { this.parts=parts; this.name=name; this.type=options.type; } },
     URL: { createObjectURL: () => 'blob:controller-state-double', revokeObjectURL() {} },
   }, { filename: 'share_report_ui.js', timeout: 1000 });
   const api = window.reportHarness;
   api.attach({ modal, panel, canvas: displayed, placeholder });
   return {
-    api, calls, nodes, modal, placeholder,
+    api, calls, nodes, modal, placeholder, languages, document,
     displayed: () => displayed,
     update(next, options) {
       window.MarsShareReportPayload = bundle(next, options);
@@ -155,7 +173,7 @@ const modelAt = (second) => {
 
 test('missing official fields cannot reach render, encoding, download or share', async () => {
   for (const key of REQUIRED) {
-    for (const missing of ['待补齐', '', '   ', null, undefined]) {
+    for (const missing of ['待补齐', 'Pending', 'pending', '', '   ', null, undefined]) {
       const h = harness(model({ [key]: missing }));
       await h.api.generate();
       assert.equal(h.api.state().exportable, false, key);
@@ -397,6 +415,178 @@ test('crossing Beijing 08:00 retains the old actual daily range instead of relab
   assert.equal(h.api.state().rendered.data.live.retained, true);
   assert.equal(h.api.state().rendered.data.daily.rangeText, oldRange);
   assert.equal(h.api.state().rendered.data.live.snapshotTimeText, '2026-10-30 00:42');
+});
+
+test('report language defaults to the website on first open and persists independently across reopen', async () => {
+  for (const initial of ['zh-CN', 'en-US']) {
+    const firstLanguage = initial.startsWith('en') ? 'en' : 'zh';
+    const otherLanguage = firstLanguage === 'en' ? 'zh' : 'en';
+    const h = harness(model(), { websiteLanguage: initial });
+    h.modal.hidden = true;
+    h.api.open();
+    await flush();
+    assert.equal(h.api.state().language, firstLanguage);
+    assert.equal(h.api.state().rendered.language, firstLanguage);
+    assert.equal(h.displayed().height, firstLanguage === 'en' ? 1840 : 1776);
+    for (const button of h.languages) {
+      assert.equal(button.attributes['aria-pressed'], String(button.dataset.posterLanguage === firstLanguage));
+      assert.equal(button.disabled, false);
+    }
+    await h.api.changeLanguage(otherLanguage);
+    assert.equal(h.api.state().rendered.language, otherLanguage);
+    h.api.close();
+    h.document.documentElement.lang = initial;
+    h.api.open();
+    await flush();
+    assert.equal(h.api.state().language, otherLanguage);
+    assert.equal(h.api.state().rendered.language, otherLanguage);
+    h.document.documentElement.lang = firstLanguage;
+    assert.equal(await h.api.download(), true);
+    assert.equal(h.calls.downloads.at(-1).endsWith('-en.png'), otherLanguage === 'en');
+    assert.equal(h.calls.shares.length, 0, 'opening and changing language never shares externally');
+  }
+});
+
+test('switching report language translates the same original snapshot after a newer live response', async () => {
+  const h = harness(model());
+  await h.api.generate();
+  const original = h.api.state().rendered.bundle;
+  h.setBundle(model({ price: '9.99999', snapshotTimeText: '2026-10-30 00:43' }));
+  assert.equal(await h.api.changeLanguage('en'), true);
+  assert.equal(h.api.state().rendered.bundle, original);
+  assert.equal(h.api.state().rendered.data.live.price, '0.01035');
+  assert.equal(h.api.state().rendered.data.live.snapshotTimeText, '2026-10-30 00:42');
+  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.displayed().height, 1840);
+  assert.equal(h.calls.prepareLanguages.at(-1), 'en');
+  assert.equal(h.calls.renderLanguages.at(-1), 'en');
+  assert.equal(h.calls.build.at(-1).language, 'en');
+  assert.equal(await h.api.download(), true);
+  assert.equal(h.calls.downloads.at(-1), 'marschain-report-2026-10-30-0042-en.png');
+  await h.api.share();
+  assert.equal(h.calls.shares.at(-1).files[0].name, 'marschain-report-2026-10-30-0042-en.png');
+  assert.equal(h.calls.shares.at(-1).title, 'MarsChain Report');
+  assert.equal(await h.api.changeLanguage('zh'), true);
+  assert.equal(h.api.state().rendered.bundle, original);
+  assert.equal(h.displayed().height, 1776);
+  assert.equal(h.api.state().rendered.filename, 'marschain-report-2026-10-30-0042.png');
+  assert.equal(h.nodes.download.textContent, '下载图片');
+});
+
+test('a language change cancels pending preparation and preserves its original valid source bundle', async () => {
+  const finish = {};
+  const h = harness(model(), { prepare: language => new Promise(resolve => { finish[language] = resolve; }) });
+  const first = h.api.generate();
+  h.setBundle(model({ price: '9.99999', snapshotTimeText: '2026-10-30 00:43' }));
+  const english = h.api.changeLanguage('en');
+  assert.equal(h.api.state().busy, true);
+  assert.equal(h.languages.every(button => button.disabled === false), true, 'language remains selectable while rendering');
+  finish.en();
+  assert.equal(await english, true);
+  const accepted = h.api.state().rendered;
+  finish.zh();
+  assert.equal(await first, false);
+  assert.equal(h.api.state().rendered, accepted);
+  assert.equal(h.api.state().rendered.data.live.price, '0.01035');
+  assert.equal(h.calls.render.length, 1);
+  assert.deepEqual(h.calls.renderLanguages, ['en']);
+  assert.equal(h.api.state().busy, false);
+  assert.equal(h.calls.shares.length, 0);
+});
+
+test('a language change discards an older canvas encoding without exposing a mixed image', async () => {
+  const finish = [];
+  const h = harness(model(), { encode: done => finish.push(done) });
+  const chinese = h.api.generate();
+  await flush();
+  assert.equal(finish.length, 1);
+  const english = h.api.changeLanguage('en');
+  await flush();
+  assert.equal(finish.length, 2);
+  assert.equal(h.api.state().exportable, false);
+  assert.equal(h.displayed().hidden, true);
+  finish[1]();
+  assert.equal(await english, true);
+  const accepted = h.displayed();
+  finish[0]();
+  assert.equal(await chinese, false);
+  assert.equal(h.displayed(), accepted);
+  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.displayed().height, 1840);
+  assert.equal(h.api.state().busy, false);
+  assert.equal(h.calls.shares.length, 0);
+});
+
+test('an unavailable selected-language image hides the old language and cannot export it', async () => {
+  const h = harness(model(), { build: (value, language) => language === 'en'
+    ? { ...value, live: { ...value.live, price: 'Pending' } } : value });
+  await h.api.generate();
+  assert.equal(await h.api.changeLanguage('en'), false);
+  assert.equal(h.api.state().rendered.language, 'zh', 'the prior complete bundle remains available for recovery');
+  assert.equal(h.displayed().hidden, true);
+  assert.equal(h.api.state().exportable, false);
+  assert.equal(await h.api.download(), false);
+  await h.api.share();
+  assert.equal(h.calls.downloads.length, 0);
+  assert.equal(h.calls.shares.length, 0);
+  assert.equal(h.calls.render.length, 1);
+  assert.match(h.nodes.status.textContent, /Report data is updating/);
+});
+
+test('a pending system share disables language changes even across close and reopen', async () => {
+  let completeShare;
+  const h = harness(model(), { share: () => new Promise(resolve => { completeShare = resolve; }) });
+  await h.api.changeLanguage('en');
+  const sharing = h.api.share();
+  assert.equal(h.api.state().sharing, true);
+  assert.equal(h.languages.every(button => button.disabled), true);
+  assert.equal(h.api.changeLanguage('zh'), false);
+  h.api.close();
+  h.api.open();
+  assert.equal(h.languages.every(button => button.disabled), true);
+  assert.equal(h.api.changeLanguage('zh'), false);
+  assert.equal(h.api.state().language, 'en');
+  completeShare();
+  await sharing;
+  assert.equal(h.api.state().sharing, false);
+  assert.equal(h.languages.every(button => button.disabled === false), true);
+  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.calls.shares.length, 1);
+});
+
+test('English retained fallback and browser download fallback preserve language and original clocks', async () => {
+  const h = harness(model(), { canShare: false });
+  await h.api.changeLanguage('en');
+  const original = h.api.state().rendered.bundle;
+  h.setBundle(model({ price: 'Pending', snapshotTimeText: '2026-10-30 00:43' }));
+  assert.equal(await h.api.generate(), true);
+  assert.equal(h.api.state().rendered.data.live.retained, true);
+  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.api.state().rendered.bundle.live, original.live);
+  assert.equal(h.api.state().rendered.bundle.daily, original.daily);
+  assert.equal(h.api.state().rendered.data.live.snapshotTimeText, '2026-10-30 00:42');
+  assert.equal(h.calls.renderLanguages.at(-1), 'en');
+  await h.api.share();
+  assert.equal(h.calls.shares.length, 0);
+  assert.equal(h.calls.downloads.at(-1), 'marschain-report-2026-10-30-0042-en.png');
+  assert.match(h.nodes.status.textContent, /Image sharing is unavailable/);
+  h.api.state().rendered.data.live.addresses = 'Pending';
+  assert.equal(await h.api.download(), false);
+});
+
+test('an expired English share relabels in English and requires a fresh share click', async () => {
+  const h = harness(model());
+  await h.api.changeLanguage('en');
+  h.advance(301);
+  await h.api.share();
+  assert.equal(h.calls.shares.length, 0);
+  assert.equal(h.api.state().rendered.language, 'en');
+  assert.equal(h.api.state().rendered.data.live.retained, true);
+  assert.equal(h.calls.renderLanguages.at(-1), 'en');
+  assert.equal(h.api.state().rendered.filename, 'marschain-report-2026-10-30-0042-en.png');
+  assert.match(h.nodes.status.textContent, /Click Share Image again/);
+  await h.api.share();
+  assert.equal(h.calls.shares.length, 1);
 });
 
 test('the actual model and renderer retain only the label, never replacing source clocks or daily evidence', async () => {
