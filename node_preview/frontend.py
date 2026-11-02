@@ -899,7 +899,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
     const periodCutoff = text.match(/^截至 (.+?)（北京时间）$/);
     if (periodCutoff) return `Through ${periodCutoff[1]} (Beijing time)`;
     if (text === '统计时间待核验（北京时间）') return 'Statistics time pending verification (Beijing time)';
-    const approxBurn = text.match(/^(当前)?约\s+([\d,.]+)(?:\s+(MARS))?$/);
+    const approxBurn = text.match(/^(当前)?约\\s+([\\d,.]+)(?:\\s+(MARS))?$/);
     if (approxBurn) return `${approxBurn[1] ? 'Currently approx.' : 'Approx.'} ${approxBurn[2]}${approxBurn[3] ? ' MARS' : ''}`;
     const inputShare = text.match(/^按现有 (.+) 算力占比测算。$/);
     if (inputShare) return `Based on the share of existing ${translateChineseNumericUnit(inputShare[1]) || inputShare[1]} power.`;
