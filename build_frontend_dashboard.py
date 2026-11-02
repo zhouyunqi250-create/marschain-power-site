@@ -4299,7 +4299,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
     (function() {{
       var path = window.location.pathname;
       if (path === "/m/") {{
-        window.location.replace("/m/index.html");
+        window.location.replace("/m/index.html" + window.location.search + window.location.hash);
         return;
       }}
       var params = new URLSearchParams(window.location.search);
@@ -4309,7 +4309,7 @@ def build_html(payload: dict) -> str:  # type: ignore[no-redef]
       var isMobileUa = /Android|iPhone|iPod|Mobile|Windows Phone/i.test(ua);
       var isNarrowTouch = window.matchMedia && window.matchMedia("(max-width: 760px)").matches && navigator.maxTouchPoints > 0;
       if (isMobileUa || isNarrowTouch) {{
-        window.location.replace("/m/index.html");
+        window.location.replace("/m/index.html" + window.location.search + window.location.hash);
       }}
     }})();
   </script>
@@ -5027,26 +5027,36 @@ ORACLE_COUNTDOWN_JS = r"""
   if (!nodes.length) return;
   const deadline = Date.parse('2026-10-21T08:00:00+08:00');
   const pad = (value) => String(value).padStart(2, '0');
+  // Keep the Chinese source separate from the rendered language. Once a cycle
+  // has ended, an unchanged timer must not rewrite and retranslate the page
+  // every second merely because the visible text is now Japanese or Korean.
+  const sourceValues = new WeakMap();
+  const setSourceText = (node, value) => {
+    if (sourceValues.get(node) === value) return;
+    sourceValues.set(node, value);
+    node.textContent = value;
+  };
   const update = () => {
     const remaining = Math.max(0, deadline - Date.now());
     const days = Math.floor(remaining / 86400000);
     const hours = Math.floor((remaining % 86400000) / 3600000);
     const minutes = Math.floor((remaining % 3600000) / 60000);
     const seconds = Math.floor((remaining % 60000) / 1000);
-    const isEnglish = document.documentElement.lang === 'en';
+    const isEnglish = false; // Chinese source copy is localized by the preview language layer.
     const value = remaining > 0 ? `${days}${isEnglish ? 'd' : '天'} ${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : (isEnglish ? 'Cycle ended' : '本期已结束');
     nodes.forEach((node) => {
-      node.textContent = value;
+      setSourceText(node, value);
+      node.classList.toggle('is-ended', remaining <= 0);
       node.setAttribute('aria-label', remaining <= 0 ? (isEnglish ? 'This cycle has ended' : '本期已结束') : isEnglish
         ? `${days} days ${hours} hours ${minutes} minutes ${seconds} seconds remaining`
         : `剩余${days}天${hours}小时${minutes}分${seconds}秒`);
     });
     document.querySelectorAll('[data-oracle-countdown-note]').forEach((node) => {
-      node.textContent = remaining > 0
+      setSourceText(node, remaining > 0
         ? (isEnglish
           ? 'Next power cycle starts · Deadline: Oct 21, 2026, 08:00 GMT+8'
           : '开启算力新周期 · 截止时间：2026年10月21日 GMT+8 08:00')
-        : (isEnglish ? 'The next power cycle is starting' : '算力新周期启动时间已到');
+        : (isEnglish ? 'The next power cycle is starting' : '算力新周期启动时间已到'));
     });
   };
   update();
@@ -6348,9 +6358,9 @@ METRIC_TREND_JS = r"""
 """
 
 
-LANGUAGE_TOGGLE_JS = r"""
+LANGUAGE_TOGGLE_JS = (Path(__file__).parent / "node_preview" / "website_locale.js").read_text(encoding="utf-8") + r"""
 (function() {
-  const STORAGE_KEY = 'marschain_lang';
+  const STORAGE_KEY = 'marschain_four_language_preview_20261102';
   const zhToEn = {
     "暂无可用历史；后续记录将按实际统计时间积累。": "No history is available. Future records will use their actual statistics times.",
     "生成快报": "Create Report",
@@ -6359,7 +6369,7 @@ LANGUAGE_TOGGLE_JS = r"""
     "请输入有效算力": "Enter valid power",
 
     "本期倒计时已结束 · 等待官方公布下一期": "This countdown has ended; awaiting the next official cycle",
-    "全网总算力与每日新增算力按日期联动展示。": "Separate charts for total power and daily power growth.",
+    "全网总算力与每日新增算力按日期联动展示。": "Separate charts for total power and daily power change.",
     "流通量、累计销毁、日销毁币量按日期联动展示。": "Separate charts for circulation, cumulative burns and daily burns.",
     "每日产币量、单币日需算力、1亿算力产出按日期联动展示。": "Separate charts for daily emission and estimated power output.",
     "每日交易币量与每日交易笔数按日期联动展示。": "Separate charts for daily transaction volume and count.",
@@ -6404,7 +6414,7 @@ LANGUAGE_TOGGLE_JS = r"""
     '继续查看核心数据、增长趋势与数据说明': 'Continue to core data, growth trends, and data notes',
     '扫描覆盖率': 'Scan Coverage',
     '已收录地址': 'Known Addresses',
-    '正算力占比': 'Positive Power Share',
+    '正算力占比': 'Positive-power Address Share',
     '未覆盖算力': 'Uncovered Power',
     '01 / 算力排行': '01 / Power Rank',
     '头部算力地址排行': 'Top Power Address Ranking',
@@ -6430,10 +6440,10 @@ LANGUAGE_TOGGLE_JS = r"""
     '展示最近一次刷新得到的全网算力、产币模型、地址规模与统计日新增数据。': 'Shows the latest network power, emission model, address scale, and Beijing-day growth data.',
     '03 / 周期增长': '03 / Growth',
     '7 天与 30 天新增': '7-Day and 30-Day Growth',
-    '按最近完整北京时间统计日汇总新增算力，并用官方 08:00 快照差额统计新增地址和销毁数量。': 'Summarizes new power by complete Beijing-day windows, with new addresses and burned amount calculated from official 08:00 snapshot deltas.',
+    '按最近完整北京时间统计日汇总新增算力，并用官方 08:00 快照差额统计新增地址和销毁数量。': 'Summarizes net power changes by complete Beijing-day windows, with new addresses and burned amount calculated from official 08:00 snapshot deltas.',
     '7 天新增': '7-Day Growth',
     '30 天新增': '30-Day Growth',
-    '新增算力': 'New Power',
+    '新增算力': 'Power Change',
     '新增地址': 'New Addresses',
     '销毁数量': 'Burned Amount',
     '04 / 方程系数': '04 / Equation Factor',
@@ -6485,31 +6495,31 @@ LANGUAGE_TOGGLE_JS = r"""
     '全网总算力': 'Global Network Power',
     '全网流通量': 'Global Circulation',
     '当前价格': 'Current Price',
-    '总产量': 'Total Supply',
+    '总产量': 'Supply Cap',
     '每日产币量': 'Daily Emission',
     '累计销毁': 'Total Burned',
     '正算力地址': 'Positive-Power Addresses',
     '统计日活跃地址数量': 'Daily Active Addresses',
     '统计日新增地址数量': 'Daily New Addresses',
-    '统计日新增总算力': 'Daily New Power',
+    '统计日新增总算力': 'Daily Power Change',
     '日销毁币量': 'Daily Burned',
     '每日交易币量': 'Daily Transaction Volume',
     '每日交易笔数': 'Daily Transaction Count',
-    '单币日需算力': 'Daily Power per Coin',
-    '1亿算力产出': 'Output per 100M Power',
+    '单币日需算力': 'Est. Power for 1 MARS/day',
+    '1亿算力产出': 'Est. Daily Output per 100M Power',
     '统计日活跃地址': 'Daily Active Addresses',
     '统计日新增地址': 'Daily New Addresses',
-    '统计日新增算力': 'Daily New Power',
-    '7天新增算力': '7-Day New Power',
+    '统计日新增算力': 'Daily Power Change',
+    '7天新增算力': '7-Day Power Change',
     '7天新增地址': '7-Day New Addresses',
     '7天销毁': '7-Day Burned',
-    '30天新增算力': '30-Day New Power',
+    '30天新增算力': '30-Day Power Change',
     '30天新增地址': '30-Day New Addresses',
     '30天销毁': '30-Day Burned',
-    '7 天新增算力': '7-Day New Power',
+    '7 天新增算力': '7-Day Power Change',
     '7 天新增地址': '7-Day New Addresses',
     '7 天销毁': '7-Day Burned',
-    '30 天新增算力': '30-Day New Power',
+    '30 天新增算力': '30-Day Power Change',
     '30 天新增地址': '30-Day New Addresses',
     '30 天销毁': '30-Day Burned',
     '矿工日产币量': 'Miner Daily Emission',
@@ -6686,88 +6696,139 @@ LANGUAGE_TOGGLE_JS = r"""
     match = text.match(/^榜单基于公开区块浏览器接口、RPC 与 POWER 合约日志生成。总产量采用官方经济模型口径：(.+?) 枚永不增发；每日产币量按当前区块奖励和标准出块数量估算；产量分配采用矿工 75%、节点 25%，所以单币日需算力按“全网总算力 ÷ 矿工日产币量”估算。公开接口延迟、RPC 节点漏返回、合约日志口径变化或缓存回退，都可能造成与官方后台的差异。$/);
     if (match) return `The ranking is generated from public explorer APIs, RPC, and POWER contract logs. Total supply follows the official economic model: ${translateChineseNumericUnit(match[1]) || match[1]} coins with no additional issuance. Estimated daily emission uses current block rewards and the standard daily block count. Distribution uses 75% for miners and 25% for nodes, so daily power per coin is estimated as global network power divided by miner daily emission. Public API delays, missing RPC responses, contract-log methodology changes, or cache fallback may create differences from official back-office data.`;
     match = text.match(/^基于公开 API、RPC 与合约日志生成的 best effort 榜单 · 最近刷新：(.+) · 统计周期：(.+)$/);
-    if (match) return `Best-effort ranking generated from public APIs, RPC, and contract logs · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
+    if (match) return `Best-effort ranking generated from public APIs, RPC, and contract logs · Last refresh: ${match[1]} · Statistics window: ${translateDynamic(match[2]) || zhToEn[match[2]] || match[2]}`;
     match = text.match(/^MarsChain Rank 手机版 · 最近刷新：(.+) · 统计周期：(.+)$/);
-    if (match) return `MarsChain Rank Mobile · Last refresh: ${match[1]} · Statistics window: ${match[2]}`;
+    if (match) return `MarsChain Rank Mobile · Last refresh: ${match[1]} · Statistics window: ${translateDynamic(match[2]) || zhToEn[match[2]] || match[2]}`;
     return '';
   };
 
-  const shouldSkipTextNode = (node) => {
+  const locale = window.MarsWebsiteLocale;
+  locale.registerEnglish(zhToEn);
+  const languages = ['zh', 'en', 'ja', 'ko'];
+  const reportSelector = '.poster-modal, [data-poster-modal], [data-report-modal], [data-poster-language-group]';
+  const lastWritten = new WeakMap();
+  const attributeOriginals = new WeakMap();
+  const attributeWritten = new WeakMap();
+  const isReport = node => Boolean(node?.closest?.(reportSelector));
+  const shouldSkipTextNode = node => {
     const parent = node.parentElement;
-    if (!parent) return true;
-    if (parent.closest('[data-lang-toggle]')) return true;
-    return Boolean(parent.closest('script, style, noscript, code, pre, input, textarea, select'));
+    return !parent || isReport(parent) || Boolean(parent.closest('[data-lang-toggle], script, style, noscript, code, pre, input, textarea, select'));
   };
-
-  const translateTextNodes = (lang) => {
+  const translation = (text, lang) => {
+    if (lang === 'zh') return text;
+    // Legacy templates can return a partly translated joined label. Finish it
+    // through the shared locale so dates/units do not retain Chinese fragments.
+    if (lang === 'en') return locale.translate(translateDynamic(text) || zhToEn[text] || text, lang);
+    return locale.translate(text, lang);
+  };
+  const translateTextNodes = lang => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
-    nodes.forEach((node) => {
+    nodes.forEach(node => {
       if (shouldSkipTextNode(node)) return;
-      if (!textOriginals.has(node)) textOriginals.set(node, node.nodeValue || '');
+      if (!textOriginals.has(node) || (lastWritten.has(node) && lastWritten.get(node) !== node.nodeValue)) textOriginals.set(node, node.nodeValue || '');
       const original = textOriginals.get(node) || '';
-      const trimmed = original.replace(/\s+/g, ' ').trim();
-      if (!trimmed) {
-        node.nodeValue = original;
-        return;
-      }
-      if (lang === 'zh') {
-        node.nodeValue = original;
-        return;
-      }
-      const replacement = translateDynamic(trimmed) || zhToEn[trimmed];
-      if (!replacement) {
-        node.nodeValue = original;
-        return;
-      }
-      const leading = (original.match(/^\s*/) || [''])[0];
-      const trailing = (original.match(/\s*$/) || [''])[0];
-      node.nodeValue = `${leading}${replacement}${trailing}`;
+      const trimmed = original.replace(/\s+/g,' ').trim();
+      const value = lang==='zh' || !trimmed ? original : `${(original.match(/^\s*/)||[''])[0]}${translation(trimmed,lang)}${(original.match(/\s*$/)||[''])[0]}`;
+      lastWritten.set(node,value);
+      if (node.nodeValue !== value) node.nodeValue=value;
     });
   };
-
-  const translateAttributes = (lang) => {
-    Object.entries(attrToEn).forEach(([attr, table]) => {
-      document.querySelectorAll(`[${attr}]`).forEach((node) => {
-        const originalAttr = `data-i18n-original-${attr}`;
-        if (!node.hasAttribute(originalAttr)) {
-          node.setAttribute(originalAttr, node.getAttribute(attr) || '');
-        }
-        const original = node.getAttribute(originalAttr) || '';
-        const trendLabel = attr === 'aria-label' && original.match(/^查看(.+)趋势$/);
-        const translated = trendLabel ? `View ${zhToEn[trendLabel[1]] || trendLabel[1]} trend` : original === '例如 1亿、5亿、1000万' ? 'e.g. 100M, 500M, 10M' : original;
-        node.setAttribute(attr, lang === 'en' ? (table[original] || translated) : original);
-      });
+  const translateAttributes = lang => {
+    document.querySelectorAll('[placeholder], [aria-label], [title]').forEach(node => {
+      if (isReport(node) || node.matches('[data-lang-toggle]')) return;
+      const originals=attributeOriginals.get(node)||{}, written=attributeWritten.get(node)||{};
+      for (const attr of ['placeholder','aria-label','title']) {
+        if (!node.hasAttribute(attr)) continue;
+        const current=node.getAttribute(attr)||'';
+        if (!(attr in originals) || (attr in written && current!==written[attr])) originals[attr]=current;
+        const value=lang==='zh'?originals[attr]:translation(originals[attr],lang);
+        written[attr]=value;
+        if(current!==value)node.setAttribute(attr,value);
+      }
+      attributeOriginals.set(node,originals); attributeWritten.set(node,written);
     });
   };
-
-  const setToggleLabels = (lang) => {
-    document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
-      button.textContent = lang === 'en' ? '中文' : 'EN';
-      button.setAttribute('aria-label', lang === 'en' ? 'Switch to Chinese' : 'Switch to English');
+  let selectedLanguage='zh';
+  let requestedLanguage=null;
+  try { requestedLanguage=new URLSearchParams(location.search).get('lang'); } catch (_) {}
+  if(languages.includes(requestedLanguage))selectedLanguage=requestedLanguage;
+  try {
+    const stored=localStorage.getItem(STORAGE_KEY);
+    if(!languages.includes(requestedLanguage)&&languages.includes(stored))selectedLanguage=stored;
+  } catch (_) {}
+  try { if(languages.includes(requestedLanguage))localStorage.setItem(STORAGE_KEY,requestedLanguage); } catch (_) {}
+  const setToggleLabels = lang => {
+    document.querySelectorAll('[data-lang-toggle]').forEach(select => {
+      select.value=lang;
+      select.setAttribute('aria-label',locale.pick('网站语言','Website language','表示言語','사이트 언어',lang));
     });
   };
-
-  const applyLanguage = (lang) => {
-    const nextLang = lang === 'en' ? 'en' : 'zh';
-    document.documentElement.lang = nextLang === 'en' ? 'en' : 'zh-CN';
-    document.title = nextLang === 'en' ? 'MarsChain Power Ranking' : 'MarsChain 算力排行榜';
-    translateTextNodes(nextLang);
-    translateAttributes(nextLang);
-    setToggleLabels(nextLang);
+  let lastAppliedLanguage=null;
+  const applyLanguage = lang => {
+    selectedLanguage=languages.includes(lang)?lang:selectedLanguage;
+    const htmlLang=selectedLanguage==='zh'?'zh-CN':selectedLanguage;
+    if(document.documentElement.lang!==htmlLang)document.documentElement.lang=htmlLang;
+    document.title=selectedLanguage==='en'?'MarsChain Power Ranking':locale.translate('MarsChain 算力排行榜',selectedLanguage);
+    if(lastAppliedLanguage!==selectedLanguage && selectedLanguage!=='zh')document.querySelectorAll('[data-burn-power]').forEach(input=>{if(input.value==='1亿')input.value='100000000';});
+    lastAppliedLanguage=selectedLanguage;
+    translateTextNodes(selectedLanguage);
+    translateAttributes(selectedLanguage);
+    setToggleLabels(selectedLanguage);
+    // Explicitly carry the choice across desktop/mobile navigation even when
+    // storage is unavailable (private browsing or a restrictive browser policy).
+    document.querySelectorAll('a[href]').forEach(link=>{
+      const href=link.getAttribute('href')||'';
+      if(!href||href.startsWith('#'))return;
+      try {
+        const target=new URL(href,location.href);
+        if(target.origin!==location.origin||!['/','/index.html','/m/','/m/index.html'].includes(target.pathname))return;
+        target.searchParams.set('lang',selectedLanguage);
+        const next=target.pathname+target.search+target.hash;
+        if(href!==next)link.setAttribute('href',next);
+      } catch (_) {}
+    });
   };
-
-  window.applyMarsLanguage = () => applyLanguage(localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'zh');
-
-  document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const nextLang = localStorage.getItem(STORAGE_KEY) === 'en' ? 'zh' : 'en';
-      localStorage.setItem(STORAGE_KEY, nextLang);
-      window.applyMarsLanguage();
+  const selectStyle=document.createElement('style');
+  selectStyle.textContent=`[data-lang-toggle]{appearance:auto;min-height:36px;min-width:100px;max-width:130px;padding:7px 10px;color:#d9faff;background:#101f2c;border:1px solid rgba(114,177,195,.25);border-radius:7px;font:600 12px/1.25 system-ui,-apple-system,sans-serif;cursor:pointer}[data-lang-toggle] option{color:#e9f5f8;background:#101f2c}html:is([lang=ja],[lang=ko]) .orbit-title{font-size:clamp(30px,4.4vw,57px);letter-spacing:-.025em}html:is([lang=ja],[lang=ko]) .orbit-description{line-height:1.75}html:is([lang=ja],[lang=ko]) .metric h3,html:is([lang=ja],[lang=ko]) .m-card h3{line-height:1.5}html[lang=ja] .mc-sidebar nav a{font-size:12px;letter-spacing:0}html[lang=ko] .mc-sidebar nav a{font-size:13px}@media(max-width:620px){[data-lang-toggle]{min-width:88px;max-width:104px;min-height:32px;padding:6px 8px}html:is([lang=ja],[lang=ko]) .orbit-title{font-size:clamp(27px,8vw,36px)}html:is([lang=ja],[lang=ko]) .orbit-description{max-width:270px;font-size:11px}html:is([lang=ja],[lang=ko]) .m-brand-actions{gap:5px}}`;
+  selectStyle.textContent+=`
+html:is([lang=en],[lang=ja],[lang=ko]) body :is(.equation-grid .fcard,.m-flow-card) .oracle-countdown-value{max-width:100%;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+html:is([lang=en],[lang=ja],[lang=ko]) body :is(.equation-grid .fcard,.m-flow-card) .oracle-countdown-value.is-ended{font-size:clamp(20px,2vw,26px);letter-spacing:-.025em}
+@media(max-width:620px){html:is([lang=en],[lang=ja],[lang=ko]) body .m-flow-card .oracle-countdown-value.is-ended{font-size:26px}}
+`;
+  document.head.append(selectStyle);
+  document.querySelectorAll('[data-lang-toggle]').forEach(button => {
+    const select=document.createElement('select');
+    select.className=button.className;
+    select.dataset.langToggle='';
+    [['zh','中文'],['en','English'],['ja','日本語'],['ko','한국어']].forEach(([value,label])=>{
+      const option=document.createElement('option');option.value=value;option.textContent=label;select.append(option);
+    });
+    button.replaceWith(select);
+    select.addEventListener('change',()=>{
+      selectedLanguage=select.value;
+      try {localStorage.setItem(STORAGE_KEY,selectedLanguage);}catch(_){}
+      try {const url=new URL(location.href);url.searchParams.set('lang',selectedLanguage);history.replaceState(null,'',url);}catch(_){}
+      applyLanguage(selectedLanguage);
+      window.dispatchEvent(new CustomEvent('mars-website-language',{detail:{language:selectedLanguage}}));
     });
   });
-
+  window.applyMarsLanguage=()=>applyLanguage(selectedLanguage);
+  // Runtime refreshes and chart interactions create new Chinese source nodes.
+  // Remember source text separately so every locale switch remains reversible.
+  let scheduled=false;
+  const observer=new MutationObserver(records=>{
+    const changed=records.some(record=>{
+      if(isReport(record.target.nodeType===1?record.target:record.target.parentElement))return false;
+      if(record.type==='characterData')return !shouldSkipTextNode(record.target)&&lastWritten.get(record.target)!==record.target.nodeValue;
+      return record.addedNodes.length>0;
+    });
+    if(!changed||scheduled)return;
+    scheduled=true;
+    queueMicrotask(()=>{scheduled=false;applyLanguage(selectedLanguage);});
+  });
+  observer.observe(document.body,{childList:true,subtree:true,characterData:true});
   window.applyMarsLanguage();
 })();
 """

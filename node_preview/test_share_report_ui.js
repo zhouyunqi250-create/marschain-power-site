@@ -60,7 +60,7 @@ const harness = (data, options = {}) => {
   const nodes = Object.fromEntries(['download', 'share', 'refresh', 'status', 'snapshot', 'daily', 'scope',
     'title', 'snapshot-label', 'daily-label', 'close', 'language-group']
     .map(key => [key, element()]));
-  const languages = ['zh', 'en'].map(language => ({ ...element(), dataset: { posterLanguage: language } }));
+  const languages = ['zh', 'en', 'ja', 'ko'].map(language => ({ ...element(), dataset: { posterLanguage: language } }));
   let displayed = null;
   const canvas = () => ({
     ...element(), width: 300, height: 150,
@@ -76,6 +76,7 @@ const harness = (data, options = {}) => {
   const modal = {
     hidden: false,
     querySelector(selector) {
+      if (selector === '.poster-copy') return nodes.copy;
       const found = selector.match(/^\[data-poster-([a-z-]+)\]$/);
       if (!found) throw new Error(`Unexpected controller selector: ${selector}`);
       return nodes[found[1]];
@@ -86,6 +87,7 @@ const harness = (data, options = {}) => {
       return [nodes.download, nodes.share, nodes.refresh, ...languages];
     },
   };
+  nodes.copy = element();
   const panel = element();
   const placeholder = element();
   const document = {
@@ -127,6 +129,15 @@ const harness = (data, options = {}) => {
     },
     addEventListener(name, handler) { events.set(name, handler); },
     setTimeout(handler) { handler(); return 0; },
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'report_locales.js'), 'utf8'), { window });
+  window.MarsReportRenderers = { zh: window.MarsUnifiedReport, en: window.MarsEnglishReport };
+  for (const language of ['ja', 'ko']) window.MarsReportRenderers[language] = {
+    prepare() { calls.prepare += 1; calls.prepareLanguages.push(language); return options.prepare ? options.prepare(language) : Promise.resolve(); },
+    render(staged, value) {
+      calls.render.push(value); calls.renderLanguages.push(language);
+      staged.width = 1024; staged.height = 1840;
+    },
   };
   // Expose only this module's private state in memory. The published source is
   // unmodified and gains no diagnostic globals or bypasses from this harness.
@@ -681,4 +692,71 @@ test('the actual model and renderer retain only the label, never replacing sourc
   assert.ok(text.includes(ready.daily.rangeText));
   assert.equal(canvas.width, 1024);
   assert.equal(canvas.height, 1776);
+});
+
+test('all four languages block missing ready core values before rendering or encoding', async () => {
+  for (const language of ['zh', 'en', 'ja', 'ko']) {
+    for (const key of ['totalPower', 'perCoin', 'oneYiOutput', 'top100Share', 'burned', 'snapshotTimeText', 'snapshotUtcText']) {
+      const missing = { zh: '待补齐', en: 'Pending', ja: '確認中', ko: '확인 중' }[language];
+      const h = harness(model({ [key]: missing }));
+      const result = language === 'zh' ? await h.api.generate() : await h.api.changeLanguage(language);
+      assert.equal(result, false, `${language}: ${key}`);
+      assert.equal(h.calls.render.length, 0, `${language}: ${key}`);
+      assert.equal(h.calls.encoded, 0, `${language}: ${key}`);
+      assert.equal(h.api.state().exportable, false);
+      assert.equal(await h.api.download(), false);
+    }
+  }
+});
+
+test('Japanese and Korean share, download, fallback and reopen retain language boundaries', async () => {
+  for (const language of ['ja', 'ko']) {
+    const h = harness(model(), { websiteLanguage: language });
+    assert.equal(await h.api.changeLanguage(language), true);
+    assert.equal(h.api.state().rendered.language, language);
+    assert.equal(h.calls.renderLanguages.at(-1), language);
+    assert.equal(h.displayed().height, 1840);
+    assert.equal(h.nodes.snapshot.textContent.endsWith(language === 'ja' ? '（UTC）' : ' (UTC)'), true);
+    await h.api.share();
+    assert.equal(h.calls.shares.at(-1).files[0].name, `marschain-report-2026-10-30-0042-${language}.png`);
+    assert.equal(await h.api.download(), true);
+    assert.equal(h.calls.downloads.at(-1), `marschain-report-2026-10-30-0042-${language}.png`);
+    h.setBundle(model({ price: 'Pending' }));
+    assert.equal(await h.api.generate(), true);
+    assert.equal(h.api.state().rendered.data.live.retained, true);
+    assert.equal(h.api.state().rendered.language, language);
+    h.api.close();
+    h.api.open();
+    await flush();
+    assert.equal(h.api.state().rendered.language, 'zh');
+    assert.equal(h.api.state().language, 'zh');
+    assert.equal(h.displayed().height, 1776);
+  }
+});
+
+test('rapid four-language choices and close cancel stale asynchronous encodings', async () => {
+  const pending = [];
+  const h = harness(model(), { encode: done => pending.push(done) });
+  const work = [h.api.generate()];
+  await flush();
+  for (const language of ['en', 'ja', 'ko']) {
+    work.push(h.api.changeLanguage(language));
+    await flush();
+  }
+  assert.equal(pending.length, 4);
+  pending[3]();
+  assert.equal(await work[3], true);
+  const accepted = h.displayed();
+  for (let i = 2; i >= 0; --i) pending[i]();
+  assert.deepEqual(await Promise.all(work.slice(0, 3)), [false, false, false]);
+  assert.equal(h.displayed(), accepted);
+  assert.equal(h.api.state().rendered.language, 'ko');
+  const reopening = h.api.changeLanguage('ja');
+  await flush();
+  h.api.close();
+  pending[4]();
+  assert.equal(await reopening, false);
+  assert.equal(h.modal.hidden, true);
+  assert.equal(h.api.state().busy, false);
+  assert.equal(h.calls.shares.length, 0);
 });

@@ -6,9 +6,9 @@
   if (!body?.classList.contains('mc-orbit-finish') || body.dataset.orbitFinishOpening === 'true') return;
   body.dataset.orbitFinishOpening = 'true';
 
-  const storageKey = 'marschain.rank.opening-day.v1';
+  const storageKey = 'marschain.preview.four-language.opening-day.v1';
   const today = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const english = () => document.documentElement.lang.toLowerCase().startsWith('en');
+  const text = (zh,en) => window.MarsWebsiteLocale?.copy(zh,en) || zh;
   const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
   let active = null;
   let revealTimer = 0;
@@ -136,15 +136,15 @@ body.mc-orbit-finish .mc-opening-shell.is-static { animation: mc-opening-static-
       shell = document.createElement('div');
       shell.className = `mc-opening-shell${reduced ? ' is-static' : ''}`;
       shell.setAttribute('role', 'region');
-      shell.setAttribute('aria-label', english() ? 'MarsChain opening animation' : 'MarsChain 开场动画');
+      shell.setAttribute('aria-label', text('MarsChain 开场动画', 'MarsChain opening animation'));
       const stage = document.createElement('div');
       stage.className = 'mc-opening-stage';
       stage.setAttribute('aria-hidden', 'true');
       skip = document.createElement('button');
       skip.type = 'button';
       skip.className = 'mc-opening-skip';
-      skip.textContent = english() ? 'Skip' : '跳过';
-      skip.setAttribute('aria-label', english() ? 'Skip opening animation' : '跳过开场动画');
+      skip.textContent = text('跳过', 'Skip');
+      skip.setAttribute('aria-label', text('跳过开场动画', 'Skip opening animation'));
       shell.append(stage, skip);
       body.append(shell);
       body.classList.add('mc-opening-visible');
@@ -178,17 +178,15 @@ body.mc-orbit-finish .mc-opening-shell.is-static { animation: mc-opening-static-
   const syncLanguage = () => {
     const shell = body.querySelector('.mc-opening-shell');
     const skip = shell?.querySelector('.mc-opening-skip');
-    if (shell) shell.setAttribute('aria-label', english() ? 'MarsChain opening animation' : 'MarsChain 开场动画');
+    if (shell) shell.setAttribute('aria-label', text('MarsChain 开场动画', 'MarsChain opening animation'));
     if (skip) {
-      skip.textContent = english() ? 'Skip' : '跳过';
-      skip.setAttribute('aria-label', english() ? 'Skip opening animation' : '跳过开场动画');
+      skip.textContent = text('跳过', 'Skip');
+      skip.setAttribute('aria-label', text('跳过开场动画', 'Skip opening animation'));
     }
     const subtitle = shell?.querySelector('.mi-resonance-subtitle');
-    if (subtitle) subtitle.textContent = english() ? 'Power Ranking' : '算力排行榜';
+    if (subtitle) subtitle.textContent = text('算力排行榜', 'Power Ranking');
     const scene = shell?.querySelector('.mars-intro-resonance');
-    if (scene) scene.setAttribute('aria-label', english()
-      ? 'MarsChain Power Ranking: orbital lights form a geometric M'
-      : 'MarsChain 算力排行榜，两条精密光轨展开并汇聚成几何 M');
+    if (scene) scene.setAttribute('aria-label', text('MarsChain 算力排行榜，两条精密光轨展开并汇聚成几何 M', 'MarsChain Power Ranking: orbital lights form a geometric M'));
   };
   new MutationObserver(syncLanguage).observe(document.documentElement, {attributes: true, attributeFilter: ['lang']});
   syncLanguage();

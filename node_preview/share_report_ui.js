@@ -5,7 +5,7 @@
   window.__marsShareReportUiBound = true;
 
   const WIDTH = 1024;
-  const HEIGHTS = { zh: 1776, en: 1840 };
+  const HEIGHTS = { zh: 1776, en: 1840, ja: 1840, ko: 1840 };
   const DAY = 86400;
   const OFFICIAL_FIELDS = ['price', 'highestPrice', 'triggerPrice', 'circulation', 'addresses'];
   const RETAINED_FIELDS = [...OFFICIAL_FIELDS, 'totalPower', 'perCoin', 'oneYiOutput',
@@ -21,7 +21,7 @@
   let sharing = false;
   let exportable = false;
   let rendered = null;
-  let reportLanguage = null;
+  let reportLanguage = 'zh';
   let activeBundle = null;
 
   const COPY = {
@@ -92,8 +92,8 @@
       timezone: ' (UTC)',
     },
   };
-  const websiteLanguage = () => String(document.documentElement.lang || '').toLowerCase().split('-')[0] === 'en' ? 'en' : 'zh';
-  const selectedLanguage = () => reportLanguage || websiteLanguage();
+  Object.assign(COPY, { ja: window.MarsReportLocales.ja.ui, ko: window.MarsReportLocales.ko.ui });
+  const selectedLanguage = () => reportLanguage || 'zh';
   const copy = () => COPY[selectedLanguage()];
   const visibleReport = () => rendered?.language === selectedLanguage() ? rendered : null;
   const now = () => Math.floor(Date.now() / 1000);
@@ -148,7 +148,8 @@
     const complete = fields.every((key) => {
       const value = data?.live?.[key];
       if (typeof value === 'number') return Number.isFinite(value);
-      return typeof value === 'string' && value.trim() !== '' && !['待补齐', 'pending'].includes(value.trim().toLowerCase());
+      return typeof value === 'string' && value.trim() !== ''
+        && !['待补齐', 'pending', '確認中', '확인 중'].includes(value.trim().toLowerCase());
     });
     if (!complete) {
       const error = new Error('Report values are incomplete');
@@ -159,8 +160,10 @@
   };
   const candidate = (bundle, forceRetained = false, language = selectedLanguage()) => {
     const input = normalizeBundle(bundle, forceRetained);
-    const data = assertOfficialFields(window.MarsReportData.build(input, { language }),
-      input.state === 'retained' ? RETAINED_FIELDS : OFFICIAL_FIELDS);
+    // A ready response needs the same complete live frame as a retained one.
+    // Otherwise a malformed ready envelope could export a half-filled Chinese
+    // picture while the foreign-language renderer correctly refuses it.
+    const data = assertOfficialFields(window.MarsReportData.build(input, { language }), RETAINED_FIELDS);
     if (input.state === 'retained' && data.live.retained !== true) {
       throw new Error('Retained report labelling is unavailable');
     }
@@ -204,27 +207,20 @@
     const c = copy();
     const report = visibleReport();
     const value = report?.data;
-    const english = report?.language === 'en';
-    let dailyText = value?.daily.rangeText;
-    if (english) {
-      // Convert the original verified endpoints, rather than relabelling the
-      // Beijing wall-clock text or changing the reporting day.
-      const meta = report.bundle.daily.meta;
-      const start = stamp(meta.statistics_window_start_timestamp);
-      const end = stamp(meta.statistics_window_end_timestamp);
-      dailyText = start !== null && end !== null
-        ? [start, end].map(time => new Date(time * 1000).toISOString().slice(0, 16).replace('T', ' ')).join(' to ')
-        : null;
-    }
+    // The model converts the verified raw endpoints for each report language.
+    // Reuse its actual clocks here so the panel and exported PNG always agree.
+    const dailyText = value?.daily.rangeText;
     modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope : c.scope;
     modal.querySelector('[data-poster-snapshot]').textContent = value
-      ? (english ? value.live.snapshotUtcText : value.live.snapshotTimeText) + c.timezone : c.awaiting;
+      ? value.live.snapshotTimeText + c.timezone : c.awaiting;
     modal.querySelector('[data-poster-daily]').textContent = value && dailyText
       ? dailyText + c.timezone : c.awaiting;
   };
   const syncLanguage = () => {
     if (!modal) return;
     const c = copy();
+    panel.setAttribute('lang', selectedLanguage());
+    modal.querySelector('.poster-copy').style.fontFamily = window.MarsReportLocales[selectedLanguage()]?.font || '';
     for (const [selector, text] of [
       ['[data-poster-title]', c.title], ['[data-poster-scope]', c.scope],
       ['[data-poster-snapshot-label]', c.snapshot], ['[data-poster-daily-label]', c.daily],
@@ -267,7 +263,7 @@
     }
   });
   const filename = (data, language = selectedLanguage()) => {
-    const suffix = language === 'en' ? '-en' : '';
+    const suffix = language === 'zh' ? '' : `-${language}`;
     const snapshot = String(data?.live?.snapshotTimeText || '');
     const parts = snapshot.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
     if (parts) {
@@ -288,7 +284,7 @@
     const token = ++operation;
     const language = selectedLanguage();
     const c = COPY[language];
-    const renderer = language === 'en' ? window.MarsEnglishReport : window.MarsUnifiedReport;
+    const renderer = window.MarsReportRenderers[language];
     busy = true;
     exportable = false;
     syncControls();
@@ -374,7 +370,7 @@
   };
 
   const changeLanguage = (language) => {
-    if (!['zh', 'en'].includes(language) || language === selectedLanguage() || sharing) return false;
+    if (!['zh', 'en', 'ja', 'ko'].includes(language) || language === selectedLanguage() || sharing) return false;
     // A language choice translates the same verified snapshot, including its
     // original data clocks. It must not silently adopt a newer live response.
     const original = rendered?.bundle || activeBundle;
@@ -461,7 +457,7 @@
     try {
       // The Blob is prepared during generation, so this call keeps the click's
       // user activation rather than awaiting image work before system sharing.
-      await navigator.share({ files: [file], title: rendered.language === 'en' ? COPY.en.title : 'MarsChain 火星快报' });
+      await navigator.share({ files: [file], title: rendered.language === 'zh' ? 'MarsChain 火星快报' : COPY[rendered.language].title });
       if (token === operation && !modal.hidden) imageStatus(copy().shared);
     } catch (error) {
       if (token !== operation || modal.hidden) return;
@@ -495,6 +491,8 @@
           <div data-poster-language-group role="group" style="display:flex;gap:6px;flex-wrap:wrap;margin:12px 0">
             <button type="button" data-poster-language="zh" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">中文</button>
             <button type="button" data-poster-language="en" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">English</button>
+            <button type="button" data-poster-language="ja" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">日本語</button>
+            <button type="button" data-poster-language="ko" aria-pressed="false" style="font:inherit;font-size:13px;line-height:1.3;padding:6px 12px;border:1px solid #507074;border-radius:7px;background:transparent;color:inherit;cursor:pointer">한국어</button>
           </div>
           <p id="marsReportScope" data-poster-scope></p>
           <ul class="poster-meta">

@@ -768,7 +768,7 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "统计区间 · 北京时间": "Statistics window · Beijing time",
         "查看趋势": "View trend",
         "统计区间内交易币量 · MARS": "Transaction volume in this window · MARS",
-        "每日新增算力": "Daily New Power",
+        "每日新增算力": "Daily Power Change",
         "每日新增地址": "Daily New Addresses",
         "每日销毁量": "Daily Burned Amount",
         "每日交易量": "Daily Transaction Volume",
@@ -787,10 +787,10 @@ def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, 
         "部分数据待补齐": "Some statistics are pending",
         "待补齐": "Pending recovery",
         "暂无可比采样": "No comparable samples",
-        "新增算力、新增地址与销毁数量按日期联动展示。当前窗口缺失项单独标示；历史曲线按各自实际统计日期展示，缺失不补值。": "Separate charts for new power, new addresses and burns. Missing current-window figures are marked individually; history keeps its actual statistics dates without filling gaps.",
+        "新增算力、新增地址与销毁数量按日期联动展示。当前窗口缺失项单独标示；历史曲线按各自实际统计日期展示，缺失不补值。": "Separate charts for power changes, new addresses and burns. Missing current-window figures are marked individually; history keeps its actual statistics dates without filling gaps.",
         "部分日统计待补齐": "Some daily statistics are pending",
         "统计时间待核验": "Statistics time pending verification",
-        "每日新增算力 · 北京时间": "Daily power growth · Beijing time",
+        "每日新增算力 · 北京时间": "Daily power change · Beijing time",
         "日销毁统计 · 北京时间": "Daily burns · Beijing time",
         "新增 / 活跃地址统计 · 北京时间": "New / active addresses · Beijing time",
         "交易日统计 · 北京时间": "Daily transactions · Beijing time",
@@ -933,7 +933,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     """Write deployment artifacts once; leave latest.json publication to caller."""
     root = Path(output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    sources = (Path(__file__), RUNTIME, Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
+    sources = (Path(__file__), RUNTIME, Path(__file__).with_name("website_locale.js"), Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
                Path(__file__).with_name("emission.py"),
                *ORBIT_SOURCES, *REPORT_SOURCES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)

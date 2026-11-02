@@ -1,11 +1,13 @@
-/* Shared Chinese/English report model. No DOM reads, network calls or writes. */
+/* Four reports share verified evidence. No DOM reads, network calls or writes. */
 (() => {
   'use strict';
 
-  const createModel = (english = false) => {
-  const MISSING = english ? 'Pending' : '待补齐';
-  const locale = english ? 'en-US' : 'zh-CN';
-  const choose = (zh, en) => english ? en : zh;
+  const createModel = (language = 'zh') => {
+  const english = language !== 'zh';
+  const dictionary = window.MarsReportLocales?.[language];
+  const MISSING = english ? (dictionary?.missing || 'Pending') : '待补齐';
+  const locale = english ? (dictionary?.locale || 'en-US') : 'zh-CN';
+  const choose = (zh, en) => english ? (dictionary?.model?.[en] ?? en) : zh;
   const DAY = 86400;
   const WEI = 10n ** 18n;
   const own = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
@@ -31,7 +33,7 @@
       && Number.isFinite(new Date(Number(parsed) * 1000).getTime()) ? Number(parsed) : null;
   };
   const trim = (text) => text.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1');
-  const atTime = (value, offset = 8 * 3600) => {
+  const atTime = (value, offset = english ? 0 : 8 * 3600) => {
     const parsed = stamp(value);
     return parsed === null ? MISSING : new Date((parsed + offset) * 1000).toISOString().slice(0, 16).replace('T', ' ');
   };
@@ -271,13 +273,13 @@
       modelNote: choose('产出按当前区块奖励与全网算力估算', 'Estimated from current block rewards and network power'),
       intraday,
     };
-    return { daily, live };
+    return { daily, live, language, timeZone: english ? 'UTC' : 'Asia/Shanghai' };
   };
 
   return build;
   };
-  const models = {zh: createModel(), en: createModel(true)};
+  const models = Object.fromEntries(['zh', 'en', 'ja', 'ko'].map(language => [language, createModel(language)]));
   window.MarsReportData = Object.freeze({
-    build: (bundle, options = {}) => models[options.language === 'en' ? 'en' : 'zh'](bundle),
+    build: (bundle, options = {}) => models[options.language] ? models[options.language](bundle) : models.zh(bundle),
   });
 })();

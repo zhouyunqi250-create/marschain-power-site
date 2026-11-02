@@ -14,7 +14,7 @@
   toggle.setAttribute('aria-controls', sidebar.id);
   toggle.setAttribute('aria-label', '打开板块导航');
 
-  const english = () => document.documentElement.lang.toLowerCase().startsWith('en');
+  const text = (zh,en) => window.MarsWebsiteLocale?.copy(zh,en) || zh;
   const desktop = window.matchMedia('(min-width: 960px)');
   const persistent = body.classList.contains('mc-sidebar-persistent');
   const highlightReport = body.classList.contains('mc-report-highlight');
@@ -103,7 +103,7 @@
     }
     body.classList.toggle('mc-sidebar-open', opened);
     toggle.setAttribute('aria-expanded', String(opened));
-    toggle.setAttribute('aria-label', english() ? (opened ? 'Close navigation' : 'Open navigation') : (opened ? '关闭板块导航' : '打开板块导航'));
+    toggle.setAttribute('aria-label', opened ? text('关闭板块导航','Close navigation') : text('打开板块导航','Open navigation'));
     if (fixedNavigation() || opened) {
       sidebar.removeAttribute('aria-hidden');
       sidebar.inert = false;
@@ -169,11 +169,11 @@
   if (typeof desktop.addEventListener === 'function') desktop.addEventListener('change', resetLayout);
   else if (typeof desktop.addListener === 'function') desktop.addListener(resetLayout);
   const syncLanguage = () => {
-    sidebar.setAttribute('aria-label', english() ? 'Section navigation' : '板块导航');
-    toggle.setAttribute('aria-label', english() ? (opened ? 'Close navigation' : 'Open navigation') : (opened ? '关闭板块导航' : '打开板块导航'));
-    close.setAttribute('aria-label', english() ? 'Close navigation' : '关闭板块导航');
-    backdrop.setAttribute('aria-label', english() ? 'Close navigation' : '关闭板块导航');
-    sidebar.querySelectorAll('.mc-sidebar-actions').forEach(actions => actions.setAttribute('aria-label', english() ? 'Website tools' : '网站工具'));
+    sidebar.setAttribute('aria-label', text('板块导航','Section navigation'));
+    toggle.setAttribute('aria-label', opened ? text('关闭板块导航','Close navigation') : text('打开板块导航','Open navigation'));
+    close.setAttribute('aria-label', text('关闭板块导航','Close navigation'));
+    backdrop.setAttribute('aria-label', text('关闭板块导航','Close navigation'));
+    sidebar.querySelectorAll('.mc-sidebar-actions').forEach(actions => actions.setAttribute('aria-label', text('网站工具','Website tools')));
   };
   new MutationObserver(syncLanguage).observe(document.documentElement, {attributes: true, attributeFilter: ['lang']});
   syncLanguage();

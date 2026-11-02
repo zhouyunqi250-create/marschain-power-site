@@ -14,8 +14,9 @@
   let latestEtag = '';
   const banner = document.querySelector('[data-node-preview]');
   const dataNotes = document.querySelector('[data-node-data-notes]');
-  const english = () => document.documentElement.lang === 'en';
-  const copy = (zh, en) => english() ? en : zh;
+  // Keep runtime DOM source copy in Chinese; the shared locale layer renders it.
+  const english = () => false;
+  const copy = (zh, en) => { window.MarsWebsiteLocale?.addEnglish(zh, en); return zh; };
   const rankDataNode = document.getElementById('rankData');
   const trendDataNode = document.getElementById('metricTrendData');
   const setText = (node, value) => {
@@ -370,7 +371,5 @@
   window.setInterval(() => { updateBanner(); refresh(); }, intervalMs);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   window.addEventListener('focus', refresh);
-  document.querySelectorAll('[data-lang-toggle]').forEach((button) => {
-    button.addEventListener('click', () => window.setTimeout(updateBanner, 0));
-  });
+  window.addEventListener('mars-website-language', () => { updateBanner(); window.applyMarsLanguage?.(); });
 })();

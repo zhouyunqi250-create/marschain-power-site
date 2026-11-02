@@ -16,12 +16,13 @@
     const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
     return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
   };
-  const syncTime = english => {
+  const text = (zh, en) => window.MarsWebsiteLocale?.copy(zh, en) || zh;
+  const syncTime = () => {
     if (!panel) return;
-    update(panel.querySelector('[data-dual-time-caption]'), english ? 'Data time' : '数据时间');
-    update(panel.querySelector('[data-dual-beijing-label]'), english ? 'Beijing time' : '北京时间');
-    update(panel.querySelector('[data-dual-utc-label]'), english ? 'Universal time' : '世界标准时间');
-    panel.setAttribute('aria-label', english ? 'Data time' : '数据时间');
+    update(panel.querySelector('[data-dual-time-caption]'), text('数据时间', 'Data time'));
+    update(panel.querySelector('[data-dual-beijing-label]'), text('北京时间', 'Beijing time'));
+    update(panel.querySelector('[data-dual-utc-label]'), text('世界标准时间', 'Universal time'));
+    panel.setAttribute('aria-label', text('数据时间', 'Data time'));
     let stamp = null;
     try { stamp = JSON.parse(data?.textContent || '').meta?.node_preview?.source_block_timestamp; } catch (_) {}
     const seconds = typeof stamp === 'number' || (typeof stamp === 'string' && /^\d+(?:\.\d+)?$/.test(stamp))
@@ -30,8 +31,8 @@
     const beijing = panel.querySelector('[data-dual-beijing]');
     const utc = panel.querySelector('[data-dual-utc]');
     if (!(seconds > 0) || !Number.isFinite(date.getTime())) {
-      update(beijing, english ? 'Not available' : '待刷新');
-      update(utc, english ? 'Not available' : '待刷新');
+      update(beijing, text('待刷新', 'Not available'));
+      update(utc, text('待刷新', 'Not available'));
       panel.querySelectorAll('time').forEach(node => node.removeAttribute('datetime'));
       return;
     }
@@ -40,15 +41,15 @@
     panel.querySelectorAll('time').forEach(node => node.setAttribute('datetime', date.toISOString()));
   };
   const sync = () => {
-    const english = document.documentElement.lang.toLowerCase().startsWith('en');
-    syncTime(english);
+    syncTime();
     const label = document.querySelector('[data-orbit-update-state]');
     if (!label) return;
     const isDelayed = banner?.classList.contains('is-stale') || banner?.classList.contains('is-error');
-    const current = (state?.textContent || '').trim();
-    const waiting = !current || /^(?:正在读取|Loading|每分钟更新|Minute updates)/i.test(current);
+    const raw = (state?.textContent || '').trim();
+    const current = window.MarsWebsiteLocale?.translate(raw) || raw;
+    const waiting = !current || /^(?:正在读取|Loading|每分钟更新|Minute updates|毎分更新|매분 갱신)/i.test(current);
     update(label, isDelayed ? current : waiting
-      ? (english ? 'On-chain data · Minute updates' : '链上数据 · 每分钟更新')
+      ? text('链上数据 · 每分钟更新', 'On-chain data · Minute updates')
       : current);
     label.closest('.orbit-eyebrow')?.classList.toggle('is-stale', Boolean(isDelayed));
   };
