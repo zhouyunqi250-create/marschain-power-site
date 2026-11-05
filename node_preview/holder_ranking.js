@@ -37,6 +37,7 @@
     copied: ['已复制', 'Copied', 'コピー済み', '복사됨'],
     copyFailed: ['复制失败，请手动复制地址', 'Copy failed. Select the address to copy it.', 'コピーできませんでした。アドレスを選択してコピーしてください。', '복사하지 못했습니다. 주소를 선택해 복사하세요.'],
     explorer: ['浏览器查看', 'View in explorer', 'エクスプローラーで見る', '탐색기에서 보기'],
+    viewAddress: ['查看地址', 'View address', 'アドレスを見る', '주소 보기'],
     exact: ['查看精确余额', 'Show exact balance', '正確な残高を表示', '정확한 잔액 보기'],
     wallet: ['钱包', 'Wallet', 'ウォレット', '지갑'],
     contract: ['合约', 'Contract', 'コントラクト', '컨트랙트'],
@@ -227,15 +228,15 @@
       panel.hidden = state.mode !== 'holders';
     };
     const currentRows = () => state.data?.rows || [];
-    const copyAddressButton = address => `<button class="hrp-copy" type="button" data-hrp-copy="${esc(address)}" aria-label="${esc(t('copy'))}" title="${esc(t('copy'))}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="2"/><path d="M12 4V3H4v10h1"/></svg></button>`;
-    const systemsMarkup = () => `<section class="hrp-system-zone" aria-label="${esc(t('systemsTitle'))}"><div class="hrp-system-header"><div><span class="hrp-eyebrow">${esc(t('systemsKicker'))}</span><h3>${esc(t('systemsTitle'))}</h3></div><p>${esc(t('systemsNote'))}</p></div>${state.data.systems.map(row => `<article class="hrp-system-card"><div class="hrp-system-identity"><span class="hrp-system-emblem" aria-hidden="true">P</span><div><h4>${esc(t('powerSystem'))}</h4><span class="hrp-kind hrp-kind-system">${esc(t('system'))}</span></div></div><div class="hrp-system-address"><a href="https://explorer.marschain.net/address/${encodeURIComponent(row.address)}" target="_blank" rel="noopener noreferrer" title="${esc(t('explorer'))}">${esc(row.address)}</a>${copyAddressButton(row.address)}</div></article>`).join('')}</section>`;
+    const addressActions = address => `<div class="node-rank-actions hrp-address-actions"><button type="button" data-hrp-copy="${esc(address)}">${esc(t('copy'))}</button><a href="https://explorer.marschain.net/address/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer">${esc(t('viewAddress'))}</a></div>`;
+    const systemsMarkup = () => `<section class="hrp-system-zone" aria-label="${esc(t('systemsTitle'))}"><div class="hrp-system-header"><div><span class="hrp-eyebrow">${esc(t('systemsKicker'))}</span><h3>${esc(t('systemsTitle'))}</h3></div><p>${esc(t('systemsNote'))}</p></div>${state.data.systems.map(row => `<article class="hrp-system-card"><div class="hrp-system-identity"><span class="hrp-system-emblem" aria-hidden="true">P</span><div><h4>${esc(t('powerSystem'))}</h4><span class="hrp-kind hrp-kind-system">${esc(t('system'))}</span></div></div><div class="hrp-system-address"><a href="https://explorer.marschain.net/address/${encodeURIComponent(row.address)}" target="_blank" rel="noopener noreferrer" title="${esc(t('explorer'))}">${esc(row.address)}</a>${addressActions(row.address)}</div></article>`).join('')}</section>`;
     const rowsMarkup = rows => rows.map(row => {
       const value = decimal(row.balance_wei);
       const kind = row.kind;
       const address = row.address;
       const rank = String(row.rank).padStart(2, '0');
       const expanded = state.expanded.has(address);
-      return `<article role="row" class="hrp-row${row.rank <= 3 ? ' hrp-leading' : ''}" data-hrp-address="${esc(address)}"><div class="hrp-rank" role="cell"><span>${esc(rank)}</span></div><div class="hrp-address" role="cell"><div class="hrp-address-line"><a href="https://explorer.marschain.net/address/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer" title="${esc(t('explorer'))}" aria-label="${esc(t('explorer'))}: ${esc(address)}"><span class="hrp-full-address">${esc(address)}</span><span class="hrp-short-address">${esc(address.slice(0, 8))}…${esc(address.slice(-6))}</span></a><button class="hrp-copy" type="button" data-hrp-copy="${esc(address)}" aria-label="${esc(t('copy'))}" title="${esc(t('copy'))}"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="2"/><path d="M12 4V3H4v10h1"/></svg></button></div><span class="hrp-kind hrp-kind-${kind}">${esc(t(kind))}</span></div><div class="hrp-balance" role="cell"><button type="button" data-hrp-exact aria-expanded="${expanded}" title="${esc(exact(value))}" aria-label="${esc(t('exact'))}: ${esc(exact(value))}"><strong>${esc(balance(value))}</strong><small>MARS</small></button><span class="hrp-exact" ${expanded ? '' : 'hidden'}>${esc(exact(value))}</span></div><div class="hrp-share" role="cell"><span>${esc(share(value))}</span></div></article>`;
+      return `<article role="row" class="hrp-row${row.rank <= 3 ? ' hrp-leading' : ''}" data-hrp-address="${esc(address)}"><div class="hrp-rank" role="cell"><span>${esc(rank)}</span></div><div class="hrp-address" role="cell"><div class="hrp-address-line"><a href="https://explorer.marschain.net/address/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer" title="${esc(t('explorer'))}" aria-label="${esc(t('explorer'))}: ${esc(address)}"><span class="hrp-full-address">${esc(address)}</span><span class="hrp-short-address">${esc(address.slice(0, 8))}…${esc(address.slice(-6))}</span></a></div><span class="hrp-kind hrp-kind-${kind}">${esc(t(kind))}</span>${addressActions(address)}</div><div class="hrp-balance" role="cell"><button type="button" data-hrp-exact aria-expanded="${expanded}" title="${esc(exact(value))}" aria-label="${esc(t('exact'))}: ${esc(exact(value))}"><strong>${esc(balance(value))}</strong><small>MARS</small></button><span class="hrp-exact" ${expanded ? '' : 'hidden'}>${esc(exact(value))}</span></div><div class="hrp-share" role="cell"><span>${esc(share(value))}</span></div></article>`;
     }).join('');
     const pageCaption = (start, end, total, pages) => {
       const lang = language();
@@ -270,6 +271,7 @@
       const searchFocused = focused?.matches('[data-hrp-search]');
       const focusPage = focused?.hasAttribute('data-hrp-page');
       const focusExact = focused?.hasAttribute('data-hrp-exact');
+      const focusCopy = focused?.hasAttribute('data-hrp-copy');
       const selection = searchFocused ? [focused.selectionStart, focused.selectionEnd] : null;
       const methodOpen = Boolean(panel.querySelector('.hrp-notes details[open]'));
       renderToolbar();
@@ -296,6 +298,7 @@
       if (searchFocused) restored = panel.querySelector('[data-hrp-search]');
       else if (focusPage) restored = panel.querySelector('[aria-current="page"]');
       else if (focusExact && focusedAddress) restored = panel.querySelector(`[data-hrp-address="${focusedAddress}"] [data-hrp-exact]`);
+      else if (focusCopy && focusedAddress) restored = panel.querySelector(`[data-hrp-address="${focusedAddress}"] [data-hrp-copy]`);
       restored?.focus({preventScroll: true});
       if (searchFocused && restored && selection) {
         try {restored.setSelectionRange(...selection);} catch (_) { /* Search selection is optional in some browsers. */ }

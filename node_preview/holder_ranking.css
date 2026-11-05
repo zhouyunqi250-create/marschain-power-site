@@ -63,6 +63,10 @@
 #rank .hrp-kind-contract {color:#abb2d4}
 #rank .hrp-kind-system {color:#c5b797}
 #rank .hrp-kind-burn {color:#bb9293}
+#rank .hrp-address-actions {display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:4px 12px;margin:7px 0 0}
+#rank .hrp-address-actions button,#rank .hrp-address-actions a {min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
+#rank .hrp-address .hrp-address-actions a,#rank .hrp-system-address .hrp-address-actions a {font:inherit;color:#9dcbd8;overflow:visible;text-overflow:clip}
+#rank .hrp-address .hrp-address-actions a:hover,#rank .hrp-system-address .hrp-address-actions a:hover {color:#68f6e8}
 #rank .hrp-balance {text-align:right;min-width:0}
 #rank .hrp-balance button {padding:0;border:0;background:transparent;text-align:right;color:inherit;display:inline-flex;align-items:baseline;gap:5px;max-width:100%}
 #rank .hrp-balance strong {font-size:18px;line-height:1.4;font-weight:600;letter-spacing:-.015em;font-variant-numeric:tabular-nums;color:#e4edee}
@@ -91,7 +95,7 @@
 #rank .hrp-system-emblem {display:flex;align-items:center;justify-content:center;width:37px;height:37px;flex:none;border:1px solid #bbdccd35;border-radius:9px;color:#c5e2d7;background:#b7dbc90d;font-size:18px;font-weight:550;font-family:system-ui,sans-serif}
 #rank .hrp-system-identity h4 {font-size:14px;font-weight:600;letter-spacing:-.015em;line-height:1.5;color:#dcebe6;margin:0}
 #rank .hrp-system-identity .hrp-kind {margin-top:3px;color:#86a99a}
-#rank .hrp-system-address {display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+#rank .hrp-system-address {display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;gap:3px;min-width:0}
 #rank .hrp-system-address a {font:10px/1.7 'SFMono-Regular',Consolas,monospace;color:#8ca8a0;text-decoration:none;overflow-wrap:anywhere;min-width:0}
 #rank .hrp-system-address a:hover {color:#c6e9d9}
 
@@ -110,6 +114,7 @@
   #rank .hrp-table{margin:0 18px}#rank .hrp-table-head,#rank .hrp-row{grid-template-columns:26px minmax(0,1fr) minmax(75px,.8fr) 46px;gap:7px}#rank .hrp-table-head{font-size:9px;padding:10px 0}#rank .hrp-row{padding:17px 0}#rank .hrp-rank{font-size:11px}#rank .hrp-rank span{min-width:22px}#rank .hrp-leading .hrp-rank span{padding:5px 2px;border-radius:4px}
   #rank .hrp-address-line{gap:4px}#rank .hrp-address a{font-size:9px;letter-spacing:-.02em}#rank .hrp-copy{padding:3px}#rank .hrp-copy svg{width:11px;height:11px}#rank .hrp-kind{font-size:8px;margin-top:5px}#rank .hrp-balance button{display:block}#rank .hrp-balance strong{font-size:13px;white-space:normal;overflow-wrap:anywhere}#rank .hrp-balance small{font-size:8px;display:block;margin-top:2px}#rank .hrp-share{font-size:10px}#rank .hrp-balance .hrp-exact{font-size:8px}
   #rank .hrp-pagination{padding:18px}#rank .hrp-notes{padding:17px 18px;font-size:10px}
+  #rank .hrp-address-actions{font-size:9px;gap:3px 9px;margin-top:6px}
   #rank .hrp-refresh-status{margin:0 18px 18px;font-size:10px}
   #rank .hrp-overview>div:last-child b{font-size:clamp(12px,4cqi,16px);white-space:normal;overflow-wrap:anywhere}
   #rank .hrp-power-overview{margin:0 0 18px;padding:19px 17px;border-radius:12px}
@@ -119,6 +124,6 @@
 @container holder-ranking (max-width:620px){
   #rank .hrp-system-zone{margin:0 18px 25px;padding:16px 14px;border-radius:10px}#rank .hrp-system-header{display:block;margin-bottom:13px}#rank .hrp-system-header h3{font-size:17px;margin-top:6px}#rank .hrp-system-header p{font-size:9px;max-width:none;margin-top:8px}#rank .hrp-system-header .hrp-eyebrow{font-size:7px;letter-spacing:.1em}
   #rank .hrp-system-card{flex-direction:column;align-items:flex-start;gap:12px;padding-top:14px}#rank .hrp-system-identity{gap:9px}#rank .hrp-system-emblem{width:32px;height:32px;font-size:16px;border-radius:7px}#rank .hrp-system-identity h4{font-size:13px}#rank .hrp-system-identity .hrp-kind{font-size:8px}
-  #rank .hrp-system-address{justify-content:flex-start;gap:6px;width:100%}#rank .hrp-system-address a{font-size:8px;line-height:1.7}
+  #rank .hrp-system-address{align-items:flex-start;justify-content:flex-start;gap:3px;width:100%}#rank .hrp-system-address a{font-size:8px;line-height:1.7}
   #rank .hrp-ranking-heading{margin:0 18px 16px}#rank .hrp-ranking-heading h3{font-size:18px}#rank .hrp-ranking-heading>span{font-size:9px}#rank .hrp-ranking-heading+.hrp-overview{margin-bottom:18px}
 }
