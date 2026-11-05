@@ -5,11 +5,11 @@
   window.__marsShareReportUiBound = true;
 
   const WIDTH = 1024;
-  const HEIGHTS = { zh: 1776, en: 1840, ja: 1840, ko: 1840 };
+  const HEIGHTS = { zh: 1816, en: 1880, ja: 1880, ko: 1880 };
   const DAY = 86400;
   const OFFICIAL_FIELDS = ['price', 'highestPrice', 'triggerPrice', 'circulation', 'addresses'];
   const RETAINED_FIELDS = [...OFFICIAL_FIELDS, 'totalPower', 'perCoin', 'oneYiOutput',
-    'top100Share', 'burned', 'snapshotTimeText', 'snapshotUtcText'];
+    'top100Share', 'top100HolderShare', 'burned', 'snapshotTimeText', 'snapshotUtcText'];
   let modal = null;
   let canvas = null;
   let panel = null;

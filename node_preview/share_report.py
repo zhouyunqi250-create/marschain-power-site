@@ -18,6 +18,8 @@ import stat
 import tempfile
 import time
 
+from node_preview.holder_ranking import validate_public_snapshot
+
 
 DAY = 86400
 MAX_SAFE_INTEGER = 2**53 - 1
@@ -26,6 +28,7 @@ MAX_MANIFEST_BYTES = 128 * 1024
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _BLOCK_HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 _INTEGER = re.compile(r"-?\d+\Z")
+_UNSIGNED_DECIMAL = re.compile(r"(?:0|[1-9][0-9]{0,95})\Z")
 _NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?\Z", re.IGNORECASE)
 
 # These are the only live scalar inputs read by report_daily_live_data.js.
@@ -62,6 +65,10 @@ SOURCE_FIELDS = ("source", "status", "fetched_at", "block")
 SOURCE_KEYS = (
     "network_total_power", "network_total_burned_tokens", "explorer_total_addresses",
     "network_current_price", "network_highest_price", "network_total_circulation_tokens", "emission",
+)
+HOLDERS_SUMMARY_FIELDS = (
+    "top100_total_wei", "share_denominator_wei", "row_count",
+    "block_number", "block_hash", "block_timestamp", "excluded_systems", "scope",
 )
 
 # Only compact, already-whitelisted archive data is cached. File identities are
@@ -236,7 +243,27 @@ def _live(payload: dict) -> dict:
         if amount is None or amount <= 0:
             raise ValueError("Live rank power is invalid")
         projected.append({"power": str(amount)})
-    return {"meta": result, "rows": projected}
+    live = {"meta": result, "rows": projected}
+    # Keep this optional for existing reports and old caches. A missing or stale
+    # holder snapshot must not become a made-up zero or stop the power publisher.
+    # The report exports only aggregates, never holder addresses or row amounts.
+    try:
+        holders = validate_public_snapshot(payload.get("holders"), max_age=300)
+        if len(holders["rows"]) == 100:
+            holder_meta = holders["meta"]
+            live["holders_summary"] = {
+                "top100_total_wei": str(sum(int(row["balance_wei"]) for row in holders["rows"])),
+                "share_denominator_wei": holder_meta["share_denominator_wei"],
+                "row_count": 100,
+                "block_number": holder_meta["block_number"],
+                "block_hash": holder_meta["block_hash"],
+                "block_timestamp": holder_meta["block_timestamp"],
+                "excluded_systems": True,
+                "scope": holder_meta["share_denominator_scope"],
+            }
+    except (ValueError, TypeError, KeyError, OverflowError):
+        pass
+    return live
 
 
 def _stamp(value: object) -> int:
@@ -292,7 +319,7 @@ def _complete(bundle: dict, now: int) -> dict:
     retrieved = _stamp(bundle.get("retrieved_at"))
     if retrieved > now + 60:
         raise ValueError("Report was retrieved in the future")
-    live = _keys(bundle.get("live"), {"meta", "rows"})
+    live = _keys(bundle.get("live"), {"meta", "rows", "holders_summary"})
     meta = _keys(live.get("meta"), set(LIVE_FIELDS) | {"node_preview", "preview_metric_sources"})
     _scalar_keys({key: value for key, value in meta.items() if key in LIVE_FIELDS}, LIVE_FIELDS)
     node = _scalar_keys(meta.get("node_preview"), NODE_FIELDS)
@@ -339,6 +366,25 @@ def _complete(bundle: dict, now: int) -> dict:
         powers.append(amount)
     if powers != sorted(powers, reverse=True) or sum(powers) > total:
         raise ValueError("Report top 100 does not agree with its total")
+
+    if "holders_summary" in live:
+        holders = _scalar_keys(live["holders_summary"], HOLDERS_SUMMARY_FIELDS)
+        if (set(holders) != set(HOLDERS_SUMMARY_FIELDS)
+                or type(holders.get("row_count")) is not int or holders["row_count"] != 100
+                or holders.get("excluded_systems") is not True
+                or holders.get("scope") != "indexed_non_system_addresses"
+                or type(holders.get("block_number")) is not int
+                or not 0 < holders["block_number"] <= MAX_SAFE_INTEGER
+                or not _BLOCK_HASH.fullmatch(str(holders.get("block_hash", "")))
+                or not retrieved - 300 <= _stamp(holders.get("block_timestamp")) <= min(generated, retrieved + 30)):
+            raise ValueError("Report holder summary provenance is invalid")
+        for field in ("top100_total_wei", "share_denominator_wei"):
+            if not isinstance(holders.get(field), str) or not _UNSIGNED_DECIMAL.fullmatch(holders[field]):
+                raise ValueError("Report holder summary amount is invalid")
+        holder_total = int(holders["top100_total_wei"])
+        holder_denominator = int(holders["share_denominator_wei"])
+        if holder_denominator <= 0 or holder_total > holder_denominator:
+            raise ValueError("Report holder summary does not agree with its denominator")
 
     daily = _keys(bundle.get("daily"), {"meta"})
     dm = _keys(daily.get("meta"), set(DAILY_FIELDS) | {"node_preview", "preview_daily_status"})
@@ -434,7 +480,10 @@ def _last_complete(root: Path, now: int) -> dict | None:
                 or not isinstance(bundle, dict)
                 or hashlib.sha256(_canonical(bundle)).hexdigest() != envelope.get("sha256")):
             raise ValueError("Report cache checksum is invalid")
-        return copy.deepcopy(_complete(bundle, now))
+        checked = _complete(bundle, now)
+        if "holders_summary" not in checked["live"]:
+            raise ValueError("Legacy report has no holder aggregate")
+        return copy.deepcopy(checked)
     except Exception:
         pass
     # Cold-start migration uses only an existing complete, public ready bundle.
@@ -446,6 +495,8 @@ def _last_complete(root: Path, now: int) -> dict | None:
             return None
         latest = _read_regular(data / "latest.json", MAX_PUBLIC_BYTES)
         bundle = _complete(latest.get("share_report"), now)
+        if "holders_summary" not in bundle["live"]:
+            raise ValueError("Legacy report has no holder aggregate")
         try:
             _save_complete(root, bundle)
         except Exception:
@@ -473,6 +524,10 @@ def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = N
         if cutoff is None or cutoff <= 0 or cutoff % DAY or cutoff > now // DAY * DAY:
             raise ValueError("Live cutoff is invalid")
         live = _live(payload)
+        # The new image requires this metric. Do not replace a fully exportable
+        # cache with a power-only report when the independent collector is late.
+        if "holders_summary" not in live:
+            raise ValueError("Report holder aggregate is unavailable")
         daily, evidence = _archive(Path(root).absolute(), cutoff)
         live_block = _integer(live["meta"]["node_preview"].get("source_block"))
         if live_block is None or live_block < evidence["source_block"]:

@@ -205,6 +205,34 @@
         }
       }
     }
+    // Holdings are collected independently of the power snapshot. Use only the
+    // frozen, non-system aggregates and retain their own block and source clock.
+    // Old report caches have no summary; that remains missing, never zero.
+    let top100HolderShare = MISSING;
+    let holderTimeText = MISSING, holderUtcText = MISSING, holderBlockText = MISSING;
+    const holders = (bundle.live || {}).holders_summary;
+    if (holders && typeof holders === 'object' && !Array.isArray(holders)) {
+      const decimal = value => typeof value === 'string' && /^(?:0|[1-9][0-9]{0,95})$/.test(value)
+        ? BigInt(value) : null;
+      const holderTotal = decimal(holders.top100_total_wei);
+      const holderDenominator = decimal(holders.share_denominator_wei);
+      const holderBlock = unsigned(holders.block_number);
+      const holderTime = stamp(holders.block_timestamp);
+      if (holders.row_count === 100 && holders.excluded_systems === true
+        && holders.scope === 'indexed_non_system_addresses'
+        && holderBlock !== null && holderBlock > 0n && holderBlock <= BigInt(Number.MAX_SAFE_INTEGER)
+        && /^0x[a-f0-9]{64}$/i.test(String(holders.block_hash || ''))
+        && holderTime !== null && holderTime >= retrieved - 300 && holderTime <= retrieved + 30
+        && stamp(lm.generated_at) !== null && holderTime <= stamp(lm.generated_at)
+        && holderTotal !== null && holderDenominator !== null && holderDenominator > 0n
+        && holderTotal <= holderDenominator) {
+        const hundredths = (holderTotal * 10000n + holderDenominator / 2n) / holderDenominator;
+        top100HolderShare = `${hundredths / 100n}.${String(hundredths % 100n).padStart(2, '0')}%`;
+        holderTimeText = atTime(holderTime);
+        holderUtcText = atTime(holderTime, 0);
+        holderBlockText = holderBlock.toLocaleString(locale);
+      }
+    }
     const times = ['network_current_price', 'network_highest_price', 'explorer_total_addresses',
       'network_total_circulation_tokens'].filter((key) => officialOkay(lm, key, retrieved))
       .map((key) => stamp(source(lm, key).fetched_at));
@@ -262,6 +290,10 @@
       perCoin: perCoinOkay ? compactNumber(required) : MISSING,
       oneYiOutput: perCoinOkay ? `${compactNumber(100000000 / required)}${choose('枚/日', ' MARS/day')}` : MISSING,
       top100Share,
+      top100HolderShare,
+      holderTimeText,
+      holderUtcText,
+      holderBlockText,
       addresses: addressesOkay ? count(lm.explorer_total_addresses, '个') : MISSING,
       price: priceOkay ? price(lm.network_current_price) : MISSING,
       highestPrice: highOkay ? price(lm.network_highest_price) : MISSING,

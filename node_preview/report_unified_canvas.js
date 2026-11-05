@@ -35,9 +35,9 @@
   const render=(canvas,data)=>{
     const l=data.live,d=data.daily;
     const C=PALETTE;
-    canvas.width=1024;canvas.height=1776;
+    canvas.width=1024;canvas.height=1816;
     const ctx=canvas.getContext('2d');
-    ctx.fillStyle=C.bg;ctx.fillRect(0,0,1024,1776);
+    ctx.fillStyle=C.bg;ctx.fillRect(0,0,1024,1816);
     const glow=ctx.createRadialGradient(1000,0,5,1000,0,850);
     glow.addColorStop(0,'#a5e6d522');glow.addColorStop(1,'#a5e6d500');
     ctx.fillStyle=glow;ctx.fillRect(0,0,1024,900);
@@ -57,23 +57,26 @@
     ctx.save();ctx.translate(0,96);
 
     // All values in this frame are current readings or current model estimates.
-    const liveFill=ctx.createLinearGradient(48,184,976,758);
+    const liveFill=ctx.createLinearGradient(48,184,976,798);
     liveFill.addColorStop(0,'#102c32');liveFill.addColorStop(1,'#10212b');
-    fillRound(ctx,48,184,928,574,22,liveFill,'#87c5c347');
+    fillRound(ctx,48,184,928,614,22,liveFill,'#87c5c347');
     ctx.save();
-    fillRound(ctx,48,184,928,574,22,null,null);ctx.clip();
+    fillRound(ctx,48,184,928,614,22,null,null);ctx.clip();
     const liveHeader=ctx.createLinearGradient(0,184,0,274);
     liveHeader.addColorStop(0,'#9edfd912');liveHeader.addColorStop(1,'#9edfd900');
     ctx.fillStyle=liveHeader;ctx.fillRect(48,184,928,90);ctx.restore();
-    fillRound(ctx,48,212,4,518,2,'#7bc8c0');
+    fillRound(ctx,48,212,4,558,2,'#7bc8c0');
     text(l.retained ? '上次有效快照' : '实时快照',76,230,32,C.heading,600);
     text(`快照时间 ${l.snapshotTimeText}（北京时间）`,948,226,19,C.ink,400,'right',650);
     text(`UTC ${l.snapshotUtcText}`,948,253,17,C.muted,400,'right',650);
     line(76,274,948,274);
     text('全网总算力',76,311,23,C.muted,400);
-    text(l.totalPower,73,381,63,C.ink,600,'left',620);
-    text('前100名算力占比',948,311,21,C.muted,400,'right',290);
-    text(l.top100Share,948,373,40,C.ink,500,'right',260);
+    text(l.totalPower,73,381,63,C.ink,600,'left',580);
+    text('前100名算力占比',948,306,20,C.muted,400,'right',290);
+    text(l.top100Share,948,345,33,C.ink,500,'right',270);
+    text('前100名持币占比',948,379,20,C.muted,400,'right',290);
+    text(l.top100HolderShare,948,418,33,C.ink,500,'right',270);
+    ctx.save();ctx.translate(0,40);
     line(76,407,948,407);
     metric('日产1币所需算力',l.perCoin,76,445,396,34,43);
     metric('1亿算力预计日产出',l.oneYiOutput,552,445,396,34,43);
@@ -137,6 +140,7 @@
     text('www.marschainrank.com',48,1582,20,C.muted,400);
     drawQr(ctx,832,1480,144);
     text('扫码观看实时数据',904,1650,18,C.accent,400,'center',144);
+    ctx.restore();
     ctx.restore();
     return canvas;
   };

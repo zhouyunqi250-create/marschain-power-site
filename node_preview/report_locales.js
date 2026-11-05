@@ -6,7 +6,7 @@
     canvas: {
       title: 'MARS BRIEF', tagline: 'On-chain, at a glance.', live: 'LIVE SNAPSHOT',
       retained: 'LAST VALID SNAPSHOT', snapshot: 'Snapshot', clock: 'All times UTC',
-      totalPower: 'Total network power', top100: 'Top 100 power share',
+      totalPower: 'Total network power', top100: 'Top 100 power share', top100Holders: 'Top 100 holder share',
       perCoin: 'Est. power for 1 MARS/day', output: 'Est. daily output per 100M power',
       estimate: 'Estimated from current network power and block rewards.',
       price: 'Current price', high: 'Highest price', trigger: 'Oracle trigger price',
@@ -28,7 +28,7 @@
     canvas: {
       title: 'マーズ速報', tagline: 'MarsChainの動きを、ひと目で。', live: '最新スナップショット',
       retained: '前回の有効なスナップショット', snapshot: '取得時刻', clock: '時刻はすべてUTC',
-      totalPower: 'ネットワーク総演算力', top100: '上位100アドレスの演算力比率',
+      totalPower: 'ネットワーク総演算力', top100: '上位100アドレスの演算力比率', top100Holders: '上位100アドレスの保有比率',
       perCoin: '1日1 MARS発行に必要な推定演算力', output: '演算力1億あたりの推定日次発行量',
       estimate: '現在のネットワーク演算力とブロック報酬に基づく推定値',
       price: '現在価格', high: '最高価格', trigger: 'オラクル発動価格',
@@ -79,7 +79,7 @@
     canvas: {
       title: '마스체인 리포트', tagline: 'MarsChain의 흐름을 한눈에.', live: '최신 스냅샷',
       retained: '직전 유효 스냅샷', snapshot: '스냅샷 시각', clock: '모든 시각은 UTC 기준',
-      totalPower: '네트워크 총 연산력', top100: '상위 100개 주소 연산력 비중',
+      totalPower: '네트워크 총 연산력', top100: '상위 100개 주소 연산력 비중', top100Holders: '상위 100개 주소 보유 비중',
       perCoin: '하루 1 MARS 발행에 필요한 추정 연산력', output: '1억 연산력당 추정 일일 발행량',
       estimate: '현재 네트워크 연산력과 블록 보상을 기준으로 한 추정치입니다.',
       price: '현재 가격', high: '최고 가격', trigger: '오라클 발동 가격',

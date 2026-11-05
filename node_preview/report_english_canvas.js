@@ -20,14 +20,14 @@
     const dictionary=window.MarsReportLocales[language],L=dictionary.canvas,FONT=dictionary.font;
     if(!artwork)throw new Error(L.artworkPending);
     const l=data.live,d=data.daily;
-    const required=['totalPower','perCoin','oneYiOutput','top100Share','price','highestPrice',
+    const required=['totalPower','perCoin','oneYiOutput','top100Share','top100HolderShare','price','highestPrice',
       'triggerPrice','circulation','burned','addresses','snapshotTimeText','snapshotUtcText'];
     if(!required.every(key=>typeof l[key]==='string'&&l[key].trim()!==''&&l[key]!==dictionary.missing)){
       throw new Error(L.incomplete);
     }
-    canvas.width=1024;canvas.height=1840;
+    canvas.width=1024;canvas.height=1880;
     const ctx=canvas.getContext('2d');
-    ctx.fillStyle=C.bg;ctx.fillRect(0,0,1024,1840);
+    ctx.fillStyle=C.bg;ctx.fillRect(0,0,1024,1880);
     const text=(s,x,y,size=24,color=C.ink,weight=400,width=872,align='left')=>{
       const content=String(s??dictionary.missing);ctx.fillStyle=color;ctx.textAlign=align;
       let fitted=size;
@@ -72,16 +72,18 @@
     fade.addColorStop(0,'#0b172200');fade.addColorStop(1,C.bg);
     ctx.fillStyle=fade;ctx.fillRect(0,235,1024,47);
 
-    const top=270,liveHeight=626;panel(top,liveHeight,true);
+    const top=270,liveHeight=666;panel(top,liveHeight,true);
     text(l.retained?L.retained:L.live,76,top+46,27,C.white,600,410);
     text(`${L.snapshot}  ${l.snapshotTimeText}  UTC`,948,top+40,18,C.ink,400,470,'right');
     text(L.clock,948,top+68,17,C.muted,400,480,'right');
     line(top+94);
     text(L.totalPower,76,top+133,22,C.muted,400,560);
     text(l.totalPower,73,top+214,70,C.ink,600,565);
-    text(L.top100,948,top+133,21,C.muted,400,270,'right');
-    text(l.top100Share,948,top+208,43,C.ink,500,270,'right');
-    const divider=top+238;line(divider);
+    text(L.top100,948,top+133,20,C.muted,400,290,'right');
+    text(l.top100Share,948,top+172,33,C.ink,500,270,'right');
+    text(L.top100Holders,948,top+207,20,C.muted,400,290,'right');
+    text(l.top100HolderShare,948,top+246,33,C.ink,500,270,'right');
+    const divider=top+278;line(divider);
     metric(L.perCoin,l.perCoin,76,divider+35,408,35);
     metric(L.output,l.oneYiOutput,552,divider+35,396,35);
     vertical(512,divider+24,66);
