@@ -1,26 +1,17 @@
-/* Native MARS balance ranking; preserves the existing power ranking layout. */
+/* Both ranking modes share the existing cards, overview and pagination. */
 #rank {container-type:inline-size;container-name:holder-ranking;scroll-margin-top:92px}
 #rank.hrp-holders-mode > :not(.hrp-toolbar):not(.hrp-panel) {display:none!important}
 #rank .hrp-panel[hidden],#rank .hrp-panel [hidden] {display:none!important}
 #rank .hrp-toolbar,#rank .hrp-panel,#rank .hrp-power-overview {--hrp-ink:#edf4f6;--hrp-muted:#91a3ad;--hrp-mint:#b2e5d2;--hrp-line:rgba(179,205,210,.14);color:var(--hrp-ink);font-family:inherit;min-width:0}
-#rank .hrp-toolbar {display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 0 28px}
+#rank .hrp-toolbar {display:flex;align-items:center;gap:14px;margin:0 0 28px}
 #rank .hrp-toolbar button,#rank .hrp-panel button:not(.rank-page-button):not(.m-rank-page-button),#rank .hrp-panel input {font:inherit}
 #rank .hrp-toolbar button,#rank .hrp-panel button {cursor:pointer}
 #rank .hrp-toolbar button:focus-visible,#rank .hrp-panel :is(button,a,input,summary):focus-visible {outline:2px solid var(--hrp-mint);outline-offset:4px}
 #rank .hrp-main-switch {display:inline-flex;gap:5px;padding:5px;background:#0d1921;border:1px solid var(--hrp-line);border-radius:12px}
 #rank .hrp-main-switch button {padding:12px 24px;border:0;border-radius:8px;color:var(--hrp-muted);background:transparent;font-size:15px;font-weight:650;white-space:nowrap}
 #rank .hrp-main-switch button[aria-pressed=true] {background:linear-gradient(135deg,#e6f0ee,#bdd7d0);color:#142923;box-shadow:0 2px 12px #0002}
-#rank .hrp-panel {border:1px solid var(--hrp-line);border-radius:20px;background:linear-gradient(145deg,rgba(18,37,43,.92),rgba(10,23,31,.96) 55%);box-shadow:0 20px 70px #0002;overflow:hidden}
-#rank .hrp-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:22px;padding:32px 34px 26px}
-#rank .hrp-eyebrow {color:var(--hrp-mint);font-size:10px;letter-spacing:.16em;font-weight:650}
-#rank .hrp-heading h2 {margin:0 0 10px;font-size:clamp(25px,2.5vw,35px);line-height:1.25;letter-spacing:-.035em;color:var(--hrp-ink)}
-#rank .hrp-heading p {margin:0;color:var(--hrp-muted);font-size:13px;line-height:1.7;max-width:580px}
-#rank .hrp-snapshot-tag {display:inline-flex;align-items:center;gap:7px;color:#b2c2c9;font-size:10px;white-space:nowrap;border:1px solid var(--hrp-line);padding:7px 9px;border-radius:5px;margin-top:2px}
-#rank .hrp-snapshot-tag i {width:5px;height:5px;background:#c0cfcd;border-radius:50%}
-#rank .hrp-panel.is-stale .hrp-snapshot-tag {color:#d4bc91;border-color:#d4bc9138}
-#rank .hrp-panel.is-stale .hrp-snapshot-tag i {background:#d4bc91}
-#rank .hrp-refresh-status {margin:0 34px 23px;padding:10px 12px;border:1px solid #d4bc9126;border-radius:7px;background:#d4bc9108;color:#c5b899;font-size:11px;line-height:1.7}
-#rank .hrp-overview {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:0 34px;padding:22px 0 24px;border-top:1px solid var(--hrp-line);border-bottom:1px solid var(--hrp-line)}
+#rank .hrp-panel {min-width:0}
+#rank .hrp-overview {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
 #rank .hrp-overview > div {min-width:0;padding-left:26px;border-left:1px solid var(--hrp-line)}
 #rank .hrp-overview > div:first-child {padding-left:0;border:0}
 #rank .hrp-overview span {display:block;font-size:12px;color:var(--hrp-muted);margin-bottom:10px}
@@ -28,102 +19,32 @@
 #rank .hrp-overview small {font-size:10px;font-weight:500;color:var(--hrp-muted);letter-spacing:0}
 #rank .hrp-power-overview {margin:0 0 28px;padding:24px 28px;border:1px solid var(--hrp-line);border-radius:14px;background:linear-gradient(135deg,rgba(18,37,43,.92),rgba(10,23,31,.96));box-shadow:0 12px 35px #0001}
 #rank .hrp-power-overview[hidden] {display:none!important}
-#rank .hrp-data-line {display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:14px 34px 25px;font-size:11px;color:var(--hrp-muted)}
-#rank .hrp-data-line > span {display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap}
-#rank .hrp-data-line time,#rank .hrp-data-line b {font-weight:500;color:#c6d4d8;font-variant-numeric:tabular-nums}
-#rank .hrp-controls {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:0 34px}
-#rank .hrp-sort {font-size:12px;color:var(--hrp-muted);letter-spacing:.02em}
-#rank .hrp-scope {display:flex;gap:5px;background:#07151b70;padding:4px;border:1px solid var(--hrp-line);border-radius:8px}
-#rank .hrp-scope button {font-size:12px;line-height:1.35;color:var(--hrp-muted);background:transparent;border:0;padding:8px 13px;border-radius:5px;white-space:nowrap}
-#rank .hrp-scope button[aria-pressed=true] {color:#d6eee6;background:#9bd6bd16}
-#rank .hrp-search {display:flex;align-items:center;gap:9px;padding:10px 12px;border:1px solid var(--hrp-line);border-radius:8px;min-width:180px;max-width:270px;width:44%;background:#07151b50}
-#rank .hrp-search svg {width:15px;height:15px;fill:none;stroke:var(--hrp-muted);stroke-width:1.5;flex:none}
-#rank .hrp-search input {padding:0;color:var(--hrp-ink);font-size:11px;background:transparent;outline:none;border:0;width:100%;min-width:0}
-#rank .hrp-search input::placeholder {color:#758d98;opacity:1}
-#rank .hrp-filter-note {margin:10px 34px 20px;color:var(--hrp-muted);font-size:11px;line-height:1.6}
-#rank .hrp-table {margin:0 34px}
-#rank .hrp-table-head,#rank .hrp-row {display:grid;grid-template-columns:50px minmax(0,1fr) minmax(135px,.55fr) minmax(70px,.25fr);gap:14px;align-items:center}
-#rank .hrp-table-head {padding:12px 0;color:#7e95a0;font-size:11px;border-bottom:1px solid var(--hrp-line)}
-#rank .hrp-table-head > :nth-child(n+3) {text-align:right}
-#rank .hrp-row {padding:21px 0;border-bottom:1px solid #b0c9d00b;transition:background .15s ease}
-#rank .hrp-row:last-child {border:0}
-#rank .hrp-rank {color:#819ba5;font-size:15px;font-weight:650;font-variant-numeric:tabular-nums}
-#rank .hrp-leading .hrp-rank {color:#c4e4d9}
-#rank .hrp-rank span {display:inline-block;min-width:28px}
-#rank .hrp-leading .hrp-rank span {padding:6px 5px;border-radius:6px;background:#b8e8d60b;border:1px solid #b8e8d617;text-align:center}
-#rank .hrp-address {min-width:0}
-#rank .hrp-address-line {display:flex;align-items:center;gap:8px;min-width:0}
-#rank .hrp-address a {font:11px/1.5 'SFMono-Regular',Consolas,monospace;text-decoration:none;color:#d2dde1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-#rank .hrp-address a:hover {color:#c5f3de}
-#rank .hrp-short-address {display:none}
-#rank .hrp-copy {color:#738e98;flex:none;background:transparent;border:0;padding:3px;display:flex;align-items:center}
-#rank .hrp-copy svg {width:13px;height:13px;stroke:currentColor;stroke-width:1.4;fill:none}
-#rank .hrp-copy:hover {color:#b4e3cf}
-#rank .hrp-kind {display:inline-block;margin-top:5px;font-size:9px;color:#6e8793}
-#rank .hrp-kind-contract {color:#abb2d4}
-#rank .hrp-kind-system {color:#c5b797}
-#rank .hrp-kind-burn {color:#bb9293}
-#rank .hrp-address-actions {display:flex;align-items:center;flex-wrap:wrap;min-width:0;gap:4px 12px;margin:7px 0 0}
-#rank .hrp-address-actions button,#rank .hrp-address-actions a {min-width:0;max-width:100%;white-space:normal;overflow-wrap:anywhere}
-#rank .hrp-address .hrp-address-actions a,#rank .hrp-system-address .hrp-address-actions a {font:inherit;color:#9dcbd8;overflow:visible;text-overflow:clip}
-#rank .hrp-address .hrp-address-actions a:hover,#rank .hrp-system-address .hrp-address-actions a:hover {color:#68f6e8}
-#rank .hrp-balance {text-align:right;min-width:0}
-#rank .hrp-balance button {padding:0;border:0;background:transparent;text-align:right;color:inherit;display:inline-flex;align-items:baseline;gap:5px;max-width:100%}
-#rank .hrp-balance strong {font-size:18px;line-height:1.4;font-weight:600;letter-spacing:-.015em;font-variant-numeric:tabular-nums;color:#e4edee}
-#rank .hrp-balance small {font-size:9px;color:#829ba5}
-#rank .hrp-balance .hrp-exact {display:block;font-size:10px;line-height:1.6;color:#9fb8bf;margin-top:6px;overflow-wrap:anywhere}
-#rank .hrp-share {text-align:right;font-size:12px;font-variant-numeric:tabular-nums;color:#a5bdba}
-/* Share the existing power ranking's pager classes and responsive rules. */
-#rank .hrp-pagination {padding:22px 34px;border-top:1px solid var(--hrp-line)}
-#rank .hrp-notes {background:#06151a55;padding:18px 34px 22px;border-top:1px solid var(--hrp-line);color:#7f99a3;font-size:11px;line-height:1.8}
-#rank .hrp-notes p {margin:0 0 7px}
+#rank .hrp-card-balance {min-width:0;text-align:right;max-width:100%}
+#rank .hrp-card-balance button {border:0;padding:0;background:transparent;color:inherit;font:inherit;text-align:right;max-width:100%;overflow-wrap:anywhere}
+#rank .hrp-card-share {display:block;color:#91a3ad;font:11px/1.5 var(--font,sans-serif);letter-spacing:0;margin-top:5px;font-variant-numeric:tabular-nums}
+#rank .hrp-card .hrp-exact {display:block;color:#a8bbc6;font:10px/1.7 var(--mono,monospace);letter-spacing:0;margin-top:6px;overflow-wrap:anywhere}
+#rank .hrp-address-actions {display:flex;align-items:center;flex-wrap:wrap}
+#rank .hrp-notes {margin-top:20px;padding-top:16px;border-top:1px solid var(--hrp-line);color:#7f99a3;font-size:11px;line-height:1.8}
+#rank .hrp-notes p {margin:7px 0}
 #rank .hrp-notes summary {cursor:pointer;color:#a1b7bf;width:fit-content}
-#rank .hrp-notes details p {margin:8px 0 0;max-width:850px}
-#rank .hrp-empty {padding:45px 22px;text-align:center;font-size:13px;color:#91aab4;line-height:1.8}
+#rank .hrp-notes details p {max-width:850px}
+#rank .hrp-data-line {display:flex;justify-content:space-between;gap:8px 18px;flex-wrap:wrap;font-size:11px;color:var(--hrp-muted)}
+#rank .hrp-data-line > span {display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap}
+#rank .hrp-data-line time,#rank .hrp-data-line b {font-weight:500;color:#a8bbc6;font-variant-numeric:tabular-nums}
+#rank .hrp-refresh-status {margin:0 0 16px;padding:10px 12px;border:1px solid #d4bc9126;border-radius:7px;background:#d4bc9108;color:#c5b899;font-size:11px;line-height:1.7}
+#rank .hrp-empty {padding:35px 20px;text-align:center;font-size:13px;color:#91aab4;line-height:1.8}
 #rank .hrp-empty button {display:block;padding:7px 18px;color:#cce9dd;background:#b5e6d21a;border:1px solid #b5e6d22b;border-radius:6px;margin:18px auto 0}
 #rank .hrp-notice {position:fixed;left:50%;bottom:30px;z-index:1000;transform:translateX(-50%);background:#19322d;border:1px solid #d5eee34a;box-shadow:0 10px 40px #0007;border-radius:8px;color:#e4f3ee;font-size:12px;line-height:1.7;max-width:min(85vw,400px);text-align:center;padding:10px 20px;pointer-events:none}
 #rank .hrp-notice:empty {display:none}
 #rank .hrp-notice:has(.hrp-copy-fallback) {pointer-events:auto}
 #rank .hrp-copy-fallback {display:block;box-sizing:border-box;width:100%;margin-top:9px;padding:7px;color:#e4f3ee;background:#071d17;border:1px solid #9bd0b95c;border-radius:4px;font:10px/1.6 monospace}
-#rank .hrp-system-zone {margin:0 34px 30px;border:1px solid #b9d8ce26;border-radius:12px;padding:20px 22px;background:linear-gradient(125deg,#b0dcc70b,transparent 65%)}
-#rank .hrp-system-header {display:flex;justify-content:space-between;align-items:flex-start;gap:22px;margin-bottom:16px}
-#rank .hrp-system-header h3 {font-size:19px;letter-spacing:-.025em;margin:8px 0 0;color:#e2edeb;font-weight:650;line-height:1.4}
-#rank .hrp-system-header .hrp-eyebrow {font-size:8px;letter-spacing:.13em;color:#94b9aa}
-#rank .hrp-system-header p {font-size:10px;line-height:1.7;color:#829e96;max-width:260px;margin:0}
-#rank .hrp-system-card {display:flex;justify-content:space-between;gap:20px;align-items:center;padding-top:16px;border-top:1px solid #b6d4c91a}
-#rank .hrp-system-identity {display:flex;align-items:center;gap:11px;min-width:0}
-#rank .hrp-system-emblem {display:flex;align-items:center;justify-content:center;width:37px;height:37px;flex:none;border:1px solid #bbdccd35;border-radius:9px;color:#c5e2d7;background:#b7dbc90d;font-size:18px;font-weight:550;font-family:system-ui,sans-serif}
-#rank .hrp-system-identity h4 {font-size:14px;font-weight:600;letter-spacing:-.015em;line-height:1.5;color:#dcebe6;margin:0}
-#rank .hrp-system-identity .hrp-kind {margin-top:3px;color:#86a99a}
-#rank .hrp-system-address {display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;gap:3px;min-width:0}
-#rank .hrp-system-address a {font:10px/1.7 'SFMono-Regular',Consolas,monospace;color:#8ca8a0;text-decoration:none;overflow-wrap:anywhere;min-width:0}
-#rank .hrp-system-address a:hover {color:#c6e9d9}
-
-
-#rank .hrp-ranking-heading {display:flex;align-items:center;justify-content:space-between;gap:14px;margin:0 34px 20px}
-#rank .hrp-ranking-heading h3 {font-size:20px;color:#e3edef;font-weight:650;letter-spacing:-.03em;margin:0;line-height:1.5}
-#rank .hrp-ranking-heading > span {font-size:10px;letter-spacing:.14em;color:#78939d}
-#rank .hrp-ranking-heading + .hrp-overview {margin-bottom:23px}
-@media(max-width:1100px){#rank .hrp-full-address{display:none}#rank .hrp-short-address{display:inline}#rank .hrp-table-head,#rank .hrp-row{grid-template-columns:40px minmax(0,1fr) minmax(110px,.7fr) 65px;gap:10px}}
 @container holder-ranking (max-width:620px){
-  #rank .hrp-full-address{display:none}#rank .hrp-short-address{display:inline}
   #rank .hrp-toolbar{margin-bottom:16px;gap:8px}#rank .hrp-main-switch{padding:4px;border-radius:10px}#rank .hrp-main-switch button{padding:10px 15px;font-size:13px;white-space:normal;line-height:1.5}
-  #rank .hrp-panel{border-radius:14px}#rank .hrp-heading{padding:23px 18px 20px;display:block}#rank .hrp-eyebrow{font-size:9px;letter-spacing:.1em}#rank .hrp-heading h2{font-size:26px;margin:0 0 9px}#rank .hrp-heading p{font-size:11px;line-height:1.75}#rank .hrp-snapshot-tag{margin-top:14px;font-size:9px;padding:5px 7px}
-  #rank .hrp-overview{margin:0 18px;padding:17px 0;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(74px,1fr)}#rank .hrp-overview>div{padding-left:12px}#rank .hrp-overview span{font-size:9px;line-height:1.5;margin-bottom:8px;min-height:27px}#rank .hrp-overview b{font-size:17px;white-space:normal;display:block;overflow-wrap:anywhere}#rank .hrp-overview small{display:block;font-size:9px;margin-top:3px}#rank .hrp-data-line{padding:12px 18px 21px;font-size:9px;line-height:1.6;gap:7px}#rank .hrp-data-line>span{gap:6px}
-  #rank .hrp-controls{padding:0 18px;display:block}#rank .hrp-scope{width:fit-content}#rank .hrp-scope button{font-size:11px;padding:8px 14px}#rank .hrp-search{width:100%;max-width:none;min-width:0;margin-top:13px;padding:11px}#rank .hrp-search input{font-size:11px}#rank .hrp-filter-note{margin:10px 18px 17px;font-size:10px}
-  #rank .hrp-table{margin:0 18px}#rank .hrp-table-head,#rank .hrp-row{grid-template-columns:26px minmax(0,1fr) minmax(75px,.8fr) 46px;gap:7px}#rank .hrp-table-head{font-size:9px;padding:10px 0}#rank .hrp-row{padding:17px 0}#rank .hrp-rank{font-size:11px}#rank .hrp-rank span{min-width:22px}#rank .hrp-leading .hrp-rank span{padding:5px 2px;border-radius:4px}
-  #rank .hrp-address-line{gap:4px}#rank .hrp-address a{font-size:9px;letter-spacing:-.02em}#rank .hrp-copy{padding:3px}#rank .hrp-copy svg{width:11px;height:11px}#rank .hrp-kind{font-size:8px;margin-top:5px}#rank .hrp-balance button{display:block}#rank .hrp-balance strong{font-size:13px;white-space:normal;overflow-wrap:anywhere}#rank .hrp-balance small{font-size:8px;display:block;margin-top:2px}#rank .hrp-share{font-size:10px}#rank .hrp-balance .hrp-exact{font-size:8px}
-  #rank .hrp-pagination{padding:18px}#rank .hrp-notes{padding:17px 18px;font-size:10px}
-  #rank .hrp-address-actions{font-size:9px;gap:3px 9px;margin-top:6px}
-  #rank .hrp-refresh-status{margin:0 18px 18px;font-size:10px}
-  #rank .hrp-overview>div:last-child b{font-size:clamp(12px,4cqi,16px);white-space:normal;overflow-wrap:anywhere}
+  #rank .hrp-overview{grid-template-columns:minmax(0,1fr) minmax(0,1.1fr) minmax(74px,1fr)}#rank .hrp-overview>div{padding-left:12px}#rank .hrp-overview span{font-size:9px;line-height:1.5;margin-bottom:8px;min-height:27px}#rank .hrp-overview b{font-size:17px;white-space:normal;display:block;overflow-wrap:anywhere}#rank .hrp-overview small{display:block;font-size:9px;margin-top:3px}
+  #rank .hrp-overview>div:last-child b{font-size:clamp(12px,4cqi,16px)}
   #rank .hrp-power-overview{margin:0 0 18px;padding:19px 17px;border-radius:12px}
   #rank .hrp-power-overview>div:nth-child(2) b{font-size:clamp(12px,3.9cqi,17px);white-space:nowrap}
-}
-@media(prefers-reduced-motion:reduce){#rank .hrp-row{transition:none}}
-@container holder-ranking (max-width:620px){
-  #rank .hrp-system-zone{margin:0 18px 25px;padding:16px 14px;border-radius:10px}#rank .hrp-system-header{display:block;margin-bottom:13px}#rank .hrp-system-header h3{font-size:17px;margin-top:6px}#rank .hrp-system-header p{font-size:9px;max-width:none;margin-top:8px}#rank .hrp-system-header .hrp-eyebrow{font-size:7px;letter-spacing:.1em}
-  #rank .hrp-system-card{flex-direction:column;align-items:flex-start;gap:12px;padding-top:14px}#rank .hrp-system-identity{gap:9px}#rank .hrp-system-emblem{width:32px;height:32px;font-size:16px;border-radius:7px}#rank .hrp-system-identity h4{font-size:13px}#rank .hrp-system-identity .hrp-kind{font-size:8px}
-  #rank .hrp-system-address{align-items:flex-start;justify-content:flex-start;gap:3px;width:100%}#rank .hrp-system-address a{font-size:8px;line-height:1.7}
-  #rank .hrp-ranking-heading{margin:0 18px 16px}#rank .hrp-ranking-heading h3{font-size:18px}#rank .hrp-ranking-heading>span{font-size:9px}#rank .hrp-ranking-heading+.hrp-overview{margin-bottom:18px}
+  #rank .hrp-card-share{font-size:10px;margin-top:3px}
+  #rank .hrp-data-line{font-size:10px;line-height:1.7}#rank .hrp-data-line>span{gap:7px}
+  #rank .hrp-notes{font-size:10px}
 }

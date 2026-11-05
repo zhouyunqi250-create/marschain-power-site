@@ -10,19 +10,17 @@
     intro: ['按同一区块的 MARS 余额排序，观察头部地址的持币分布。', 'Balances at the same confirmed block, ranked to show how MARS holdings are distributed.', '同一確定ブロック時点のMARS残高から、上位アドレスの保有分布を確認できます。', '동일 확정 블록의 MARS 잔액으로 상위 주소의 보유 분포를 확인합니다.'],
     allRanking: ['全部地址排行', 'All Addresses', '全アドレスランキング', '전체 주소 순위'],
     rankingNote: ['包含钱包、合约及已识别的销毁地址；系统地址不参与排名。', 'Includes wallets, contracts and identified burn addresses. System addresses are excluded.', 'ウォレット、コントラクト、識別済みバーンアドレスを含み、システムアドレスはランキングから除外します。', '지갑, 컨트랙트, 식별된 소각 주소를 포함하며 시스템 주소는 순위에서 제외합니다.'],
-    addresses: ['参与排名地址', 'Ranking Addresses', 'ランキング対象アドレス', '순위 집계 주소'],
+    addresses: ['全网地址', 'Network Addresses', 'ネットワーク全体のアドレス数', '전체 네트워크 주소'],
     topTotal: ['本榜 TOP100 合计', 'This Top 100 Total', 'この上位100件の合計', '현재 상위 100개 합계'],
     topShare: ['本榜 TOP100 占比', 'This Top 100 Share', 'この上位100件の比率', '현재 상위 100개 비중'],
     powerTopTotal: ['本榜 TOP100 算力合计', 'Top 100 Total Power', '上位100件の演算力合計', '상위 100개 연산력 합계'],
     powerTopShare: ['本榜 TOP100 算力占比', 'Top 100 Power Share', '上位100件の演算力比率', '상위 100개 연산력 비중'],
-    powerCountNote: ['已收录地址中，当前算力大于零的地址。', 'Indexed addresses with positive current power.', '収録済みアドレスのうち、現在の演算力がゼロより大きいアドレスです。', '수집된 주소 중 현재 연산력이 0보다 큰 주소입니다.'],
+    networkCountNote: ['官方浏览器公布的全网地址总数。', 'Total network address count published by the official explorer.', '公式エクスプローラーが公表するネットワーク全体のアドレス数です。', '공식 탐색기에서 제공하는 전체 네트워크 주소 수입니다.'],
     powerShareNote: ['前100名算力合计 ÷ 同一快照的全网总算力。', 'Top 100 total power divided by network total power from the same snapshot.', '同じスナップショットの上位100件の演算力合計 ÷ ネットワーク総演算力。', '동일 스냅샷의 상위 100개 연산력 합계 ÷ 네트워크 전체 연산력입니다.'],
     number: ['名次', 'Rank', '順位', '순위'],
     address: ['地址', 'Address', 'アドレス', '주소'],
     balance: ['MARS 余额', 'MARS Balance', 'MARS残高', 'MARS 잔액'],
     share: ['余额占比', 'Balance Share', '残高比率', '잔액 비중'],
-    placeholder: ['搜索本榜 TOP100 地址', 'Search this top 100', 'この上位100件から検索', '현재 상위 100개 주소 검색'],
-    search: ['搜索地址', 'Search addresses', 'アドレスを検索', '주소 검색'],
     snapshot: ['区块快照', 'Block Snapshot', 'ブロックスナップショット', '블록 스냅샷'],
     source: ['数据来自自建节点，同一确认区块读取余额。榜单约每分钟更新，时间为余额所在区块的实际时间。', 'Balances are read from our node at the same confirmed block. Rankings update about every minute; the displayed time is the actual balance block time.', '自前ノードの同一確定ブロックから残高を取得します。ランキングは約1分ごとに更新し、表示時刻は残高を取得したブロックの実際の時刻です。', '자체 노드의 동일 확정 블록에서 잔액을 조회합니다. 순위는 약 1분마다 갱신되며 표시 시각은 잔액을 조회한 블록의 실제 시각입니다.'],
     stale: ['数据暂未更新，保留最近一次成功结果及其原时间。', 'Updates are delayed. The last successful ranking and its original time are retained.', '更新が遅れています。最後に取得できたランキングとその時刻を表示しています。', '갱신이 지연되고 있습니다. 마지막으로 확인한 순위와 해당 시각을 유지합니다.'],
@@ -41,13 +39,13 @@
     burn: ['销毁', 'Burn', 'バーン', '소각'],
     prev: ['上一页', 'Previous', '前へ', '이전'],
     next: ['下一页', 'Next', '次へ', '다음'],
-    noResults: ['本榜 TOP100 中没有匹配地址', 'No match in this top 100', 'この上位100件に該当アドレスはありません', '현재 상위 100개에서 일치하는 주소가 없습니다'],
+    empty: ['暂无排名数据', 'No ranking data yet', 'ランキングデータはまだありません', '아직 순위 데이터가 없습니다'],
+    headingNote: ['按 MARS 余额降序展示前100名，每页10名。', 'The top 100 by MARS balance, highest first. 10 per page.', 'MARS残高の多い順に上位100件を表示します。1ページ10件。', 'MARS 잔액이 많은 상위 100개 주소를 페이지당 10개씩 표시합니다.'],
     loading: ['正在读取持币快照…', 'Loading holder snapshot…', '保有スナップショットを読み込み中…', '보유 스냅샷을 불러오는 중…'],
     error: ['持币快照暂时无法读取，请稍后重试。', 'The holder snapshot could not be loaded. Please retry.', '保有スナップショットを読み込めませんでした。再試行してください。', '보유 스냅샷을 불러오지 못했습니다. 다시 시도하세요.'],
     retry: ['重新读取', 'Retry', '再試行', '다시 시도'],
     block: ['区块', 'Block', 'ブロック', '블록'],
     time: ['余额时间', 'Balance Time', '残高時刻', '잔액 시각'],
-    matches: ['匹配', 'Matches', '該当', '검색 결과'],
   };
   const core = (() => {
     const WEI = 10n ** 18n;
@@ -118,14 +116,12 @@
       // Strip compatibility payloads and unused server fields, including names and balances of system addresses.
       return {meta: {...meta}, systems, rows};
     };
-    const paginate = (rows, query, requestedPage) => {
-      const normalized = typeof query === 'string' ? query.trim().toLowerCase() : '';
-      const filtered = rows.filter(row => row.address.toLowerCase().includes(normalized));
-      const total = filtered.length;
+    const paginate = (rows, requestedPage) => {
+      const total = rows.length;
       const pages = Math.max(1, Math.ceil(total / 10));
       const page = Math.min(pages, Math.max(1, Number.isSafeInteger(requestedPage) ? requestedPage : 1));
       const offset = (page - 1) * 10;
-      return {rows: filtered.slice(offset, offset + 10), page, pages, total, start: total ? offset + 1 : 0, end: Math.min(offset + 10, total)};
+      return {rows: rows.slice(offset, offset + 10), page, pages, total, start: total ? offset + 1 : 0, end: Math.min(offset + 10, total)};
     };
     const powerSummary = input => {
       const integer = value => typeof value === 'number' ? (Number.isSafeInteger(value) && value >= 0 ? BigInt(value) : null) : decimal(value);
@@ -156,7 +152,7 @@
       : {container: 'rank-pagination', group: 'rank-pages', button: 'rank-page-button', count: 'rank-count'};
     const refreshMs = 60000;
     const staleAfterSeconds = 180;
-    const state = {mode: 'power', page: 1, query: '', data: null, loading: true, error: false, expanded: new Set(), loadId: 0, lastSharedAt: 0, lastAttemptAt: 0, fingerprint: ''};
+    const state = {mode: 'power', page: 1, data: null, loading: true, error: false, expanded: new Set(), loadId: 0, lastSharedAt: 0, lastAttemptAt: 0, fingerprint: '', networkCount: null, networkCountAt: 0};
     const copy = COPY;
     const language = () => core.resolveLanguage({
       localeLanguage: window.MarsWebsiteLocale?.language?.(),
@@ -198,12 +194,28 @@
     powerOverview.dataset.hrpPowerSummary = '';
     powerOverview.hidden = true;
     powerGrid?.before(powerOverview);
+    const networkAddressLabel = payload => {
+      const value = payload?.meta?.explorer_total_addresses;
+      const at = Number(payload?.meta?.generated_at);
+      if (Number.isSafeInteger(value) && value > 0 && Number.isSafeInteger(at) && at > 0 && at < 1e11 && at >= state.networkCountAt) {
+        state.networkCount = value;
+        state.networkCountAt = at;
+      }
+      const label = state.networkCount === null ? '—' : commas(state.networkCount);
+      section.querySelectorAll('[data-hrp-network-count]').forEach(node => {node.textContent = label;});
+      return label;
+    };
+    const publishedRankPayload = () => {
+      try {return JSON.parse(document.getElementById('rankData')?.textContent || '{}');} catch (_) {return {};}
+    };
     const renderPowerOverview = () => {
-      let payload;
-      try {payload = JSON.parse(document.getElementById('rankData')?.textContent || '{}');} catch (_) {return;}
+      const payload = publishedRankPayload();
+      const networkCount = networkAddressLabel(payload);
+      const holderCount = panel.querySelector('[data-hrp-network-count]');
+      if (holderCount) holderCount.textContent = networkCount;
       const summary = core.powerSummary(payload);
       if (!summary) {powerOverview.hidden = true; return;}
-      powerOverview.innerHTML = `<div title="${esc(t('powerCountNote'))}"><span>${esc(t('addresses'))}</span><b>${esc(commas(summary.count))}</b></div><div><span>${esc(t('powerTopTotal'))}</span><b title="${esc(commas(summary.total))}">${esc(balance(summary.total * core.WEI))}</b></div><div title="${esc(t('powerShareNote'))}"><span>${esc(t('powerTopShare'))}</span><b>${esc(core.share(summary.total, summary.denominator))}</b></div>`;
+      powerOverview.innerHTML = `<div title="${esc(t('networkCountNote'))}"><span>${esc(t('addresses'))}</span><b data-hrp-network-count>${esc(networkCount)}</b></div><div><span>${esc(t('powerTopTotal'))}</span><b title="${esc(commas(summary.total))}">${esc(balance(summary.total * core.WEI))}</b></div><div title="${esc(t('powerShareNote'))}"><span>${esc(t('powerTopShare'))}</span><b>${esc(core.share(summary.total, summary.denominator))}</b></div>`;
       powerOverview.hidden = false;
     };
 
@@ -227,11 +239,12 @@
     const addressActions = address => `<div class="node-rank-actions hrp-address-actions"><button type="button" data-hrp-copy="${esc(address)}">${esc(t('copy'))}</button><a href="https://explorer.marschain.net/address/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer">${esc(t('viewAddress'))}</a></div>`;
     const rowsMarkup = rows => rows.map(row => {
       const value = decimal(row.balance_wei);
-      const kind = row.kind;
       const address = row.address;
-      const rank = String(row.rank).padStart(2, '0');
+      const rank = `${mobile ? '#' : ''}${String(row.rank).padStart(2, '0')}`;
       const expanded = state.expanded.has(address);
-      return `<article role="row" class="hrp-row${row.rank <= 3 ? ' hrp-leading' : ''}" data-hrp-address="${esc(address)}"><div class="hrp-rank" role="cell"><span>${esc(rank)}</span></div><div class="hrp-address" role="cell"><div class="hrp-address-line"><a href="https://explorer.marschain.net/address/${encodeURIComponent(address)}" target="_blank" rel="noopener noreferrer" title="${esc(t('explorer'))}" aria-label="${esc(t('explorer'))}: ${esc(address)}"><span class="hrp-full-address">${esc(address)}</span><span class="hrp-short-address">${esc(address.slice(0, 8))}…${esc(address.slice(-6))}</span></a></div><span class="hrp-kind hrp-kind-${kind}">${esc(t(kind))}</span>${addressActions(address)}</div><div class="hrp-balance" role="cell"><button type="button" data-hrp-exact aria-expanded="${expanded}" title="${esc(exact(value))}" aria-label="${esc(t('exact'))}: ${esc(exact(value))}"><strong>${esc(balance(value))}</strong><small>MARS</small></button><span class="hrp-exact" ${expanded ? '' : 'hidden'}>${esc(exact(value))}</span></div><div class="hrp-share" role="cell"><span>${esc(share(value))}</span></div></article>`;
+      const cardClass = mobile ? 'm-rank-card m-reveal visible' : 'rank-card reveal visible';
+      const topClass = mobile ? 'm-rank-top' : 'rank-top';
+      return `<article role="listitem" class="${cardClass} hrp-card" data-hrp-address="${esc(address)}"><div class="${topClass}"><em>${esc(rank)}</em><strong class="hrp-card-balance"><button type="button" data-hrp-exact aria-expanded="${expanded}" title="${esc(exact(value))}" aria-label="${esc(t('exact'))}: ${esc(exact(value))}">${esc(balance(value))}</button><small class="hrp-card-share">${esc(t('share'))} ${esc(share(value))}</small><span class="hrp-exact" ${expanded ? '' : 'hidden'}>${esc(exact(value))}</span></strong></div><code>${esc(address)}</code>${addressActions(address)}</article>`;
     }).join('');
     const pageCaption = (start, end, total, pages) => {
       const lang = language();
@@ -243,10 +256,10 @@
     const renderList = ({focusPage = false} = {}) => {
       const list = panel.querySelector('[data-hrp-list]');
       if (!list || !state.data) return;
-      const result = core.paginate(currentRows(), state.query, state.page);
+      const result = core.paginate(currentRows(), state.page);
       state.page = result.page;
       const {pages, total, start, end} = result;
-      list.innerHTML = total ? rowsMarkup(result.rows) : `<div class="hrp-empty" role="status">${esc(t('noResults'))}</div>`;
+      list.innerHTML = total ? rowsMarkup(result.rows) : `<div class="hrp-empty" role="status">${esc(t('empty'))}</div>`;
       const pagination = panel.querySelector('[data-hrp-pagination]');
       pagination.className = `hrp-pagination ${pager.container}`;
       pagination.innerHTML = `<button class="${pager.button}" type="button" data-hrp-page="${state.page - 1}" ${state.page === 1 ? 'disabled' : ''} aria-label="${esc(t('prev'))}">${esc(t('prev'))}</button><div class="${pager.group}">${Array.from({length: pages}, (_, index) => `<button class="${pager.button}${state.page === index + 1 ? ' is-active' : ''}" type="button" data-hrp-page="${index + 1}" ${state.page === index + 1 ? 'aria-current="page"' : ''}>${index + 1}</button>`).join('')}</div><button class="${pager.button}" type="button" data-hrp-page="${state.page + 1}" ${state.page === pages ? 'disabled' : ''} aria-label="${esc(t('next'))}">${esc(t('next'))}</button><span class="${pager.count}" aria-live="polite">${esc(pageCaption(start, end, total, pages))}</span>`;
@@ -259,27 +272,25 @@
       if (note) {note.hidden = !stale; note.textContent = stale ? t('stale') : '';}
     };
     const render = () => {
-      // A background update keeps the visitor's search, details and keyboard focus.
+      // A background update keeps the visitor's current page, details and keyboard focus.
       const active = document.activeElement;
       const focused = panel.contains(active) ? active : null;
       const focusedAddress = focused?.closest('[data-hrp-address]')?.dataset.hrpAddress;
-      const searchFocused = focused?.matches('[data-hrp-search]');
       const focusPage = focused?.hasAttribute('data-hrp-page');
       const focusExact = focused?.hasAttribute('data-hrp-exact');
       const focusCopy = focused?.hasAttribute('data-hrp-copy');
-      const selection = searchFocused ? [focused.selectionStart, focused.selectionEnd] : null;
       const methodOpen = Boolean(panel.querySelector('.hrp-notes details[open]'));
       renderToolbar();
-      const head = `<header class="hrp-heading"><div><h2>${esc(t('title'))}</h2><p>${esc(t('intro'))}</p></div><span class="hrp-snapshot-tag"><i></i>${esc(t('snapshot'))}</span></header>`;
+      const head = `<div class="${mobile ? 'm-section-head' : 'section-head reveal visible'}"><div><span class="${mobile ? 'm-kicker' : 'kicker'}">01 / ${esc(t('holders'))}</span><h2>TOP100</h2></div><p>${esc(t('headingNote'))}</p></div>`;
       if (!state.data && (state.loading || state.error)) {
         panel.innerHTML = head + `<div class="hrp-empty" role="status">${esc(t(state.loading ? 'loading' : 'error'))}${state.error ? `<button type="button" data-hrp-retry>${esc(t('retry'))}</button>` : ''}</div>`;
         return;
       }
       const meta = state.data.meta;
       const topTotal = currentRows().reduce((sum, row) => sum + decimal(row.balance_wei), 0n);
-      panel.innerHTML = head + `<div class="hrp-data-line"><span>${esc(t('time'))}<time>${esc(timestamp(meta.block_timestamp))}</time></span><span>${esc(t('block'))}<b>#${esc(commas(meta.block_number))}</b></span></div><div class="hrp-ranking-heading"><h3>${esc(t('allRanking'))}</h3><span>TOP 100</span></div><div class="hrp-overview"><div><span>${esc(t('addresses'))}</span><b>${esc(commas(meta.ranking_address_count))}</b></div><div><span>${esc(t('topTotal'))}</span><b title="${esc(exact(topTotal))}">${esc(balance(topTotal))}<small> MARS</small></b></div><div><span>${esc(t('topShare'))}</span><b>${esc(share(topTotal))}</b></div></div><div class="hrp-controls"><span class="hrp-sort">${esc(t('sort'))}</span><label class="hrp-search"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg><input type="search" autocomplete="off" spellcheck="false" maxlength="42" value="${esc(state.query)}" placeholder="${esc(t('placeholder'))}" aria-label="${esc(t('search'))}" data-hrp-search></label></div><p class="hrp-filter-note">${esc(t('rankingNote'))}</p><div class="hrp-table" role="table" aria-label="${esc(t('allRanking'))}"><div class="hrp-table-head" role="row"><span role="columnheader">${esc(t('number'))}</span><span role="columnheader">${esc(t('address'))}</span><span role="columnheader">${esc(t('balance'))}</span><span role="columnheader">${esc(t('share'))}</span></div><div data-hrp-list role="rowgroup"></div></div><nav class="hrp-pagination" data-hrp-pagination aria-label="${esc(t('holders'))}"></nav><footer class="hrp-notes"><p>${esc(t('coverage'))}</p><details><summary>${esc(t('methodology'))}</summary><p>${esc(t('source'))}</p><p>${esc(t('denominator'))}</p></details></footer><div class="hrp-notice" role="status" aria-live="polite"></div>`;
+      panel.innerHTML = head + `<div class="hrp-overview hrp-power-overview"><div title="${esc(t('networkCountNote'))}"><span>${esc(t('addresses'))}</span><b data-hrp-network-count>${esc(networkAddressLabel(publishedRankPayload()))}</b></div><div><span>${esc(t('topTotal'))}</span><b title="${esc(exact(topTotal))}">${esc(balance(topTotal))}<small> MARS</small></b></div><div><span>${esc(t('topShare'))}</span><b>${esc(share(topTotal))}</b></div></div><div class="${mobile ? 'm-list m-rank-list' : 'rank-grid'} hrp-list" data-hrp-list role="list" aria-label="${esc(t('holders'))}"></div><nav class="hrp-pagination" data-hrp-pagination aria-label="${esc(t('holders'))}"></nav><footer class="hrp-notes"><div class="hrp-data-line"><span>${esc(t('time'))}<time>${esc(timestamp(meta.block_timestamp))}</time></span><span>${esc(t('block'))}<b>#${esc(commas(meta.block_number))}</b></span></div><p>${esc(t('coverage'))}</p><details><summary>${esc(t('methodology'))}</summary><p>${esc(t('source'))}</p><p>${esc(t('denominator'))}</p></details></footer><div class="hrp-notice" role="status" aria-live="polite"></div>`;
       renderList();
-      const line = panel.querySelector('.hrp-data-line');
+      const line = panel.querySelector('.hrp-overview');
       if (line) {
         const note = document.createElement('p');
         note.className = 'hrp-refresh-status';
@@ -290,14 +301,10 @@
       }
       if (methodOpen) panel.querySelector('.hrp-notes details')?.setAttribute('open', '');
       let restored = null;
-      if (searchFocused) restored = panel.querySelector('[data-hrp-search]');
-      else if (focusPage) restored = panel.querySelector('[aria-current="page"]');
+      if (focusPage) restored = panel.querySelector('[aria-current="page"]');
       else if (focusExact && focusedAddress) restored = panel.querySelector(`[data-hrp-address="${focusedAddress}"] [data-hrp-exact]`);
       else if (focusCopy && focusedAddress) restored = panel.querySelector(`[data-hrp-address="${focusedAddress}"] [data-hrp-copy]`);
       restored?.focus({preventScroll: true});
-      if (searchFocused && restored && selection) {
-        try {restored.setSelectionRange(...selection);} catch (_) { /* Search selection is optional in some browsers. */ }
-      }
       renderFreshness();
     };
     const accept = input => {
@@ -346,6 +353,9 @@
         const payload = await response.json();
         if (loadId !== state.loadId) return;
         accept(payload?.holders);
+        // The independent fallback must refresh the official network total too.
+        // Older shared metadata cannot overwrite this newer successful count.
+        networkAddressLabel(payload);
       } catch (_) {if (loadId === state.loadId) state.error = true;}
       finally {
         clearTimeout(timer);
@@ -360,10 +370,6 @@
       if (!['power', 'holders'].includes(button.dataset.hrpMode)) return;
       state.mode = button.dataset.hrpMode;
       renderToolbar();
-    });
-    panel.addEventListener('input', event => {
-      if (!event.target.matches('[data-hrp-search]')) return;
-      state.query = event.target.value.trim(); state.page = 1; renderList();
     });
     panel.addEventListener('click', async event => {
       const button = event.target.closest('button');

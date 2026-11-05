@@ -684,6 +684,7 @@ _DATA_NOTES = """
 
 
 def _adapt_html(html: str, *, mobile: bool, power_note: str, public_meta: dict, production: bool = False) -> str:
+    html = _once(html, "<h2>头部排行</h2>" if mobile else "<h2>头部算力地址排行</h2>", "<h2>TOP100</h2>")
     # One approved report controller owns both desktop and mobile buttons.
     # The image and report program live in the existing versioned runtime.
     html = _once(html, dashboard.SHARE_POSTER_JS, "/* Report is supplied by the shared runtime. */")
