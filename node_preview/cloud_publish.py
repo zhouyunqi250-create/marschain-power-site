@@ -33,12 +33,13 @@ import time
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from node_preview.bootstrap import atomic_json
 from node_preview.metrics import _token as format_burn_tokens
+from node_preview.holder_ranking import validate_public_snapshot
 
 
 STATIC_NAMES = ("index.html", "m/index.html", "live_preview.js")
@@ -429,7 +430,13 @@ def load_bundle(root: Path, config: Config, max_age: int) -> Bundle:
             raise ValueError("Public ranking is duplicated or not sorted by positive power")
         seen.add(row["address"])
         previous_power = power
-    forbid_private(payload)
+    # Only the reviewed top-level holding namespace may carry public balances.
+    # All other fields retain the existing private/full-address rejection gate.
+    if "holders" in payload:
+        checked_holders = validate_public_snapshot(payload["holders"], max_age=None)
+        if checked_holders != payload["holders"]:
+            raise ValueError("Public holder snapshot contains unreviewed fields")
+    forbid_private({key: value for key, value in payload.items() if key != "holders"})
     # Content-address the runtime so a cached fixed JS path cannot pair an old
     # program with a newly deployed shell. Only this narrow asset path is allowed.
     runtime = static["live_preview.js"].decode("utf-8")
@@ -468,6 +475,30 @@ def read_json(path: Path) -> dict:
     if not isinstance(result, dict):
         raise ValueError("Publish state file is malformed")
     return result
+
+
+def preserve_newer_holders(bundle: Bundle, remote_document: dict) -> Bundle:
+    """Retain a valid newer holding snapshot while fresh power keeps advancing."""
+    try:
+        remote_holders = validate_public_snapshot(remote_document.get("holders"), max_age=None)
+    except (ValueError, TypeError, OverflowError, RecursionError):
+        return bundle
+    document = json.loads(bundle.latest.body)
+    incoming = document.get("holders")
+    newer = incoming is None
+    if incoming is not None:
+        left, right = incoming["meta"], remote_holders["meta"]
+        newer = (right["block_number"] > left["block_number"]
+                 or right["block_timestamp"] > left["block_timestamp"]
+                 or right["block_number"] == left["block_number"] and right["block_hash"] != left["block_hash"])
+    if not newer:
+        return bundle
+    document["holders"] = remote_holders
+    digest = hashlib.sha256(json.dumps(remote_holders, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    version = hashlib.sha256((bundle.preview["version"] + ":retained-holders:" + digest).encode()).hexdigest()[:20]
+    document["meta"]["node_preview"]["version"] = version
+    latest = PublicObject(bundle.latest.name, json.dumps(document, ensure_ascii=False, allow_nan=False).encode(), bundle.latest.content_type)
+    return replace(bundle, latest=latest, preview={**bundle.preview, "version": version})
 
 
 def publish(root: Path, config: Config, max_age: int, *, dry_run: bool,
@@ -513,6 +544,8 @@ def publish(root: Path, config: Config, max_age: int, *, dry_run: bool,
                 int(remote_block) == bundle.preview["source_block"]
                 and int(remote_preview.get("generated_at") or 0) > bundle.preview["generated_at"])):
             raise SnapshotUnavailable("Remote ranking is newer; preserving the cloud snapshot")
+    bundle = preserve_newer_holders(bundle, remote_document)
+    progress["version"] = bundle.preview["version"]
     remote_view = remote_document.get("view")
     remote_schema = remote_view.get("schema") if isinstance(remote_view, dict) else None
     first_migration = remote is None or remote_schema != 1

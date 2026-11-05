@@ -1,0 +1,11 @@
+[Unit]
+Description=MarsChain minute native balance collection independent of power
+
+[Timer]
+OnCalendar=*-*-* *:*:05
+AccuracySec=1
+Persistent=true
+Unit=marschain-rank-holder-collector.service
+
+[Install]
+WantedBy=timers.target

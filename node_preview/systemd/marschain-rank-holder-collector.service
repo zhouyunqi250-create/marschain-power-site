@@ -1,0 +1,18 @@
+[Unit]
+Description=MarsChain independently checked native balance top 100
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=%h/marschain-rank-preview/state/preview.sqlite3
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-rank-preview/app
+ExecStart=/usr/bin/python3 -m node_preview.holder_ranking_collector --root %h/marschain-rank-preview --max-seconds 45 --workers 4 --batch-size 200
+SuccessExitStatus=75
+TimeoutStartSec=55
+Nice=15
+CPUWeight=20
+IOWeight=20
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077

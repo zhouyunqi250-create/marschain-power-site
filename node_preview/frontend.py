@@ -24,10 +24,13 @@ from node_preview.metrics import PUBLIC_HISTORY_NOTES
 from node_preview.christmas import christmas_forecast
 from node_preview.orbit_design import ORBIT_SOURCES, ORBIT_RUNTIME_SOURCES, apply_orbit_design
 from node_preview.report_runtime import REPORT_SOURCES, report_runtime
+from node_preview.holder_ranking import validate_public_snapshot
 
 VIEW_SCHEMA = 1
 RUNTIME = Path(__file__).with_name("live_preview.js")
 OPENING_SOURCES = ORBIT_RUNTIME_SOURCES
+HOLDER_RUNTIME = Path(__file__).with_name("holder_ranking.js")
+HOLDER_STYLES = Path(__file__).with_name("holder_ranking.css")
 
 
 def _presentation_function(function, names: tuple[str, ...]):
@@ -935,7 +938,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(__file__).with_name("website_locale.js"), Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
                Path(__file__).with_name("emission.py"),
-               *ORBIT_SOURCES, *REPORT_SOURCES)
+               *ORBIT_SOURCES, *REPORT_SOURCES, HOLDER_RUNTIME, HOLDER_STYLES)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"
@@ -946,17 +949,24 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
                 and hashes and all((root / name).exists() for name in hashes)):
             return hashes
     public = public_payload(payload)
+    if payload.get("holders") is not None:
+        public["holders"] = validate_public_snapshot(payload["holders"], max_age=None)
     (root / "m").mkdir(exist_ok=True)
     # Keep the approved opening in the same content-addressed runtime. It needs
     # no additional public objects, permissions, requests or data dependencies.
     opening = "\n".join(path.read_text(encoding="utf-8") for path in OPENING_SOURCES) if production else ""
     runtime = ((opening + "\n" if opening else "") + report_runtime() + "\n"
-               + RUNTIME.read_text(encoding="utf-8"))
+               + RUNTIME.read_text(encoding="utf-8") + "\n" + HOLDER_RUNTIME.read_text(encoding="utf-8"))
     artifacts = {
         "index.html": _adapt_html(dashboard.build_html(public), mobile=False, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),
         "m/index.html": _adapt_html(dashboard.build_mobile_html(public), mobile=True, power_note=_power_source_note(public["meta"]), public_meta=public["meta"], production=production),
         "live_preview.js": runtime,
     }
+    # The holding ranking shares the existing hashed runtime and entry pages;
+    # no new cloud objects or expanded uploader permissions are required.
+    for name in ("index.html", "m/index.html"):
+        artifacts[name] = _once(artifacts[name], "</head>",
+                                '<style data-holder-ranking>' + HOLDER_STYLES.read_text(encoding="utf-8") + '</style></head>')
     result = {}
     for name, content in artifacts.items():
         target = root / name

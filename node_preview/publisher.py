@@ -16,6 +16,7 @@ from node_preview.collector import read_status
 from node_preview.frontend import build_preview, public_payload
 from node_preview.metrics import MetricStore
 from node_preview.share_report import build_share_report
+from node_preview.holder_ranking import load_public_snapshot, validate_public_snapshot
 
 
 class SnapshotPending(RuntimeError):
@@ -126,6 +127,21 @@ def compose(root: Path, seeds: dict, metrics: MetricStore, *, production: bool =
         "time": now // 60}, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:20]
     meta["node_preview"] = preview
     payload = public_payload({"meta": meta, "rows": rows})
+    holders = load_public_snapshot(root, max_age=None)
+    if holders is None:
+        # A broken/new collector file must not erase the last checked public
+        # holding snapshot or stop the independently verified power publication.
+        try:
+            previous_document = json.loads((root / "site/data/latest.json").read_bytes())
+            prior = previous_document.get("holders") if isinstance(previous_document, dict) else None
+            holders = validate_public_snapshot(prior, max_age=None)
+        except (OSError, ValueError, TypeError, KeyError, RecursionError, OverflowError):
+            holders = None
+    if holders is not None:
+        payload["holders"] = holders
+        holder_digest = hashlib.sha256(json.dumps(holders, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        preview["version"] = hashlib.sha256((preview["version"] + holder_digest).encode()).hexdigest()[:20]
+        payload["meta"]["node_preview"]["version"] = preview["version"]
     report = {"state": state, "version": preview["version"], "source_block": source_block,
               "generated_at": now, "ranking_source": preview["ranking_source"], "known_addresses": known,
               "calibration_done": warmed, "last_collection_success": status.get("last_success"),

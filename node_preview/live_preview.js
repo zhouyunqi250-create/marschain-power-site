@@ -323,11 +323,12 @@
     if (!version) throw new Error('排行榜缺少数据版本');
     latestPayload = payload;
     window.MarsShareReportPayload = payload.share_report || null;
+    window.MarsHolderRankingPayload = payload.holders || null;
     if (version !== lastVersion) {
       renderMetrics(payload.view);
       renderRanks(payload.rows);
       if (rankDataNode) rankDataNode.textContent = JSON.stringify({ meta: payload.meta, rows: payload.rows,
-        share_report: payload.share_report || null });
+        holders: payload.holders || null, share_report: payload.share_report || null });
       lastVersion = version;
       window.applyMarsLanguage?.();
     }
