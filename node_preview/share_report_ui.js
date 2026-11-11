@@ -34,7 +34,7 @@
       share: '分享图片',
       refresh: '重新生成',
       scope: '实时快照展示当前数据；每日统计按北京时间 08:00 结算。图片保留实际数据时点及每日、7天、30天统计区间。',
-      retainedScope: '本次保留上次完整快照，数据时间保持原样。每日统计按北京时间 08:00 结算，实际统计区间见图片。',
+      retainedScope: '实时快照保留上次有效数据及原时间。每日统计独立更新，按北京时间 08:00 结算，实际区间见图片。',
       snapshot: '快照时间',
       daily: '每日统计区间',
       awaiting: '生成后显示',
@@ -46,7 +46,7 @@
       failed: '快报暂未生成，请稍后重试。',
       oldFailed: '重新生成未完成，当前保留的是上次图片。请重新生成后再下载或分享。',
       ready: '快报已生成，可下载或分享。',
-      retained: '更新暂缓，保留上次完整快照。',
+      retained: '实时快照沿用上次有效数据。',
       shareAgain: '已按原时间保留快照，请再次点击分享图片。',
       downloaded: '图片已准备下载。',
       downloadFailed: '下载暂未完成，请重新点击下载图片。',
@@ -67,7 +67,7 @@
       share: 'Share Image',
       refresh: 'Regenerate',
       scope: 'The live snapshot shows current data. Daily statistics close at 00:00 UTC. The image retains the actual snapshot time and daily, 7-day and 30-day reporting windows.',
-      retainedScope: 'The last complete snapshot is retained with its original data time. Daily statistics close at 00:00 UTC; the actual reporting windows remain on the image.',
+      retainedScope: 'The last valid live snapshot keeps its original time. Daily statistics update separately at 00:00 UTC, with their reporting windows shown on the image.',
       snapshot: 'Snapshot Time',
       daily: 'Daily Reporting Window',
       awaiting: 'Shown after generation',
@@ -79,7 +79,7 @@
       failed: 'The report could not be generated. Please try again shortly.',
       oldFailed: 'Regeneration did not complete. The previous image remains visible. Regenerate before downloading or sharing.',
       ready: 'The report is ready to download or share.',
-      retained: 'Updates are delayed. The last complete snapshot is retained.',
+      retained: 'The last valid live snapshot is shown.',
       shareAgain: 'The snapshot has been retained with its original time. Click Share Image again.',
       downloaded: 'The image is ready to download.',
       downloadFailed: 'The download did not complete. Please click Download Image again.',
@@ -123,24 +123,30 @@
     const sourceTime = stamp(node?.source_block_timestamp);
     const retrieved = stamp(bundle?.retrieved_at);
     const dailyEnd = stamp(bundle?.daily?.meta?.statistics_window_end_timestamp);
-    // Retention never repairs evidence. The original report must have been a
-    // coherent, fresh snapshot when its original retrieved_at was recorded.
+    const separate = Object.prototype.hasOwnProperty.call(bundle || {}, 'assembled_at');
+    const assembled = separate ? stamp(bundle.assembled_at) : retrieved;
+    // The assembly clock bounds the daily window, while retrieved_at always
+    // belongs to the original live evidence.
     if (!bundle || bundle.schema !== 1 || !['ready', 'retained'].includes(bundle.state)
       || node?.state !== 'ready' || stamp(node.source_block) === null
       || retrieved === null || retrieved > current + 60 || sourceTime === null
       || sourceTime > current + 60 || sourceTime > retrieved + 60 || retrieved - sourceTime > 300
-      || dailyEnd !== Math.floor(retrieved / DAY) * DAY) {
+      || assembled === null || assembled < retrieved || assembled > current + 60
+      || dailyEnd === null || dailyEnd % DAY !== 0
+      || (separate ? dailyEnd > Math.floor(assembled / DAY) * DAY
+        || (bundle.state === 'ready' && assembled !== retrieved)
+        : dailyEnd !== Math.floor(retrieved / DAY) * DAY)) {
       throw notReady();
     }
     if (bundle.state === 'retained') {
       const retainedAt = stamp(bundle.retained_at);
-      if (retainedAt === null || retainedAt < retrieved || retainedAt > current + 60) throw notReady();
+      if (retainedAt === null || retainedAt < assembled || retainedAt > current + 60) throw notReady();
       return bundle;
     }
-    if (forceRetained || current - sourceTime > 300 || dailyEnd !== Math.floor(current / DAY) * DAY) {
+    if (forceRetained || current - sourceTime > 300 || (!separate && dailyEnd !== Math.floor(current / DAY) * DAY)) {
       // This shallow envelope preserves every original value, evidence object
       // and source clock. Only the retained label and this read time are added.
-      return { ...bundle, state: 'retained', retained_at: current };
+      return { ...bundle, state: 'retained', retained_at: Math.max(current, assembled) };
     }
     return bundle;
   };
@@ -262,7 +268,7 @@
       reject(error);
     }
   });
-  const filename = (data, language = selectedLanguage()) => {
+  const filename = (data, language = selectedLanguage(), bundle) => {
     const suffix = language === 'zh' ? '' : `-${language}`;
     const snapshot = String(data?.live?.snapshotTimeText || '');
     const parts = snapshot.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
@@ -271,7 +277,13 @@
       const wall = new Date(Date.UTC(year, month - 1, day, hour, minute));
       if (wall.getUTCFullYear() === year && wall.getUTCMonth() === month - 1
         && wall.getUTCDate() === day && wall.getUTCHours() === hour && wall.getUTCMinutes() === minute) {
-        return `marschain-report-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}${parts[5]}${suffix}.png`;
+        const dailyEnd = stamp(bundle?.daily?.meta?.statistics_window_end_timestamp);
+        const retrieved = stamp(bundle?.retrieved_at);
+        const date = String(data.daily.dateLabel || '').replace(/\./g, '-');
+        const dailySuffix = dailyEnd !== null && retrieved !== null
+          && dailyEnd !== Math.floor(retrieved / DAY) * DAY && /^\d{4}-\d{2}-\d{2}$/.test(date)
+          ? `-daily-${date}` : '';
+        return `marschain-report-${parts[1]}-${parts[2]}-${parts[3]}-${parts[4]}${parts[5]}${dailySuffix}${suffix}.png`;
       }
     }
     const date = String(data?.daily?.dateLabel || '');
@@ -341,7 +353,7 @@
       staged.setAttribute('aria-label', c.image);
       canvas.replaceWith(staged);
       canvas = staged;
-      rendered = { ...chosen, language, blob, filename: filename(chosen.data, language) };
+      rendered = { ...chosen, language, blob, filename: filename(chosen.data, language, chosen.bundle) };
       exportable = true;
       syncMeta();
       showImage(true);
@@ -546,19 +558,22 @@
     event.preventDefault();
     open(target);
   });
-  // A complete live picture stays fixed. Pending generation and retained
-  // pictures recover automatically when a complete, newer report arrives.
+  // Keep the live picture fixed between daily closes. Advance the verified
+  // daily window independently, even when the live snapshot is retained.
   window.addEventListener('mars-share-report-data', () => {
     if (!modal || modal.hidden || busy || sharing) return;
     if (!exportable) {
       void generate();
       return;
     }
-    if (rendered?.data.live.retained !== true) return;
     try {
       const next = candidate(readBundle());
-      if (next.bundle.state === 'ready'
-        || stamp(next.bundle.retrieved_at) > stamp(rendered.bundle.retrieved_at)) void generate();
+      const dailyEnd = value => stamp(value?.daily?.meta?.statistics_window_end_timestamp);
+      const currentEnd = dailyEnd(rendered.bundle), nextEnd = dailyEnd(next.bundle);
+      if (nextEnd > currentEnd || (nextEnd === currentEnd && rendered.data.live.retained
+        && (next.bundle.state === 'ready' || stamp(next.bundle.retrieved_at) > stamp(rendered.bundle.retrieved_at)))) {
+        void generate();
+      }
     } catch (_) { /* A broken update cannot displace the retained complete image. */ }
   });
   document.addEventListener('keydown', (event) => {

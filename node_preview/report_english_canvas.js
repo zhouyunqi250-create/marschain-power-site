@@ -102,7 +102,7 @@
     });
 
     const dailyTop=top+liveHeight+34,dailyHeight=654;panel(dailyTop,dailyHeight,false);
-    text(L.daily,76,dailyTop+47,27,C.white,600,500);
+    text(d.retained?L.dailyRetained:L.daily,76,dailyTop+47,27,C.white,600,375);
     text(d.rangeText.replace(/ to | ～ | ~ /g,'  →  ')+' UTC',948,dailyTop+44,17,C.ink,400,490,'right');
     text(L.cutoff,948,dailyTop+73,17,C.muted,400,650,'right');
     line(dailyTop+99);

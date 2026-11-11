@@ -107,7 +107,7 @@
     dailyHeader.addColorStop(0,'#d8e7fa13');dailyHeader.addColorStop(1,'#d8e7fa00');
     ctx.fillStyle=dailyHeader;ctx.fillRect(48,794,928,97);ctx.restore();
     fillRound(ctx,48,822,4,574,2,'#c6d4e6');
-    text('每日统计',76,840,32,C.heading,600);
+    text(d.retained?'每日统计 · 上次结算':'每日统计',76,840,32,C.heading,600,'left',450);
     text(d.rangeText,948,838,19,C.ink,400,'right',650);
     text('每日统计 · 北京时间 08:00 结算',76,872,18,C.muted,400);
     line(76,891,948,891);

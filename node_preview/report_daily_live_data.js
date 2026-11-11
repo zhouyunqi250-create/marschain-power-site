@@ -171,6 +171,13 @@
     const retrieved = stamp(bundle.retrieved_at);
     if (retrieved === null) throw new Error(choose('缺少本次数据实际读取时间', 'Missing snapshot retrieval timestamp'));
     const archive = validateDaily(bundle);
+    const separate = own(bundle, 'assembled_at');
+    const assembled = separate ? stamp(bundle.assembled_at) : retrieved;
+    if (separate && (assembled === null || assembled < retrieved
+      || archive.target > Math.floor(assembled / DAY) * DAY)) {
+      throw new Error(choose('日报归档的日结状态、统计区间或固定区块证据不一致',
+        'Daily archive evidence does not match its window or fixed block'));
+    }
     const dm = archive.meta;
     const lm = (bundle.live || {}).meta || {};
     const liveNode = lm.node_preview || {};
@@ -268,12 +275,14 @@
     const daily = {
       rangeText: archive.range.text,
       dateLabel: atTime(archive.target).slice(0, 10).replace(/-/g, '.'),
+      retained: separate && archive.target < Math.floor(assembled / DAY) * DAY,
       newPower: power(dm.statistics_window_new_power, true),
       burned: tokens(dm.statistics_window_burned_tokens),
       transactions: count(dm.statistics_window_active_transactions_seen, '笔'),
       volume: tokens(dm.statistics_window_transaction_volume_wei),
       activeAddresses: count(dm.statistics_window_active_wallet_address_count, '个'),
-      newAddresses: count(dm.statistics_window_new_candidate_address_count, '个'),
+      newAddresses: dm.statistics_window_new_candidate_address_count == null
+        ? '—' : count(dm.statistics_window_new_candidate_address_count, '个'),
       endPower: compactInteger(unsigned(dm.statistics_window_end_total_power)),
       totalBurned: tokens(dm.network_total_burned_tokens),
       blockText: archive.block.toLocaleString(locale),

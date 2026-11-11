@@ -1,8 +1,7 @@
-"""Build the small public share-report bundle from one verified daily archive.
+"""Build a public share report from independently verified live and daily data.
 
-Archive and published-data inputs are read-only. A complete public report is
-atomically cached in private state so an upstream interruption can retain that
-exact snapshot without inventing data or blocking the ordinary minute ranking.
+Archive and published-data inputs are read-only. The private cache preserves
+each section's original data and clocks across publisher interruptions.
 """
 from __future__ import annotations
 
@@ -17,6 +16,7 @@ import re
 import stat
 import tempfile
 import time
+from typing import Iterator
 
 from node_preview.holder_ranking import validate_public_snapshot
 
@@ -30,6 +30,7 @@ _BLOCK_HASH = re.compile(r"0x[0-9a-fA-F]{64}\Z")
 _INTEGER = re.compile(r"-?\d+\Z")
 _UNSIGNED_DECIMAL = re.compile(r"(?:0|[1-9][0-9]{0,95})\Z")
 _NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?\Z", re.IGNORECASE)
+_ARCHIVE_NAME = re.compile(r"[0-9]{8}-0800\Z")
 
 # These are the only live scalar inputs read by report_daily_live_data.js.
 LIVE_FIELDS = (
@@ -204,6 +205,9 @@ def _archive(root: Path, cutoff: int) -> tuple[dict, dict]:
     if total is not None and end_total is not None and total != end_total:
         raise ValueError("Archive daily and fixed-block powers disagree")
 
+    new_addresses = meta.get("statistics_window_new_candidate_address_count")
+    if new_addresses is not None:
+        _nonnegative(new_addresses)
     daily_meta = _scalars(meta, DAILY_FIELDS)
     daily_meta["node_preview"] = _scalars(node, NODE_FIELDS)
     daily_meta["preview_daily_status"] = public_status
@@ -306,20 +310,8 @@ def _scalar_keys(value: object, permitted: tuple[str, ...]) -> dict:
     return result
 
 
-def _complete(bundle: dict, now: int) -> dict:
-    """Validate the whole original snapshot, never against a new data clock.
-
-    The cache is public-safe by construction: arbitrary metadata and addresses
-    cannot be reintroduced via a cache or an existing latest.json file. Missing
-    historical 7/30-day comparisons are intentionally not a completeness gate.
-    """
-    _keys(bundle, {"schema", "state", "retrieved_at", "live", "daily", "daily_evidence"})
-    if type(bundle.get("schema")) is not int or bundle["schema"] != 1 or bundle.get("state") != "ready":
-        raise ValueError("Report is not a ready public snapshot")
-    retrieved = _stamp(bundle.get("retrieved_at"))
-    if retrieved > now + 60:
-        raise ValueError("Report was retrieved in the future")
-    live = _keys(bundle.get("live"), {"meta", "rows", "holders_summary"})
+def _complete_live(live: dict, retrieved: int) -> dict:
+    live = _keys(live, {"meta", "rows", "holders_summary"})
     meta = _keys(live.get("meta"), set(LIVE_FIELDS) | {"node_preview", "preview_metric_sources"})
     _scalar_keys({key: value for key, value in meta.items() if key in LIVE_FIELDS}, LIVE_FIELDS)
     node = _scalar_keys(meta.get("node_preview"), NODE_FIELDS)
@@ -386,21 +378,26 @@ def _complete(bundle: dict, now: int) -> dict:
         if holder_denominator <= 0 or holder_total > holder_denominator:
             raise ValueError("Report holder summary does not agree with its denominator")
 
-    daily = _keys(bundle.get("daily"), {"meta"})
+    return node
+
+
+def _complete_daily(daily: dict, evidence: dict, latest_cutoff: int, *, legacy: bool = False) -> dict:
+    daily = _keys(daily, {"meta"})
     dm = _keys(daily.get("meta"), set(DAILY_FIELDS) | {"node_preview", "preview_daily_status"})
     _scalar_keys({key: value for key, value in dm.items() if key in DAILY_FIELDS}, DAILY_FIELDS)
-    evidence = _keys(bundle.get("daily_evidence"), {
+    evidence = _keys(evidence, {
         "target_timestamp", "source_block", "sha256", "daily_statistics_status"})
     cutoff = _stamp(evidence.get("target_timestamp"))
     frozen = _scalar_keys(dm.get("node_preview"), NODE_FIELDS)
     frozen_block = _nonnegative(evidence.get("source_block"))
-    if (cutoff != retrieved // DAY * DAY or _integer(dm.get("statistics_window_end_timestamp")) != cutoff
+    if (cutoff % DAY or cutoff > latest_cutoff
+            or _integer(dm.get("statistics_window_end_timestamp")) != cutoff
             or _integer(dm.get("statistics_window_start_timestamp")) != cutoff - DAY
-            or frozen.get("state") != "frozen" or frozen_block <= 0 or frozen_block > block
+            or frozen.get("state") != "frozen" or frozen_block <= 0
             or _integer(frozen.get("source_block")) != frozen_block
             or _integer(frozen.get("target_timestamp")) != cutoff
             or not _BLOCK_HASH.fullmatch(str(frozen.get("source_block_hash", "")))
-            or not 0 < _stamp(frozen.get("source_block_timestamp")) < cutoff <= node_time
+            or _stamp(frozen.get("source_block_timestamp")) >= cutoff
             or not _SHA256.fullmatch(str(evidence.get("sha256", "")))):
         raise ValueError("Report daily archive evidence is invalid")
     for status in (dm.get("preview_daily_status"), evidence.get("daily_statistics_status")):
@@ -413,12 +410,59 @@ def _complete(bundle: dict, now: int) -> dict:
     if _integer(dm.get("statistics_window_new_power")) is None:
         raise ValueError("Report daily power change is missing")
     for field in ("statistics_window_burned_tokens", "statistics_window_active_wallet_address_count",
-                  "statistics_window_new_candidate_address_count", "statistics_window_active_transactions_seen",
+                  "statistics_window_active_transactions_seen",
                   "statistics_window_transaction_volume_wei", "statistics_window_end_total_power",
                   "network_total_power", "network_total_burned_tokens"):
         _nonnegative(dm.get(field))
+    new_addresses = dm.get("statistics_window_new_candidate_address_count")
+    if legacy or new_addresses is not None:
+        _nonnegative(new_addresses)
     if _integer(dm["statistics_window_end_total_power"]) != _integer(dm["network_total_power"]):
         raise ValueError("Report daily total powers disagree")
+    return frozen
+
+
+def _check_block_order(live: dict, frozen: dict) -> None:
+    live_block = _integer(live["source_block"])
+    frozen_block = _integer(frozen["source_block"])
+    live_time = _integer(live["source_block_timestamp"])
+    frozen_time = _integer(frozen["source_block_timestamp"])
+    if live_block == frozen_block:
+        if live_time == frozen_time and live["source_block_hash"].lower() == frozen["source_block_hash"].lower():
+            return
+    elif ((live_block < frozen_block and live_time <= frozen_time)
+            or (live_block > frozen_block and live_time >= frozen_time)):
+        return
+    raise ValueError("Report live and frozen block identities disagree")
+
+
+def _complete(bundle: dict, now: int) -> dict:
+    """Validate public fields and source clocks for both old and new caches."""
+    _keys(bundle, {"schema", "state", "retrieved_at", "assembled_at", "retained_at",
+                   "live", "daily", "daily_evidence"})
+    if type(bundle.get("schema")) is not int or bundle["schema"] != 1:
+        raise ValueError("Invalid report schema")
+    retrieved = _stamp(bundle.get("retrieved_at"))
+    legacy = "assembled_at" not in bundle
+    assembled = retrieved if legacy else _stamp(bundle["assembled_at"])
+    state = bundle.get("state")
+    if (not retrieved <= assembled <= now + 60
+            or (state == "ready" and (retrieved != assembled or "retained_at" in bundle))
+            or (state == "retained" and (legacy or _stamp(bundle.get("retained_at")) != assembled))
+            or state not in {"ready", "retained"}):
+        raise ValueError("Invalid report state or assembly time")
+    node = _complete_live(bundle.get("live"), retrieved)
+    if not legacy and "holders_summary" not in bundle["live"]:
+        raise ValueError("Report holder aggregate is unavailable")
+    latest_cutoff = (assembled if legacy else min(assembled, now)) // DAY * DAY
+    frozen = _complete_daily(bundle.get("daily"), bundle.get("daily_evidence"), latest_cutoff, legacy=legacy)
+    if legacy:
+        if (_integer(bundle["daily_evidence"]["target_timestamp"]) != latest_cutoff
+                or latest_cutoff > _integer(node["source_block_timestamp"])
+                or _integer(frozen["source_block"]) > _integer(node["source_block"])):
+            raise ValueError("Legacy report live block predates its daily archive")
+    else:
+        _check_block_order(node, frozen)
     return bundle
 
 
@@ -486,8 +530,7 @@ def _last_complete(root: Path, now: int) -> dict | None:
         return copy.deepcopy(checked)
     except Exception:
         pass
-    # Cold-start migration uses only an existing complete, public ready bundle.
-    # Never derive a report by combining current metrics with an older archive.
+    # Recover a previously verified public bundle if private state is missing.
     try:
         site = root / "site"
         data = site / "data"
@@ -506,47 +549,86 @@ def _last_complete(root: Path, now: int) -> dict | None:
         return None
 
 
-def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = None) -> dict:
-    """Return a JS-safe bundle, or a non-blocking settlement-waiting marker.
+def _archive_cutoffs(root: Path, cutoff: int, oldest: int) -> Iterator[int]:
+    if cutoff < oldest:
+        return
+    yield cutoff
+    if cutoff - oldest < DAY:
+        return
 
-    Fresh reports use this minute's exact verified cutoff. On failure only a
-    previously complete whole report can be retained, with its original clocks
-    and evidence. The main ranking and its time are not modified by this cache.
-    """
+    archives = root / "archives"
+    if root.is_symlink() or archives.is_symlink():
+        return
+    try:
+        names = sorted((path.name for path in archives.iterdir() if _ARCHIVE_NAME.fullmatch(path.name)),
+                       reverse=True)
+    except OSError:
+        return
+    for name in names:
+        try:
+            target = int(datetime.strptime(name, "%Y%m%d-0800").replace(tzinfo=timezone.utc).timestamp())
+        except (ValueError, OverflowError):
+            continue
+        if oldest <= target < cutoff:
+            yield target
+
+
+def _latest_daily(root: Path, cutoff: int, cached: dict | None, node: dict) -> tuple[dict, dict]:
+    oldest = _integer(cached["daily_evidence"]["target_timestamp"]) if cached else 0
+    for target in _archive_cutoffs(root, cutoff, oldest):
+        try:
+            daily, evidence = _archive(root, target)
+            frozen = _complete_daily(daily, evidence, cutoff)
+            _check_block_order(node, frozen)
+            return daily, evidence
+        except Exception:
+            # An unreadable or unverified archive does not block an older one.
+            continue
+    if cached is not None and oldest <= cutoff:
+        daily = cached["daily"]
+        _check_block_order(node, daily["meta"]["node_preview"])
+        return daily, cached["daily_evidence"]
+    raise ValueError("No verified report archive is available")
+
+
+def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = None) -> dict:
+    """Combine the newest usable live snapshot and verified daily archive."""
     waiting = {"schema": 1, "state": "waiting_for_settlement"}
     now = int(time.time())
+    cutoff = now // DAY * DAY
+    archives = Path(root).absolute()
     cache = Path(cache_root if cache_root is not None else root).absolute()
+    cached = _last_complete(cache, now)
+    if cached is not None and _stamp(cached.get("assembled_at", cached["retrieved_at"])) > now:
+        cached = None
+
+    live_choices = []
     try:
-        if not isinstance(payload, dict):
-            raise ValueError("Live payload is missing")
-        meta = payload.get("meta") or {}
-        cutoff = _integer(meta.get("statistics_window_end_timestamp"))
-        if cutoff is None or cutoff <= 0 or cutoff % DAY or cutoff > now // DAY * DAY:
-            raise ValueError("Live cutoff is invalid")
         live = _live(payload)
-        # The new image requires this metric. Do not replace a fully exportable
-        # cache with a power-only report when the independent collector is late.
         if "holders_summary" not in live:
             raise ValueError("Report holder aggregate is unavailable")
-        daily, evidence = _archive(Path(root).absolute(), cutoff)
-        live_block = _integer(live["meta"]["node_preview"].get("source_block"))
-        if live_block is None or live_block < evidence["source_block"]:
-            raise ValueError("Live block predates its daily archive")
-        bundle = {"schema": 1, "state": "ready", "retrieved_at": now,
-                  "live": live, "daily": daily, "daily_evidence": evidence}
-        public = _complete(_browser_integers(bundle), now)
+        live_choices.append((live, _complete_live(live, now), now, "ready"))
+    except Exception:
+        pass
+    if cached is not None:
+        live = cached["live"]
+        live_choices.append((live, live["meta"]["node_preview"], cached["retrieved_at"], "retained"))
+
+    for live, node, retrieved, state in live_choices:
+        try:
+            daily, evidence = _latest_daily(archives, cutoff, cached, node)
+            bundle = {"schema": 1, "state": state, "retrieved_at": retrieved, "assembled_at": now,
+                      "live": live, "daily": daily, "daily_evidence": evidence}
+            if state == "retained":
+                bundle["retained_at"] = now
+            public = _complete(_browser_integers(bundle), now)
+        except Exception:
+            # Private errors must not interrupt the minute publisher or leak.
+            continue
         try:
             _save_complete(cache, public)
         except Exception:
-            # Disk permissions/full disks must not block a fresh valid report.
+            # Disk errors do not block a verified public report.
             pass
         return public
-    except Exception:
-        # Archive/JSON/I/O problems must not interrupt the minute publisher.
-        # Exception strings can contain server paths or other private context.
-        retained = _last_complete(cache, now)
-        if retained is None:
-            return waiting
-        retained["state"] = "retained"
-        retained["retained_at"] = now
-        return retained
+    return waiting
