@@ -19,6 +19,7 @@ import time
 from typing import Iterator
 
 from node_preview.holder_ranking import validate_public_snapshot
+from node_preview.official_homepage import DAILY_CANDLE_BASIS
 
 
 DAY = 86400
@@ -62,7 +63,7 @@ NODE_FIELDS = (
     "generated_at", "version", "target_timestamp",
 )
 STATUS_FIELDS = ("state", "frozen_end_timestamp", "expected_end_timestamp")
-SOURCE_FIELDS = ("source", "status", "fetched_at", "block")
+SOURCE_FIELDS = ("source", "status", "fetched_at", "block", "basis")
 SOURCE_KEYS = (
     "network_total_power", "network_total_burned_tokens", "explorer_total_addresses",
     "network_current_price", "network_highest_price", "network_total_circulation_tokens", "emission",
@@ -334,6 +335,7 @@ def _select_official_fields(live: dict, cached: dict | None, retrieved: int) -> 
     previous_sources = previous.get("preview_metric_sources", {})
     for field in _OFFICIAL_FIELDS:
         current_source = sources.get(field, {})
+        candle_high = field == "network_highest_price" and current_source.get("basis") == DAILY_CANDLE_BASIS
         try:
             _validate_official_field(field, meta.get(field), current_source, retrieved, generated)
             continue
@@ -346,6 +348,8 @@ def _select_official_fields(live: dict, cached: dict | None, retrieved: int) -> 
         previous_source = previous_sources.get(field, {})
         stale_source = current_source if current_source.get("status") == "stale" else {}
         for value, source in ((meta.get(field), stale_source), (previous.get(field), previous_source)):
+            if candle_high and source.get("basis") != DAILY_CANDLE_BASIS:
+                continue
             retained = {**source, "status": "stale"}
             try:
                 fetched = _validate_official_field(field, value, retained, retrieved, generated, allow_stale=True)
@@ -653,7 +657,10 @@ def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = N
         pass
     if cached is not None:
         live = cached["live"]
-        live_choices.append((live, live["meta"]["node_preview"], cached["retrieved_at"], "retained"))
+        current_high = ((payload.get("meta") or {}).get("preview_metric_sources") or {}).get("network_highest_price") or {}
+        cached_high = live["meta"]["preview_metric_sources"].get("network_highest_price") or {}
+        if current_high.get("basis") != DAILY_CANDLE_BASIS or cached_high.get("basis") == DAILY_CANDLE_BASIS:
+            live_choices.append((live, live["meta"]["node_preview"], cached["retrieved_at"], "retained"))
 
     for live, node, retrieved, state in live_choices:
         try:

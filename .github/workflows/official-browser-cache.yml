@@ -1,0 +1,60 @@
+name: Refresh public Explorer data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "2-57/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/official-browser-cache.yml"
+      - "node_preview/official_homepage.py"
+      - "node_preview/official_relay.py"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: marschain-official-browser-cache
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.repository == 'zhouyunqi250-create/marschain-power-site' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout collection code
+        uses: actions/checkout@v4
+
+      - name: Fetch and publish the latest public receipt
+        shell: bash
+        run: |
+          cache_ref=refs/heads/official-browser-cache
+          receipt=official-browser.json
+          scratch="$(mktemp -d)"
+          previous=
+
+          if git ls-remote --exit-code --heads origin "$cache_ref" > "$scratch/ref"; then
+            git fetch --no-tags --depth=1 origin "$cache_ref"
+            previous="$(git rev-parse FETCH_HEAD)"
+            git show "$previous:$receipt" > "$scratch/$receipt"
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+          fi
+
+          python3 -m node_preview.official_relay --output "$scratch/$receipt"
+          if [ -n "$previous" ] && git show "$previous:$receipt" | cmp -s - "$scratch/$receipt"; then
+            exit 0
+          fi
+
+          blob="$(git hash-object -w "$scratch/$receipt")"
+          tree="$(printf '100644 blob %s\t%s\n' "$blob" "$receipt" | git mktree)"
+          commit="$(git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" -m 'Publish current public MarsChain Explorer receipt')"
+          # The cache branch holds one transient receipt. Daily backups retain their own history.
+          git push --force-with-lease="$cache_ref:$previous" origin "$commit:$cache_ref"

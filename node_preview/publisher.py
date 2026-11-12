@@ -160,7 +160,8 @@ def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuil
         raise ValueError("A separate source root is allowed only for an isolated review preview")
     collection_root = source_root or root
     store = MetricStore(root / "state/preview.sqlite3", rpc_url=rpc_url, seed_dir=root / "state",
-                        observation_database=collection_root / "state/preview.sqlite3")
+                        observation_database=collection_root / "state/preview.sqlite3",
+                        enable_official_relay=production)
     seeds = store.bootstrap(origin=origin)
     built = False
     while True:

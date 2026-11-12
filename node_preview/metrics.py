@@ -18,6 +18,8 @@ import socket
 import sqlite3
 import ssl
 from node_preview.emission import build_emission_meta, MODEL_VERSION
+from node_preview.official_homepage import (OFFICIAL_HOMEPAGE, fetch_daily_candle_high,
+                                           valid_candle_high, valid_homepage_asset)
 from node_preview.official_transport import OfficialGetRoute, direct_official_route_allowed
 import time
 import urllib.error
@@ -300,7 +302,8 @@ class MetricStore:
 
     def __init__(self, db_path: str | Path, rpc_url: str = "http://127.0.0.1:18555", seed_dir: str | Path | None = None,
                  fetcher: Callable = fetch_json, timeout: float = 10, cache_seconds: int = 50,
-                 observation_database: str | Path | None = None, boundary_sample_tolerance_seconds: int = 90):
+                 observation_database: str | Path | None = None, boundary_sample_tolerance_seconds: int = 90,
+                 enable_official_homepage: bool = False, enable_official_relay: bool = False):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.observation_database = Path(observation_database) if observation_database is not None else self.db_path
@@ -308,6 +311,12 @@ class MetricStore:
             raise ValueError("Boundary sample tolerance must be between 0 and 300 seconds")
         self.boundary_sample_tolerance_seconds = boundary_sample_tolerance_seconds
         self.rpc_url, self.fetcher, self.timeout, self.cache_seconds = rpc_url, fetcher, timeout, cache_seconds
+        self.official_homepage = enable_official_homepage or enable_official_relay
+        self.official_relay = None
+        if enable_official_relay:
+            from node_preview.official_relay import OfficialRelay
+
+            self.official_relay = OfficialRelay()
         self.seed_dir = Path(seed_dir) if seed_dir is not None else self.db_path.parent / "seed"
         with self._db() as conn:
             conn.executescript("""
@@ -961,6 +970,48 @@ class MetricStore:
                   "error": cached.get("error"), "age_seconds": max(0, now - int(cached["fetched_at"])) if cached.get("fetched_at") else None}
         return payload, status
 
+    def _cached_homepage_high(self, now: int) -> tuple[dict, dict]:
+        with self._db() as conn:
+            row = conn.execute("SELECT * FROM preview_metric_cache WHERE key=?", (OFFICIAL_HOMEPAGE,)).fetchone()
+        cached = dict(row) if row else {}
+        receipt = json.loads(cached["payload"]) if cached.get("payload") else {}
+        if (receipt.get("source") != OFFICIAL_HOMEPAGE or not valid_candle_high(receipt.get("value"))
+                or not valid_homepage_asset(receipt.get("asset"))
+                or type(receipt.get("fetched_at")) is not int or receipt["fetched_at"] != cached.get("fetched_at")
+                or not 0 < receipt["fetched_at"] <= now):
+            receipt = {}
+        checked = cached.get("checked_at") or 0
+        interval = max(300, self.cache_seconds) if receipt and not cached.get("error") else self.cache_seconds
+        if now - checked >= interval:
+            try:
+                value = fetch_daily_candle_high(min(5, self.timeout))
+                if not receipt or value["fetched_at"] >= receipt["fetched_at"]:
+                    receipt = value
+                error = None
+            except (OSError, ValueError, http.client.HTTPException) as exc:
+                error = str(exc)
+            cached = {"fetched_at": receipt.get("fetched_at"), "error": error}
+            with self._db() as conn:
+                conn.execute("INSERT OR REPLACE INTO preview_metric_cache VALUES (?,?,?,?,?)",
+                             (OFFICIAL_HOMEPAGE, json.dumps(receipt), cached["fetched_at"], now, error))
+        status = "unavailable"
+        if receipt:
+            status = "stale_cache" if cached.get("error") or now - receipt["fetched_at"] > 300 else "ok"
+        return receipt, {"source": OFFICIAL_HOMEPAGE, "status": status, "fetched_at": receipt.get("fetched_at")}
+
+    def _relay_for_live(self, now: int) -> dict:
+        previous = self._get("official_live_relay_receipts", {})
+        try:
+            incoming = self.official_relay.read(now, timeout=min(5, self.timeout))
+        except (OSError, ValueError, http.client.HTTPException):
+            return previous
+        for kind in ("stats", "highest"):
+            candidate = incoming.get(kind)
+            if candidate and candidate["fetched_at"] > previous.get(kind, {}).get("fetched_at", 0):
+                previous = {**previous, kind: candidate}
+                self._put("official_live_relay_receipts", previous)
+        return previous
+
     def refresh(self, base_meta: dict, source_block: int | dict, now: int | None = None,
                 observed_counts: dict | None = None) -> dict:
         now = int(time.time()) if now is None else int(now)
@@ -978,12 +1029,14 @@ class MetricStore:
         def preserved(field, failure):
             prior = sources.get(field) or seed_source
             return {**prior, "status": "preserved_seed", "checked_at": now, "error": failure}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4 if self.official_homepage else 3) as pool:
             stats_task = pool.submit(self._cached_external, "/stats", now)
             power_task = pool.submit(self._cached_external, "/power/stats", now)
             totals_task = pool.submit(self._node_totals, block)
+            highest_task = pool.submit(self._cached_homepage_high, now) if self.official_homepage else None
             stats, stats_source = stats_task.result()
             official_power, power_source = power_task.result()
+            highest, highest_source = highest_task.result() if highest_task else ({}, {})
             try:
                 totals = totals_task.result()
                 node_source = {"source": "local_rpc_power_contract", "contract": POWER_CONTRACT, "contract_source": CONTRACT_SOURCE,
@@ -993,6 +1046,25 @@ class MetricStore:
                 prior = self._get("last_node_totals", {})
                 totals = prior.get("totals", {})
                 node_source = {**prior.get("source", {}), "checked_at": now, "status": "stale_cache" if totals else "unavailable", "error": str(exc)}
+        # The relay's original HTTP receipt time applies only to live fields.
+        # A GitHub publication is never evidence of a precise 08:00 sample.
+        live_stats, live_stats_source = stats, stats_source
+        if self.official_relay is not None and (stats_source.get("status") != "ok" or highest_source.get("status") != "ok"):
+            relay = self._relay_for_live(now)
+            for kind, direct in (("stats", stats_source), ("highest", highest_source)):
+                receipt = relay.get(kind)
+                if (direct.get("status") == "ok" or not receipt
+                        or not (direct.get("fetched_at") or 0) < receipt["fetched_at"] <= now):
+                    continue
+                status = "ok" if now - receipt["fetched_at"] <= 300 else "stale_cache"
+                if kind == "stats":
+                    live_stats = receipt["payload"]
+                    live_stats_source = {"source": EXPLORER_API + "/stats", "status": status,
+                                         "fetched_at": receipt["fetched_at"]}
+                else:
+                    highest = receipt
+                    highest_source = {"source": OFFICIAL_HOMEPAGE, "status": status,
+                                      "fetched_at": receipt["fetched_at"]}
         for output, input_key in (("network_total_power", "power"), ("network_total_burned_tokens", "burned")):
             value = _integer(totals.get(input_key))
             if value is not None:
@@ -1006,19 +1078,23 @@ class MetricStore:
                     sources[output] = preserved(output, node_source.get("error"))
         meta["network_total_burned_display"] = _token(meta.get("network_total_burned_tokens"))
         for output, input_key in (("explorer_total_addresses", "totalAddresses"), ("network_total_circulation_tokens", "totalCirculation")):
-            value = _integer(stats.get(input_key))
+            value = _integer(live_stats.get(input_key))
             if value is not None:
-                meta[output], sources[output] = value, dict(stats_source)
+                meta[output], sources[output] = value, dict(live_stats_source)
             else:
-                sources[output] = preserved(output, stats_source.get("error") or "official field unavailable")
+                sources[output] = preserved(output, live_stats_source.get("error") or "official field unavailable")
         meta["network_total_circulation_display"] = _token(meta.get("network_total_circulation_tokens"))
         for tag, key in (("current", "currentPrice"), ("highest", "highestPrice"), ("lowest", "lowestPrice")):
             output = f"network_{tag}_price"
-            if _price(stats.get(key)) is not None:
-                meta[output], meta[output + "_display"] = stats[key], _price(stats[key])
-                sources[output] = dict(stats_source)
+            if tag == "highest" and self.official_homepage:
+                meta[output] = highest.get("value")
+                meta[output + "_display"] = _price(meta[output])
+                sources[output] = highest_source
+            elif _price(live_stats.get(key)) is not None:
+                meta[output], meta[output + "_display"] = live_stats[key], _price(live_stats[key])
+                sources[output] = dict(live_stats_source)
             else:
-                sources[output] = preserved(output, stats_source.get("error") or "official field unavailable")
+                sources[output] = preserved(output, live_stats_source.get("error") or "official field unavailable")
         meta.update(generated_at=now, generated_at_local=_local(now), rpc_latest_block=block, latest_block=block,
                     rpc_url=self.rpc_url, preview_metrics_checked_at=now)
         sources["latest_block"] = {"source": "collector_checkpoint", "block": block, "checked_at": now, "status": "ok"}

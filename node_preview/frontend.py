@@ -22,6 +22,7 @@ from typing import Any
 import build_frontend_dashboard as dashboard
 from node_preview.metrics import PUBLIC_HISTORY_NOTES
 from node_preview.christmas import christmas_forecast
+from node_preview.official_homepage import DAILY_CANDLE_BASIS, OFFICIAL_HOMEPAGE
 from node_preview.orbit_design import ORBIT_SOURCES, ORBIT_RUNTIME_SOURCES, apply_orbit_design
 from node_preview.report_runtime import REPORT_SOURCES, report_runtime
 from node_preview.holder_ranking import validate_public_snapshot
@@ -172,6 +173,8 @@ def _public_meta(value: dict) -> dict:
         label = "node" if source in {"local_rpc_power_contract", "local_rpc_block_reward", "node"} else "official" if "explorer.marschain.net" in source or source == "official" else "snapshot"
         status = str(entry.get("status") or "unavailable")
         sources[key] = {"source": label, "status": "ok" if status == "ok" else "stale" if entry.get("fetched_at") else "unavailable"}
+        if key == "network_highest_price" and source == OFFICIAL_HOMEPAGE:
+            sources[key]["basis"] = DAILY_CANDLE_BASIS
         for field in ("fetched_at", "block"):
             if isinstance(entry.get(field), (int, float)):
                 sources[key][field] = entry[field]
