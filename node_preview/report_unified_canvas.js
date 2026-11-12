@@ -56,7 +56,7 @@
     drawMasthead(ctx);
     ctx.save();ctx.translate(0,96);
 
-    // All values in this frame are current readings or current model estimates.
+    // Retained official figures keep their own acquisition time below the value.
     const liveFill=ctx.createLinearGradient(48,184,976,798);
     liveFill.addColorStop(0,'#102c32');liveFill.addColorStop(1,'#10212b');
     fillRound(ctx,48,184,928,614,22,liveFill,'#87c5c347');
@@ -83,17 +83,23 @@
     line(512,430,512,494);
     text('按当前算力与区块奖励估算',512,524,17,C.muted,400,'center',872);
     line(76,547,948,547);
-    [['当前价格',l.price],['最高价格',l.highestPrice],['预言机触发价',l.triggerPrice]].forEach(([label,value],i)=>{
+    const officialTime=(key,x,y)=>{
+      const time=l.officialRetainedTimes?.[key];
+      if(time)text(`沿用 ${time}`,x,y,16,'#e9cc9d',400,'left',270);
+    };
+    [['当前价格','price'],['最高价格','highestPrice'],['预言机触发价','triggerPrice']].forEach(([label,key],i)=>{
       const x=76+i*298;
       text(label,x,582,21,C.muted,400,'left',270);
-      text(value,x,623,34,C.ink,500,'left',270);
+      text(l[key],x,623,34,C.ink,500,'left',270);
+      officialTime(key,x,644);
       if(i<2)line(x+273,568,x+273,630);
     });
     line(76,652,948,652);
-    [['流通币量',l.circulation],['累计销毁量',l.burned],['全网地址数',l.addresses]].forEach(([label,value],i)=>{
+    [['流通币量','circulation'],['累计销毁量','burned'],['全网地址数','addresses']].forEach(([label,key],i)=>{
       const x=76+i*298;
       text(label,x,688,21,C.muted,400,'left',270);
-      text(value,x,729,31,C.ink,500,'left',270);
+      text(l[key],x,729,31,C.ink,500,'left',270);
+      officialTime(key,x,749);
       if(i<2)line(x+273,674,x+273,736);
     });
 

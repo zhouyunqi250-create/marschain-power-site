@@ -89,15 +89,21 @@
     vertical(512,divider+24,66);
     text(L.estimate,512,divider+111,17,C.muted,400,872,'center');
     const prices=divider+135;line(prices);
-    [[L.price,l.price],[L.high,l.highestPrice],
-      [L.trigger,l.triggerPrice]].forEach(([label,value],i)=>{
-      const x=76+i*298;metric(label,value,x,prices+34,270,35);
+    const officialTime=(key,x,y)=>{
+      const time=l.officialRetainedTimes?.[key];
+      if(time)text(`${L.officialAsOf} ${time}`,x,y,16,'#e9cc9d',400,270);
+    };
+    [[L.price,'price'],[L.high,'highestPrice'],
+      [L.trigger,'triggerPrice']].forEach(([label,key],i)=>{
+      const x=76+i*298;metric(label,l[key],x,prices+34,270,35);
+      officialTime(key,x,prices+100);
       if(i<2)vertical(x+273,prices+22,67);
     });
     const totals=prices+104;line(totals);
-    [[L.supply,l.circulation],[L.burned,l.burned],
-      [L.addresses,l.addresses]].forEach(([label,value],i)=>{
-      const x=76+i*298;metric(label,value,x,totals+33,270,30);
+    [[L.supply,'circulation'],[L.burned,'burned'],
+      [L.addresses,'addresses']].forEach(([label,key],i)=>{
+      const x=76+i*298;metric(label,l[key],x,totals+33,270,30);
+      officialTime(key,x,totals+102);
       if(i<2)vertical(x+273,totals+22,65);
     });
 

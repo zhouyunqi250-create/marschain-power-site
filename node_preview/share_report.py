@@ -310,7 +310,54 @@ def _scalar_keys(value: object, permitted: tuple[str, ...]) -> dict:
     return result
 
 
-def _complete_live(live: dict, retrieved: int) -> dict:
+def _validate_official_field(field: str, value: object, source: dict, retrieved: int, generated: int,
+                             *, allow_stale: bool = False) -> int:
+    fetched = _stamp(source.get("fetched_at"))
+    status = source.get("status")
+    fresh = status == "ok" and fetched >= retrieved - 300
+    retained = allow_stale and status == "stale" and fetched <= retrieved
+    if (source.get("source") != "official" or fetched > min(retrieved + 60, generated)
+            or not (fresh or retained)):
+        raise ValueError("Report official provenance is invalid")
+    if field in ("network_current_price", "network_highest_price"):
+        _number(value)
+    else:
+        _nonnegative(value)
+    return fetched
+
+
+def _select_official_fields(live: dict, cached: dict | None, retrieved: int) -> None:
+    meta = live["meta"]
+    generated = _stamp(meta.get("generated_at"))
+    sources = meta["preview_metric_sources"]
+    previous = cached["live"]["meta"] if cached is not None else {}
+    previous_sources = previous.get("preview_metric_sources", {})
+    for field in _OFFICIAL_FIELDS:
+        current_source = sources.get(field, {})
+        try:
+            _validate_official_field(field, meta.get(field), current_source, retrieved, generated)
+            continue
+        except (ValueError, OverflowError, OSError):
+            pass
+
+        # The publisher's official stats cache and the report cache both
+        # preserve the original HTTP receipt time. Keep the newest valid one.
+        candidates = []
+        previous_source = previous_sources.get(field, {})
+        stale_source = current_source if current_source.get("status") == "stale" else {}
+        for value, source in ((meta.get(field), stale_source), (previous.get(field), previous_source)):
+            retained = {**source, "status": "stale"}
+            try:
+                fetched = _validate_official_field(field, value, retained, retrieved, generated, allow_stale=True)
+            except (ValueError, OverflowError, OSError):
+                continue
+            candidates.append((fetched, value, retained))
+        if not candidates:
+            raise ValueError("No verified official value is available")
+        _, meta[field], sources[field] = max(candidates, key=lambda candidate: candidate[0])
+
+
+def _complete_live(live: dict, retrieved: int, *, allow_stale_official: bool = False) -> dict:
     live = _keys(live, {"meta", "rows", "holders_summary"})
     meta = _keys(live.get("meta"), set(LIVE_FIELDS) | {"node_preview", "preview_metric_sources"})
     _scalar_keys({key: value for key, value in meta.items() if key in LIVE_FIELDS}, LIVE_FIELDS)
@@ -337,15 +384,8 @@ def _complete_live(live: dict, retrieved: int) -> dict:
             or _number(meta.get("power_required_per_mars_daily")) <= 0):
         raise ValueError("Report emission model is not verified at the same block")
     for field in _OFFICIAL_FIELDS:
-        source = sources.get(field) or {}
-        fetched = _stamp(source.get("fetched_at"))
-        if (source.get("source") != "official" or source.get("status") != "ok"
-                or not retrieved - 300 <= fetched <= retrieved + 60 or fetched > generated):
-            raise ValueError("Report official provenance is invalid")
-        if field in ("network_current_price", "network_highest_price"):
-            _number(meta.get(field))
-        else:
-            _nonnegative(meta.get(field))
+        _validate_official_field(field, meta.get(field), sources.get(field) or {}, retrieved, generated,
+                                 allow_stale=allow_stale_official)
     rows = live.get("rows")
     if not isinstance(rows, list) or len(rows) != 100:
         raise ValueError("Report does not contain its complete top 100")
@@ -451,7 +491,7 @@ def _complete(bundle: dict, now: int) -> dict:
             or (state == "retained" and (legacy or _stamp(bundle.get("retained_at")) != assembled))
             or state not in {"ready", "retained"}):
         raise ValueError("Invalid report state or assembly time")
-    node = _complete_live(bundle.get("live"), retrieved)
+    node = _complete_live(bundle.get("live"), retrieved, allow_stale_official=not legacy)
     if not legacy and "holders_summary" not in bundle["live"]:
         raise ValueError("Report holder aggregate is unavailable")
     latest_cutoff = (assembled if legacy else min(assembled, now)) // DAY * DAY
@@ -607,7 +647,8 @@ def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = N
         live = _live(payload)
         if "holders_summary" not in live:
             raise ValueError("Report holder aggregate is unavailable")
-        live_choices.append((live, _complete_live(live, now), now, "ready"))
+        _select_official_fields(live, cached, now)
+        live_choices.append((live, _complete_live(live, now, allow_stale_official=True), now, "ready"))
     except Exception:
         pass
     if cached is not None:

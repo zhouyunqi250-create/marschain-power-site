@@ -35,6 +35,7 @@
       refresh: '重新生成',
       scope: '实时快照展示当前数据；每日统计按北京时间 08:00 结算。图片保留实际数据时点及每日、7天、30天统计区间。',
       retainedScope: '实时快照保留上次有效数据及原时间。每日统计独立更新，按北京时间 08:00 结算，实际区间见图片。',
+      mixedScope: '算力、销毁和持币数据随节点更新。标有「沿用」的官方指标保留原数据时间。每日统计按北京时间 08:00 结算。',
       snapshot: '快照时间',
       daily: '每日统计区间',
       awaiting: '生成后显示',
@@ -68,6 +69,7 @@
       refresh: 'Regenerate',
       scope: 'The live snapshot shows current data. Daily statistics close at 00:00 UTC. The image retains the actual snapshot time and daily, 7-day and 30-day reporting windows.',
       retainedScope: 'The last valid live snapshot keeps its original time. Daily statistics update separately at 00:00 UTC, with their reporting windows shown on the image.',
+      mixedScope: 'Node metrics are current. Retained official figures show their original data times. Daily statistics close at 00:00 UTC.',
       snapshot: 'Snapshot Time',
       daily: 'Daily Reporting Window',
       awaiting: 'Shown after generation',
@@ -216,7 +218,8 @@
     // The model converts the verified raw endpoints for each report language.
     // Reuse its actual clocks here so the panel and exported PNG always agree.
     const dailyText = value?.daily.rangeText;
-    modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope : c.scope;
+    modal.querySelector('[data-poster-scope]').textContent = value?.live.retained ? c.retainedScope
+      : value?.live.officialRetained ? c.mixedScope : c.scope;
     modal.querySelector('[data-poster-snapshot]').textContent = value
       ? value.live.snapshotTimeText + c.timezone : c.awaiting;
     modal.querySelector('[data-poster-daily]').textContent = value && dailyText
@@ -571,7 +574,9 @@
       const dailyEnd = value => stamp(value?.daily?.meta?.statistics_window_end_timestamp);
       const currentEnd = dailyEnd(rendered.bundle), nextEnd = dailyEnd(next.bundle);
       if (nextEnd > currentEnd || (nextEnd === currentEnd && rendered.data.live.retained
-        && (next.bundle.state === 'ready' || stamp(next.bundle.retrieved_at) > stamp(rendered.bundle.retrieved_at)))) {
+        && (next.bundle.state === 'ready' || stamp(next.bundle.retrieved_at) > stamp(rendered.bundle.retrieved_at)))
+        || (nextEnd === currentEnd && rendered.data.live.officialRetained && !next.data.live.officialRetained
+          && next.bundle.state === 'ready')) {
         void generate();
       }
     } catch (_) { /* A broken update cannot displace the retained complete image. */ }

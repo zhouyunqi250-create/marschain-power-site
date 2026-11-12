@@ -111,7 +111,7 @@
   const officialOkay = (meta, key, retrieved) => {
     const entry = source(meta, key);
     const time = stamp(entry.fetched_at);
-    return entry.source === 'official' && entry.status === 'ok' && time !== null
+    return entry.source === 'official' && ['ok', 'stale'].includes(entry.status) && time !== null
       && time <= retrieved + 60;
   };
   const nodeOkay = (meta, key, block) => {
@@ -247,6 +247,15 @@
     const lastTime = times.length ? Math.max(...times) : null;
     const officialTimeText = firstTime === null ? MISSING : firstTime === lastTime
       ? atTime(firstTime) : `${atTime(firstTime)}${choose(' 至 ', ' to ')}${atTime(lastTime)}`;
+    const retainedTime = (key, okay) => okay && source(lm, key).status === 'stale'
+      ? atTime(stamp(source(lm, key).fetched_at)) : '';
+    const officialRetainedTimes = {
+      price: retainedTime('network_current_price', priceOkay),
+      highestPrice: retainedTime('network_highest_price', highOkay),
+      triggerPrice: retainedTime('network_highest_price', highOkay),
+      circulation: retainedTime('network_total_circulation_tokens', circulationOkay),
+      addresses: retainedTime('explorer_total_addresses', addressesOkay),
+    };
     // The one poster clock describes the server's assembled snapshot. Redrawing
     // or fetching that snapshot locally must not give the underlying data a new time.
     const snapshotTime = stamp(lm.generated_at);
@@ -311,6 +320,8 @@
       circulation: circulationOkay ? tokens(lm.network_total_circulation_tokens) : MISSING,
       burned: tokens(burnedValue),
       officialTimeText,
+      officialRetainedTimes,
+      officialRetained: Object.values(officialRetainedTimes).some(Boolean),
       modelNote: choose('产出按当前区块奖励与全网算力估算', 'Estimated from current block rewards and network power'),
       intraday,
     };
