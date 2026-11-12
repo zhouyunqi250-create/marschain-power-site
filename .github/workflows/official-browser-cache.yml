@@ -5,11 +5,7 @@ on:
   schedule:
     - cron: "2-57/5 * * * *"
   push:
-    branches: [main]
-    paths:
-      - ".github/workflows/official-browser-cache.yml"
-      - "node_preview/official_homepage.py"
-      - "node_preview/official_relay.py"
+    branches: [official-browser-request]
 
 permissions:
   contents: read
@@ -20,7 +16,10 @@ concurrency:
 
 jobs:
   refresh:
-    if: github.repository == 'zhouyunqi250-create/marschain-power-site' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'zhouyunqi250-create/marschain-power-site' &&
+      (github.ref == 'refs/heads/main' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/official-browser-request'))
     runs-on: ubuntu-latest
     timeout-minutes: 4
     permissions:
@@ -28,6 +27,8 @@ jobs:
     steps:
       - name: Checkout collection code
         uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Fetch and publish the latest public receipt
         shell: bash

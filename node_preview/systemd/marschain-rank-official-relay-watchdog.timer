@@ -1,0 +1,11 @@
+[Unit]
+Description=Check the MarsChain public Explorer receipt every three minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+AccuracySec=10s
+Unit=marschain-rank-official-relay-watchdog.service
+
+[Install]
+WantedBy=timers.target
