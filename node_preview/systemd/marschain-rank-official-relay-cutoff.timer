@@ -1,0 +1,13 @@
+[Unit]
+Description=Request the hosted MarsChain Explorer sample before Beijing 08:00
+
+[Timer]
+OnCalendar=*-*-* 07:52:00 Asia/Shanghai
+OnCalendar=*-*-* 07:55:00 Asia/Shanghai
+OnCalendar=*-*-* 07:58:00 Asia/Shanghai
+AccuracySec=1s
+Persistent=false
+Unit=marschain-rank-official-relay-cutoff.service
+
+[Install]
+WantedBy=timers.target

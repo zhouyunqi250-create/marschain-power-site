@@ -313,10 +313,12 @@ class MetricStore:
         self.rpc_url, self.fetcher, self.timeout, self.cache_seconds = rpc_url, fetcher, timeout, cache_seconds
         self.official_homepage = enable_official_homepage or enable_official_relay
         self.official_relay = None
+        self.official_cutoff_relay = None
         if enable_official_relay:
-            from node_preview.official_relay import OfficialRelay
+            from node_preview.official_relay import OfficialCutoffRelay, OfficialRelay
 
             self.official_relay = OfficialRelay()
+            self.official_cutoff_relay = OfficialCutoffRelay()
         self.seed_dir = Path(seed_dir) if seed_dir is not None else self.db_path.parent / "seed"
         with self._db() as conn:
             conn.executescript("""
@@ -668,7 +670,7 @@ class MetricStore:
                 return values, provenance
         return {}, {}
 
-    def _sample_official_stats(self, stats: dict, source: dict):
+    def _sample_official_stats(self, stats: dict, source: dict, *, provenance: dict | None = None):
         if source.get("status") != "ok" or not source.get("fetched_at"):
             return
         values = {"total_wallets": _integer(stats.get("totalAddresses")),
@@ -678,7 +680,34 @@ class MetricStore:
             values[key] = float(value) if value is not None else None
         self._record_cutoff_sample("official_stats", values, int(source["fetched_at"]),
                                    {"source": EXPLORER_API + "/stats",
-                                    "basis": "HTTP response receipt near cutoff; upstream data may have its own cache delay"})
+                                    "basis": "HTTP response receipt near cutoff; upstream data may have its own cache delay",
+                                    **(provenance or {})})
+
+    def _ingest_official_cutoffs(self, now: int):
+        if self.official_cutoff_relay is None:
+            return
+        for cutoff, receipt in self.official_cutoff_relay.read(now, timeout=min(5, self.timeout)).items():
+            stamp = receipt["fetched_at"]
+            if stamp > now or abs(stamp - cutoff) > self.boundary_sample_tolerance_seconds:
+                continue
+            self._sample_official_stats(receipt["payload"], {"status": "ok", "fetched_at": stamp}, provenance={
+                "basis": "official HTTP response obtained by the dedicated hosted cutoff collector",
+                "recovery_source": "hosted_cutoff_receipt",
+                "source_block": receipt["payload"]["latestBlockNumber"],
+            })
+
+    def report_address_samples(self, end: int) -> dict | None:
+        start = end - 86400
+        first, first_source = self._cutoff_sample("official_stats", start)
+        last, last_source = self._cutoff_sample("official_stats", end)
+        if not first or not last:
+            return None
+        return {
+            "start_total": _integer(first.get("total_wallets")),
+            "end_total": _integer(last.get("total_wallets")),
+            "start_received_at": first_source["received_at"],
+            "end_received_at": last_source["received_at"],
+        }
 
     def _sample_counts(self, counts: dict | None, block_info: dict, now: int):
         if not counts:
@@ -1100,6 +1129,7 @@ class MetricStore:
         sources["latest_block"] = {"source": "collector_checkpoint", "block": block, "checked_at": now, "status": "ok"}
         self._refresh_emission(meta, now, sources, block_info=block_info)
         self._sample_official_stats(stats, stats_source)
+        self._ingest_official_cutoffs(now)
         self._sample_counts(observed_counts, block_info, now)
         self._capture_boundary(now // 86400 * 86400, block, now)
         daily_status = self._advance_daily(meta, now, block)

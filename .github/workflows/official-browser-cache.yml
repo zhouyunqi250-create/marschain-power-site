@@ -5,13 +5,13 @@ on:
   schedule:
     - cron: "2-57/5 * * * *"
   push:
-    branches: [official-browser-request]
+    branches: [official-browser-request, official-browser-cutoff-request]
 
 permissions:
   contents: read
 
 concurrency:
-  group: marschain-official-browser-cache
+  group: marschain-official-browser-cache-${{ github.ref == 'refs/heads/official-browser-cutoff-request' && 'cutoff' || 'live' }}
   cancel-in-progress: false
 
 jobs:
@@ -19,9 +19,11 @@ jobs:
     if: >-
       github.repository == 'zhouyunqi250-create/marschain-power-site' &&
       (github.ref == 'refs/heads/main' ||
-       (github.event_name == 'push' && github.ref == 'refs/heads/official-browser-request'))
+       (github.event_name == 'push' &&
+        (github.ref == 'refs/heads/official-browser-request' ||
+         github.ref == 'refs/heads/official-browser-cutoff-request')))
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 12
     permissions:
       contents: write
     steps:
@@ -32,8 +34,27 @@ jobs:
 
       - name: Fetch and publish the latest public receipt
         shell: bash
+        env:
+          REQUEST_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           cache_ref=refs/heads/official-browser-cache
+          collector_args=()
+          if [[ "$GITHUB_REF" == refs/heads/official-browser-cutoff-request ]]; then
+            pattern='^Request a public Explorer cutoff \(([1-9][0-9]{9})\)$'
+            request_message="$(printf '%s' "$REQUEST_MESSAGE")"
+            if [[ "$GITHUB_EVENT_NAME" != push || ! "$request_message" =~ $pattern ]]; then
+              echo 'Missing valid 08:00 request on the dedicated branch' >&2
+              exit 1
+            fi
+            cutoff="${BASH_REMATCH[1]}"
+            now="$(date +%s)"
+            if (( cutoff % 86400 != 0 || cutoff - now > 540 || now - cutoff > 90 )); then
+              echo '08:00 request is outside the actual sampling interval' >&2
+              exit 1
+            fi
+            cache_ref=refs/heads/official-browser-cutoff-cache
+            collector_args+=(--cutoff "$cutoff")
+          fi
           receipt=official-browser.json
           scratch="$(mktemp -d)"
           previous=
@@ -47,7 +68,7 @@ jobs:
             if [ "$status" -ne 2 ]; then exit "$status"; fi
           fi
 
-          python3 -m node_preview.official_relay --output "$scratch/$receipt"
+          python3 -m node_preview.official_relay --output "$scratch/$receipt" "${collector_args[@]}"
           if [ -n "$previous" ] && git show "$previous:$receipt" | cmp -s - "$scratch/$receipt"; then
             exit 0
           fi
@@ -57,5 +78,5 @@ jobs:
           commit="$(git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit-tree "$tree" -m 'Publish current public MarsChain Explorer receipt')"
-          # The cache branch holds one transient receipt. Daily backups retain their own history.
+          # Live and cutoff receipts have independent branches and locks.
           git push --force-with-lease="$cache_ref:$previous" origin "$commit:$cache_ref"

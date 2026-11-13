@@ -1,0 +1,14 @@
+[Unit]
+Description=Request a hosted MarsChain Explorer sample near Beijing 08:00
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/marschain-rank-preview/app
+EnvironmentFile=%h/.config/marschain-rank/github-backup.env
+ExecStart=/usr/bin/python3 -m node_preview.official_relay_watchdog --root %h/marschain-rank-preview --cutoff
+TimeoutStartSec=75s
+Nice=10
+NoNewPrivileges=true
+UMask=0077

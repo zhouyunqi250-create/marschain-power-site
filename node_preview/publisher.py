@@ -170,7 +170,8 @@ def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuil
             payload, report = compose(collection_root, seeds, store, production=production)
             # The public report carries only its selected, verified day window.
             # It commits atomically with the matching minute data in latest.json.
-            payload["share_report"] = build_share_report(collection_root, payload, cache_root=root)
+            payload["share_report"] = build_share_report(
+                collection_root, payload, cache_root=root, address_samples=store.report_address_samples)
             report["share_report_state"] = payload["share_report"]["state"]
             report["bytes"] = len(json.dumps(payload, ensure_ascii=False).encode())
             site = root / "site"

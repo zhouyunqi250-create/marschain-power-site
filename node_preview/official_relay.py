@@ -22,6 +22,10 @@ RELAY_URL = (
     "https://api.github.com/repos/zhouyunqi250-create/marschain-power-site"
     "/contents/official-browser.json?ref=official-browser-cache"
 )
+CUTOFF_URL = RELAY_URL.replace("ref=official-browser-cache", "ref=official-browser-cutoff-cache")
+DAY = 86400
+CUTOFF_WINDOW = 90
+CUTOFF_RETENTION = 7
 RELAY_MAX_AGE = 30 * 60
 RELAY_INTERVAL = 180
 MAX_BYTES = 8192
@@ -166,9 +170,78 @@ class OfficialRelay:
                                if name in _VALIDATE and 0 <= now - entry["fetched_at"] <= RELAY_MAX_AGE}}
 
 
-def _capture_stats() -> dict:
-    value = _fetch(STATS_URL, "application/json", 10)
+def _capture_stats(timeout: float = 10) -> dict:
+    value = _fetch(STATS_URL, "application/json", timeout)
     return {"fetched_at": int(time.time()), "payload": value}
+
+
+def _cutoff_receipts(document: dict, now: int) -> dict:
+    if type(document.get("schema")) is not int or document["schema"] != 1:
+        raise ValueError("Unsupported cutoff receipt schema")
+    samples = document.get("cutoffs")
+    if not isinstance(samples, dict) or len(samples) > CUTOFF_RETENTION:
+        raise ValueError("Invalid cutoff receipt inventory")
+    verified = {}
+    for key, sample in samples.items():
+        if not re.fullmatch(r"[1-9][0-9]{0,11}", key) or not isinstance(sample, dict):
+            continue
+        cutoff = int(key)
+        if cutoff % DAY or not 0 <= now - cutoff <= CUTOFF_RETENTION * DAY:
+            continue
+        try:
+            receipt = _stats_receipt(sample, now)
+        except ValueError:
+            continue
+        if abs(receipt["fetched_at"] - cutoff) <= CUTOFF_WINDOW:
+            verified[cutoff] = receipt
+    return verified
+
+
+class OfficialCutoffRelay:
+    def __init__(self) -> None:
+        self._next_check = 0.0
+
+    def read(self, now: int, *, timeout: float = 5) -> dict:
+        checked = time.monotonic()
+        if checked < self._next_check:
+            return {}
+        after_cutoff = now % DAY
+        interval = RELAY_INTERVAL if after_cutoff < 30 * 60 else 15 * 60
+        # Check again near the next cutoff even if the prior poll was at 07:59.
+        self._next_check = checked + min(interval, DAY - after_cutoff + 45)
+        try:
+            document = _fetch(CUTOFF_URL, "application/vnd.github.raw+json", timeout)
+            return _cutoff_receipts(document, int(time.time()))
+        except _RECEIPT_ERRORS:
+            return {}
+
+
+def write_cutoff_receipt(output: Path, cutoff: int) -> bool:
+    if cutoff <= 0 or cutoff % DAY or not -CUTOFF_WINDOW <= cutoff - time.time() <= 12 * 60:
+        raise ValueError("Cutoff is outside the allowed Beijing 08:00 collection window")
+    previous = {}
+    try:
+        with output.open("rb") as file:
+            previous = _cutoff_receipts(_read_body(file), int(time.time()))
+    except FileNotFoundError:
+        pass
+    if cutoff in previous:
+        return False
+    if cutoff > time.time():
+        time.sleep(max(0, cutoff - time.time()))
+    deadline = cutoff + CUTOFF_WINDOW
+    while deadline - time.time() >= 1:
+        try:
+            sample = _stats_receipt(_capture_stats(min(8, deadline - time.time())), int(time.time()))
+            if cutoff <= sample["fetched_at"] <= deadline:
+                previous[cutoff] = sample
+                retained = dict(sorted(previous.items())[-CUTOFF_RETENTION:])
+                atomic_json(output, {"schema": 1, "cutoffs": retained})
+                return True
+        except _RECEIPT_ERRORS as error:
+            print(f"Official cutoff request failed: {error}", file=sys.stderr)
+        time.sleep(max(0, min(5, deadline - time.time())))
+    raise RuntimeError("No official stats response arrived within the cutoff window")
 
 
 def write_receipt(output: Path) -> bool:
@@ -200,9 +273,11 @@ def write_receipt(output: Path) -> bool:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--cutoff", type=int)
     args = parser.parse_args()
     try:
-        updated = write_receipt(args.output)
+        updated = (write_receipt(args.output) if args.cutoff is None
+                   else write_cutoff_receipt(args.output, args.cutoff))
     except (OSError, ValueError, RuntimeError) as error:
         parser.exit(1, f"{error}\n")
     print("Verified Explorer receipt updated" if updated else "Verified Explorer receipt unchanged")

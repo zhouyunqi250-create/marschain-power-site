@@ -13,10 +13,11 @@ import math
 import os
 from pathlib import Path
 import re
+import sqlite3
 import stat
 import tempfile
 import time
-from typing import Iterator
+from typing import Callable, Iterator
 
 from node_preview.holder_ranking import validate_public_snapshot
 from node_preview.official_homepage import DAILY_CANDLE_BASIS
@@ -68,6 +69,7 @@ SOURCE_KEYS = (
     "network_total_power", "network_total_burned_tokens", "explorer_total_addresses",
     "network_current_price", "network_highest_price", "network_total_circulation_tokens", "emission",
 )
+ADDRESS_SAMPLE_FIELDS = ("start_total", "end_total", "start_received_at", "end_received_at")
 HOLDERS_SUMMARY_FIELDS = (
     "top100_total_wei", "share_denominator_wei", "row_count",
     "block_number", "block_hash", "block_timestamp", "excluded_systems", "scope",
@@ -430,7 +432,7 @@ def _complete_daily(daily: dict, evidence: dict, latest_cutoff: int, *, legacy: 
     dm = _keys(daily.get("meta"), set(DAILY_FIELDS) | {"node_preview", "preview_daily_status"})
     _scalar_keys({key: value for key, value in dm.items() if key in DAILY_FIELDS}, DAILY_FIELDS)
     evidence = _keys(evidence, {
-        "target_timestamp", "source_block", "sha256", "daily_statistics_status"})
+        "target_timestamp", "source_block", "sha256", "daily_statistics_status", "address_samples"})
     cutoff = _stamp(evidence.get("target_timestamp"))
     frozen = _scalar_keys(dm.get("node_preview"), NODE_FIELDS)
     frozen_block = _nonnegative(evidence.get("source_block"))
@@ -461,9 +463,23 @@ def _complete_daily(daily: dict, evidence: dict, latest_cutoff: int, *, legacy: 
     new_addresses = dm.get("statistics_window_new_candidate_address_count")
     if legacy or new_addresses is not None:
         _nonnegative(new_addresses)
+    if "address_samples" in evidence:
+        if _address_sample_delta(evidence["address_samples"], cutoff) != _integer(new_addresses):
+            raise ValueError("Report address samples disagree with the published count")
     if _integer(dm["statistics_window_end_total_power"]) != _integer(dm["network_total_power"]):
         raise ValueError("Report daily total powers disagree")
     return frozen
+
+
+def _address_sample_delta(samples: dict, cutoff: int) -> int:
+    samples = _scalar_keys(samples, ADDRESS_SAMPLE_FIELDS)
+    start = _nonnegative(samples.get("start_total"))
+    end = _nonnegative(samples.get("end_total"))
+    first = _stamp(samples.get("start_received_at"))
+    last = _stamp(samples.get("end_received_at"))
+    if end < start or abs(first - (cutoff - DAY)) > 90 or abs(last - cutoff) > 90:
+        raise ValueError("Report address samples are outside their cutoff windows")
+    return end - start
 
 
 def _check_block_order(live: dict, frozen: dict) -> None:
@@ -500,6 +516,9 @@ def _complete(bundle: dict, now: int) -> dict:
         raise ValueError("Report holder aggregate is unavailable")
     latest_cutoff = (assembled if legacy else min(assembled, now)) // DAY * DAY
     frozen = _complete_daily(bundle.get("daily"), bundle.get("daily_evidence"), latest_cutoff, legacy=legacy)
+    samples = bundle["daily_evidence"].get("address_samples")
+    if samples is not None and _stamp(samples.get("end_received_at")) > assembled:
+        raise ValueError("Report contains an address sample from after assembly")
     if legacy:
         if (_integer(bundle["daily_evidence"]["target_timestamp"]) != latest_cutoff
                 or latest_cutoff > _integer(node["source_block_timestamp"])
@@ -635,7 +654,8 @@ def _latest_daily(root: Path, cutoff: int, cached: dict | None, node: dict) -> t
     raise ValueError("No verified report archive is available")
 
 
-def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = None) -> dict:
+def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = None,
+                       address_samples: Callable[[int], dict | None] | None = None) -> dict:
     """Combine the newest usable live snapshot and verified daily archive."""
     waiting = {"schema": 1, "state": "waiting_for_settlement"}
     now = int(time.time())
@@ -665,6 +685,16 @@ def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = N
     for live, node, retrieved, state in live_choices:
         try:
             daily, evidence = _latest_daily(archives, cutoff, cached, node)
+            if address_samples and daily["meta"].get("statistics_window_new_candidate_address_count") is None:
+                try:
+                    target = evidence["target_timestamp"]
+                    samples = address_samples(target)
+                    if samples and _stamp(samples.get("end_received_at")) <= now:
+                        delta = _address_sample_delta(samples, target)
+                        daily["meta"]["statistics_window_new_candidate_address_count"] = delta
+                        evidence = {**evidence, "address_samples": samples}
+                except (OSError, ValueError, TypeError, OverflowError, sqlite3.Error):
+                    pass
             bundle = {"schema": 1, "state": state, "retrieved_at": retrieved, "assembled_at": now,
                       "live": live, "daily": daily, "daily_evidence": evidence}
             if state == "retained":
