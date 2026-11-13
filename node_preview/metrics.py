@@ -515,7 +515,7 @@ class MetricStore:
         meta["daily_power_history_completed_through"] = cached.get("completed_through")
         meta["daily_power_history_source"] = {key: value for key, value in cached.items() if key != "values"}
 
-    def _record_cutoff_sample(self, kind: str, values: dict, received_at: int, provenance: dict):
+    def _record_cutoff_sample(self, kind: str, values: dict, received_at: int, provenance: dict, *, fill_only: bool = False):
         cutoff = (received_at + 43200) // 86400 * 86400
         if abs(received_at - cutoff) > self.boundary_sample_tolerance_seconds:
             return
@@ -532,6 +532,8 @@ class MetricStore:
                 prior_values, prior_source = self._decode_cutoff_sample(prior)
                 complete = self._valid_official_sample(values, provenance, cutoff, received_at) if kind == "official_stats" else True
                 prior_complete = self._valid_official_sample(prior_values, prior_source, cutoff, prior["received_at"]) if kind == "official_stats" else True
+                if fill_only and prior_complete:
+                    return
                 # A closer response without totalAddresses must never erase a
                 # usable census sample. A complete recovery may replace such an
                 # incomplete row even when its receipt is slightly farther away.
@@ -670,7 +672,8 @@ class MetricStore:
                 return values, provenance
         return {}, {}
 
-    def _sample_official_stats(self, stats: dict, source: dict, *, provenance: dict | None = None):
+    def _sample_official_stats(self, stats: dict, source: dict, *, provenance: dict | None = None,
+                               fill_only: bool = False):
         if source.get("status") != "ok" or not source.get("fetched_at"):
             return
         values = {"total_wallets": _integer(stats.get("totalAddresses")),
@@ -681,7 +684,7 @@ class MetricStore:
         self._record_cutoff_sample("official_stats", values, int(source["fetched_at"]),
                                    {"source": EXPLORER_API + "/stats",
                                     "basis": "HTTP response receipt near cutoff; upstream data may have its own cache delay",
-                                    **(provenance or {})})
+                                    **(provenance or {})}, fill_only=fill_only)
 
     def _ingest_official_cutoffs(self, now: int):
         if self.official_cutoff_relay is None:
@@ -694,7 +697,7 @@ class MetricStore:
                 "basis": "official HTTP response obtained by the dedicated hosted cutoff collector",
                 "recovery_source": "hosted_cutoff_receipt",
                 "source_block": receipt["payload"]["latestBlockNumber"],
-            })
+            }, fill_only=True)
 
     def report_address_samples(self, end: int) -> dict | None:
         start = end - 86400

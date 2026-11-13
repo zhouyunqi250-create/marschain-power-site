@@ -648,7 +648,7 @@ def _latest_daily(root: Path, cutoff: int, cached: dict | None, node: dict) -> t
             # An unreadable or unverified archive does not block an older one.
             continue
     if cached is not None and oldest <= cutoff:
-        daily = cached["daily"]
+        daily = copy.deepcopy(cached["daily"])
         _check_block_order(node, daily["meta"]["node_preview"])
         return daily, cached["daily_evidence"]
     raise ValueError("No verified report archive is available")
