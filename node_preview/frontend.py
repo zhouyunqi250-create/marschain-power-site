@@ -100,6 +100,8 @@ PUBLIC_META_FIELDS = frozenset({
     "statistics_timezone", "statistics_timezone_label", "statistics_window_start_total_power",
     "statistics_window_end_total_power", "statistics_window_new_power",
     "statistics_window_new_candidate_address_count", "statistics_window_new_candidate_address_display",
+    "statistics_window_new_candidate_address_estimated", "statistics_window_address_start_received_at",
+    "statistics_window_address_end_received_at",
     "statistics_window_active_wallet_address_count", "statistics_window_active_transactions_seen",
     "statistics_window_transaction_volume_wei", "statistics_window_transaction_volume_display",
     "statistics_window_burned_tokens", "statistics_window_burned_display",
@@ -416,6 +418,12 @@ def _annotate_metric_cards(markup: str, meta: dict) -> str:
                     + '<span>统计区间 · 北京时间</span>'
                     + f'<span>{escape(_window_note(meta, "statistics_window"))}</span>'
                     + (f'<em data-node-daily-state>{escape(state)}</em>' if state else '') + '</div>')
+            if name == "钱包地址" and meta.get("statistics_window_new_candidate_address_estimated") is True:
+                start, end = (meta.get(f"statistics_window_address_{point}_received_at") for point in ("start", "end"))
+                if type(start) is int and type(end) is int:
+                    sample = " → ".join(datetime.fromtimestamp(stamp + 8 * 3600, timezone.utc).strftime("%m-%d %H:%M:%S")
+                                        for stamp in (start, end))
+                    note = note.replace("</div>", f"<em>{sample}</em></div>")
             inner += note
         inner += '<div class="node-card-trend-entry" aria-hidden="true"><span>查看趋势</span><i>↗</i></div>'
         return opening + inner + closing

@@ -69,7 +69,7 @@ SOURCE_KEYS = (
     "network_total_power", "network_total_burned_tokens", "explorer_total_addresses",
     "network_current_price", "network_highest_price", "network_total_circulation_tokens", "emission",
 )
-ADDRESS_SAMPLE_FIELDS = ("start_total", "end_total", "start_received_at", "end_received_at")
+ADDRESS_SAMPLE_FIELDS = ("start_total", "end_total", "start_received_at", "end_received_at", "estimated")
 HOLDERS_SUMMARY_FIELDS = (
     "top100_total_wei", "share_denominator_wei", "row_count",
     "block_number", "block_hash", "block_timestamp", "excluded_systems", "scope",
@@ -477,7 +477,10 @@ def _address_sample_delta(samples: dict, cutoff: int) -> int:
     end = _nonnegative(samples.get("end_total"))
     first = _stamp(samples.get("start_received_at"))
     last = _stamp(samples.get("end_received_at"))
-    if end < start or abs(first - (cutoff - DAY)) > 90 or abs(last - cutoff) > 90:
+    estimated = samples.get("estimated", False)
+    distance = max(abs(first - (cutoff - DAY)), abs(last - cutoff))
+    if (type(estimated) is not bool or estimated != (distance > 90)
+            or distance > 300 or end < start):
         raise ValueError("Report address samples are outside their cutoff windows")
     return end - start
 
@@ -685,7 +688,8 @@ def build_share_report(root: Path, payload: dict, *, cache_root: Path | None = N
     for live, node, retrieved, state in live_choices:
         try:
             daily, evidence = _latest_daily(archives, cutoff, cached, node)
-            if address_samples and daily["meta"].get("statistics_window_new_candidate_address_count") is None:
+            if address_samples and (daily["meta"].get("statistics_window_new_candidate_address_count") is None
+                                    or (evidence.get("address_samples") or {}).get("estimated") is True):
                 try:
                     target = evidence["target_timestamp"]
                     samples = address_samples(target)

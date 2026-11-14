@@ -281,6 +281,13 @@
       state: powerComparable && burnComparable ? choose('统计中', 'In progress')
         : choose('统计中 · 部分数据待补齐', 'In progress / partially available'),
     };
+    const addressSamples = bundle.daily_evidence?.address_samples;
+    const estimatedAddresses = addressSamples?.estimated === true;
+    const addressSampleTime = value => {
+      const time = stamp(value);
+      if (time === null) return '';
+      return new Date((time + (english ? 0 : 8 * 3600)) * 1000).toISOString().slice(5, 19).replace('T', ' ');
+    };
     const daily = {
       rangeText: archive.range.text,
       dateLabel: atTime(archive.target).slice(0, 10).replace(/-/g, '.'),
@@ -291,7 +298,9 @@
       volume: tokens(dm.statistics_window_transaction_volume_wei),
       activeAddresses: count(dm.statistics_window_active_wallet_address_count, '个'),
       newAddresses: dm.statistics_window_new_candidate_address_count == null
-        ? '—' : count(dm.statistics_window_new_candidate_address_count, '个'),
+        ? '—' : (estimatedAddresses ? choose('约', '≈') : '') + count(dm.statistics_window_new_candidate_address_count, '个'),
+      addressSampleRange: estimatedAddresses
+        ? `${addressSampleTime(addressSamples.start_received_at)} → ${addressSampleTime(addressSamples.end_received_at)}` : '',
       endPower: compactInteger(unsigned(dm.statistics_window_end_total_power)),
       totalBurned: tokens(dm.network_total_burned_tokens),
       blockText: archive.block.toLocaleString(locale),

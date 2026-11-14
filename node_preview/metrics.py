@@ -30,6 +30,11 @@ from typing import Any, Callable
 
 PUBLIC_ORIGIN = "https://marschain-power-site-chu.oss-cn-hangzhou.aliyuncs.com"
 EXPLORER_API = "https://explorer.marschain.net/api"
+# Reviewed original receipt from successful GitHub Actions run 43333766242.
+# Its 08:02:24 Beijing receipt is outside the live sampler's 90-second window.
+REVIEWED_DAILY_ADDRESS_RECEIPTS = {
+    1794528000: (291040, 1794528144, "00b612d767e52e840b43847fe60f80b0ba135f5c"),
+}
 POWER_CONTRACT = "0x0000000000000000000000000000000000001001"
 # Checked against official PowerContractUpgradeable.sol and local web3_sha3.
 VIEW_POWER = "0xb2dbd84e" + "0" * 64
@@ -701,16 +706,19 @@ class MetricStore:
 
     def report_address_samples(self, end: int) -> dict | None:
         start = end - 86400
-        first, first_source = self._cutoff_sample("official_stats", start)
-        last, last_source = self._cutoff_sample("official_stats", end)
-        if not first or not last:
-            return None
-        return {
-            "start_total": _integer(first.get("total_wallets")),
-            "end_total": _integer(last.get("total_wallets")),
-            "start_received_at": first_source["received_at"],
-            "end_received_at": last_source["received_at"],
-        }
+        proof = {}
+        for label, cutoff in (("start", start), ("end", end)):
+            values, source = self._cutoff_sample("official_stats", cutoff)
+            if values:
+                total, stamp = _integer(values["total_wallets"]), source["received_at"]
+            elif cutoff in REVIEWED_DAILY_ADDRESS_RECEIPTS:
+                total, stamp, _commit = REVIEWED_DAILY_ADDRESS_RECEIPTS[cutoff]
+                proof["estimated"] = True
+            else:
+                return None
+            proof[f"{label}_total"] = total
+            proof[f"{label}_received_at"] = stamp
+        return proof if proof["end_total"] >= proof["start_total"] else None
 
     def _sample_counts(self, counts: dict | None, block_info: dict, now: int):
         if not counts:
@@ -1153,15 +1161,30 @@ class MetricStore:
         if end is None:
             return
         value, provenance = self._sampled_address_growth(end - 86400, end)
+        estimate = self.report_address_samples(end) if value is None and self.official_relay is not None else None
+        if estimate and estimate.get("estimated") is True:
+            value = estimate["end_total"] - estimate["start_total"]
+            meta["statistics_window_new_candidate_address_estimated"] = True
+            meta["statistics_window_address_start_received_at"] = estimate["start_received_at"]
+            meta["statistics_window_address_end_received_at"] = estimate["end_received_at"]
+            provenance = {"status": "estimated", **estimate}
+            display = f"约{value:,}个"
+        else:
+            meta["statistics_window_new_candidate_address_estimated"] = False
+            meta.pop("statistics_window_address_start_received_at", None)
+            meta.pop("statistics_window_address_end_received_at", None)
+            display = f"{value:,}个（近截点采样）" if value is not None else "缺少08:00地址采样"
         meta.update(statistics_window_new_candidate_address_count=value, today_new_wallet_count=value,
-                    statistics_window_new_candidate_address_display=f"{value:,}个（近截点采样）" if value is not None else "缺少08:00地址采样",
+                    statistics_window_new_candidate_address_display=display,
                     statistics_window_new_candidate_address_basis="official totalAddresses difference between near-08:00 response samples; not exact boundary state",
                     today_new_wallet_basis="official near-08:00 sample difference; unavailable historical samples remain missing",
                     statistics_window_new_candidate_address_sample=provenance)
         status = meta.setdefault("preview_daily_status", {})
         status.setdefault("field_sources", {})["new_addresses"] = provenance
         if status.get("state") == "verified_node_window":
-            status["detail"] = ("Daily tx/activity/power/burn verified. Address growth uses two official near-cutoff HTTP samples; not exact boundary state."
+            status["detail"] = ("Daily tx/activity/power/burn verified. Address growth uses a reviewed historical HTTP sample; estimated."
+                                if estimate and estimate.get("estimated") is True else
+                                "Daily tx/activity/power/burn verified. Address growth uses two official near-cutoff HTTP samples; not exact boundary state."
                                 if value is not None else
                                 "Daily tx/activity/power/burn verified. Address growth unavailable without two reliable official near-cutoff HTTP samples.")
         # Keep the private persisted status consistent with the displayed value;

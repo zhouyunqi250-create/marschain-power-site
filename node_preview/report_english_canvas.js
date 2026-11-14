@@ -119,6 +119,7 @@
       [L.transactions,d.transactions],[L.volume,d.volume]].forEach(([label,value],i)=>{
       metric(label,value,76+i*218,minor+35,196,29);
     });
+    if(d.addressSampleRange)text(d.addressSampleRange+' UTC',294,minor+91,13,C.muted,400,405);
     const growth=minor+98;line(growth);
     text(L.growth,76,growth+40,24,C.ink,600,430);
     text(L.windows,948,growth+40,16,C.muted,400,400,'right');

@@ -127,6 +127,7 @@
       text(label,x,1031,20,C.muted,400,'left',196);
       text(value,x,1072,29,C.ink,500,'left',196);
     });
+    if(d.addressSampleRange)text(d.addressSampleRange,294,1090,13,C.muted,400,'left',405);
     line(76,1097,948,1097);
     text('周期增长',76,1137,26,C.ink,600);
     const xs=[258,505,748];
