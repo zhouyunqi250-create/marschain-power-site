@@ -38,6 +38,7 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from node_preview.bootstrap import atomic_json
+from node_preview.exchange_quotes import validate_public_snapshot as validate_exchange_quotes
 from node_preview.metrics import _token as format_burn_tokens
 from node_preview.holder_ranking import validate_public_snapshot
 
@@ -436,6 +437,8 @@ def load_bundle(root: Path, config: Config, max_age: int) -> Bundle:
         checked_holders = validate_public_snapshot(payload["holders"], max_age=None)
         if checked_holders != payload["holders"]:
             raise ValueError("Public holder snapshot contains unreviewed fields")
+    if "exchange_quotes" in payload and validate_exchange_quotes(payload["exchange_quotes"]) != payload["exchange_quotes"]:
+        raise ValueError("Public exchange snapshot contains unreviewed fields")
     forbid_private({key: value for key, value in payload.items() if key != "holders"})
     # Content-address the runtime so a cached fixed JS path cannot pair an old
     # program with a newly deployed shell. Only this narrow asset path is allowed.

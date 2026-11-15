@@ -334,6 +334,7 @@
     }
     updateBanner();
     window.dispatchEvent(new Event('mars-share-report-data'));
+    window.dispatchEvent(new CustomEvent('mars-exchange-quotes-data', { detail: payload.exchange_quotes }));
   };
   const refresh = async () => {
     if (document.hidden || pending) return;

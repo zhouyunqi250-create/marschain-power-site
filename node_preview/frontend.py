@@ -32,6 +32,8 @@ RUNTIME = Path(__file__).with_name("live_preview.js")
 OPENING_SOURCES = ORBIT_RUNTIME_SOURCES
 HOLDER_RUNTIME = Path(__file__).with_name("holder_ranking.js")
 HOLDER_STYLES = Path(__file__).with_name("holder_ranking.css")
+EXCHANGE_PANEL = Path(__file__).with_name("exchange_market.html")
+EXCHANGE_RUNTIME = Path(__file__).with_name("exchange_market.js")
 
 
 def _presentation_function(function, names: tuple[str, ...]):
@@ -942,7 +944,7 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     root.mkdir(parents=True, exist_ok=True)
     sources = (Path(__file__), RUNTIME, Path(__file__).with_name("website_locale.js"), Path(dashboard.__file__), Path(__file__).with_name("christmas.py"),
                Path(__file__).with_name("emission.py"),
-               *ORBIT_SOURCES, *REPORT_SOURCES, HOLDER_RUNTIME, HOLDER_STYLES)
+               *ORBIT_SOURCES, *REPORT_SOURCES, HOLDER_RUNTIME, HOLDER_STYLES, EXCHANGE_PANEL, EXCHANGE_RUNTIME)
     code_version = hashlib.sha256(b"".join(path.read_bytes() for path in sources)
         + str(production).encode() + (dashboard.build_analytics_head().encode() if production else b"")).hexdigest()
     manifest_path = root / ".preview-build.json"
@@ -971,6 +973,13 @@ def build_preview(payload: dict, output_dir: str | Path, *, production: bool = F
     for name in ("index.html", "m/index.html"):
         artifacts[name] = _once(artifacts[name], "</head>",
                                 '<style data-holder-ranking>' + HOLDER_STYLES.read_text(encoding="utf-8") + '</style></head>')
+    if production:
+        styles, panel = EXCHANGE_PANEL.read_text(encoding="utf-8").split("</style>", 1)
+        for name in ("index.html", "m/index.html"):
+            html = _once(artifacts[name], "</head>", styles + "</style>\n</head>")
+            artifacts[name] = _once(html, '<section id="rank"', panel + '<section id="rank"')
+        # Run before the live reader so the market panel can handle the first snapshot event.
+        artifacts["live_preview.js"] = EXCHANGE_RUNTIME.read_text(encoding="utf-8") + "\n" + runtime
     result = {}
     for name, content in artifacts.items():
         target = root / name

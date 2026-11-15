@@ -1,0 +1,69 @@
+<style>
+  .exchange-market {
+    --market-text: #e5f1f3;
+    --market-soft: #a3b9c3;
+    --market-line: rgba(153, 205, 215, .17);
+    min-width: 0;
+    margin-top: clamp(14px, 2vw, 24px);
+    padding: clamp(16px, 2.5vw, 27px);
+    border: 1px solid var(--market-line);
+    border-radius: 18px;
+    background: radial-gradient(ellipse at 0 0, rgba(37, 119, 131, .18), transparent 69%), #101f29;
+    color: var(--market-text);
+    scroll-margin-top: 82px;
+  }
+  .exchange-market * { box-sizing: border-box; }
+  .exchange-market header, .market-venue-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px 14px;
+    flex-wrap: wrap;
+  }
+  .exchange-market h2 { font-size: clamp(19px, 2vw, 24px); line-height: 1.25; margin: 0; color: inherit; }
+  .exchange-market header p { color: var(--market-soft); font-size: 12px; margin: 0; }
+  .market-venues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+  .market-venue { padding: clamp(13px, 2vw, 18px); min-width: 0; border: 1px solid var(--market-line); border-radius: 12px; background: rgba(3, 15, 25, .38); }
+  .market-venue-head h3 { font-size: 15px; margin: 0; color: inherit; }
+  .market-venue-head h3 a { color: inherit; text-decoration: none; }
+  .market-venue-head h3 a:hover, .market-venue-head h3 a:focus-visible { color: #a4e8eb; text-decoration: underline; }
+  .market-venue-head h3 small { margin-left: 7px; color: var(--market-soft); font-size: 10px; font-weight: 500; white-space: nowrap; }
+  .market-status { font-size: 11px; font-weight: 650; color: #93dfc9; }
+  .market-status[data-state='late'] { color: #efc488; }
+  .market-status[data-state='unavailable'] { color: var(--market-soft); }
+  .market-price { margin: 8px 0 12px; font-size: clamp(24px, 3vw, 34px); line-height: 1; font-weight: 740; letter-spacing: -.035em; font-variant-numeric: tabular-nums; }
+  .market-price small, .market-kpis small { font-size: 10px; font-weight: 560; color: var(--market-soft); letter-spacing: 0; margin-left: 5px; }
+  .market-kpis { border-top: 1px solid var(--market-line); padding-top: 10px; margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+  .market-kpis dt { font-size: 11px; color: var(--market-soft); line-height: 1.4; }
+  .market-kpis dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 1px 5px; font-size: clamp(14px, 1.65vw, 18px); font-variant-numeric: tabular-nums; font-weight: 650; margin: 3px 0 0; line-height: 1.3; }
+  .market-kpis dd small { margin-left: 0; }
+  .market-clock { font-size: 11px; color: var(--market-soft); margin: 10px 0 0; }
+  .market-clock time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @media (max-width: 760px) { .market-venues { grid-template-columns: 1fr; gap: 9px; margin-top: 12px; } }
+</style>
+<section class="exchange-market" id="markets" aria-labelledby="market-title">
+  <header>
+    <h2 id="market-title" data-market-label="title">交易所行情</h2>
+    <p data-market-label="caption">现货报价 · 每分钟采集</p>
+  </header>
+  <div class="market-venues">
+    <article class="market-venue" data-market-venue="KTX">
+      <div class="market-venue-head"><h3><a href="https://www.ktx.com/en/exchange/MARS_USDT" target="_blank" rel="noopener noreferrer">KTX</a><small>MARS/USDT</small></h3><span class="market-status" data-market-status data-state="unavailable">读取中</span></div>
+      <p class="market-price"><span data-market-price>—</span><small>USDT</small></p>
+      <dl class="market-kpis">
+        <div><dt data-market-label="volume">24 小时成交量</dt><dd><span data-market-volume>—</span><small>MARS</small></dd></div>
+        <div><dt data-market-label="turnover">24 小时成交额</dt><dd><span data-market-turnover>—</span><small>USDT</small></dd></div>
+      </dl>
+      <p class="market-clock"><span data-market-label="ticker">行情时间</span> <time data-market-clock>—</time></p>
+    </article>
+    <article class="market-venue" data-market-venue="LBank">
+      <div class="market-venue-head"><h3><a href="https://www.lbank.com/trade/marschain_usdt" target="_blank" rel="noopener noreferrer">LBank</a><small>MARSCHAIN/USDT</small></h3><span class="market-status" data-market-status data-state="unavailable">读取中</span></div>
+      <p class="market-price"><span data-market-price>—</span><small>USDT</small></p>
+      <dl class="market-kpis">
+        <div><dt data-market-label="volume">24 小时成交量</dt><dd><span data-market-volume>—</span><small>MARSCHAIN</small></dd></div>
+        <div><dt data-market-label="turnover">24 小时成交额</dt><dd><span data-market-turnover>—</span><small>USDT</small></dd></div>
+      </dl>
+      <p class="market-clock"><span data-market-label="trade">最后成交时间</span> <time data-market-clock>—</time></p>
+    </article>
+  </div>
+</section>

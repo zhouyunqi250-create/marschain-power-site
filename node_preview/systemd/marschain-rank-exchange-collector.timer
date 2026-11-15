@@ -1,0 +1,12 @@
+[Unit]
+Description=MarsChain exchange spot price and volume collection every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:12
+OnStartupSec=20s
+AccuracySec=1s
+Persistent=true
+Unit=marschain-rank-exchange-collector.service
+
+[Install]
+WantedBy=timers.target

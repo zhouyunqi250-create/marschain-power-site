@@ -13,6 +13,7 @@ from marschain_power_rank import format_beijing_datetime
 from node_preview.bootstrap import atomic_json
 from node_preview.chain import RPC
 from node_preview.collector import read_status
+from node_preview.exchange_quotes import load_public_snapshot as load_exchange_quotes
 from node_preview.frontend import build_preview, public_payload
 from node_preview.metrics import MetricStore
 from node_preview.share_report import build_share_report
@@ -168,6 +169,8 @@ def run(root: Path, rpc_url: str, origin: str, interval: int, loop: bool, rebuil
         began = time.monotonic()
         try:
             payload, report = compose(collection_root, seeds, store, production=production)
+            if production and (quotes := load_exchange_quotes(root)) is not None:
+                payload["exchange_quotes"] = quotes
             # The public report carries only its selected, verified day window.
             # It commits atomically with the matching minute data in latest.json.
             payload["share_report"] = build_share_report(
