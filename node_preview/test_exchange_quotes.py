@@ -16,6 +16,28 @@ def observation(market, host, source, *, volume="123", turnover="2.45"):
 
 
 class ExchangeQuotesTests(unittest.TestCase):
+    def test_depth_totals_group_to_one_hundredth(self):
+        total, levels = quotes._depth_total([["0.00791", "2"], ["0.00799", "3"], ["0.011", "4"]])
+        self.assertEqual(total, "9")
+        self.assertEqual(levels, 2)
+
+    def test_depth_snapshot_keeps_public_fields_and_zero_levels(self):
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        quote = observation("KTX", "api.ktx.news", now)
+        quote.update({"depth_status": "ok", "buy_depth_mars": "0", "sell_depth_mars": "4",
+                      "buy_depth_levels": 0, "sell_depth_levels": 1, "depth_group": "0.01",
+                      "depth_source_at": now.isoformat(timespec="milliseconds"),
+                      "depth_received_at": now.isoformat(timespec="milliseconds")})
+        other = observation("LBank", "api.lbkex.com", now)
+        other.update({"depth_status": "unavailable", "buy_depth_mars": None, "sell_depth_mars": None,
+                      "buy_depth_levels": None, "sell_depth_levels": None, "depth_group": "0.01",
+                      "depth_source_at": None, "depth_received_at": None})
+        value = {"schema": 1, "checked_at": now.isoformat(timespec="milliseconds"), "quotes": []}
+        for item in (quote, other):
+            value["quotes"].append({key: item.get(key) for key in quotes.PUBLIC_QUOTE_FIELDS})
+        checked = quotes.validate_public_snapshot(value, now=now)
+        self.assertEqual(checked["quotes"][0]["buy_depth_mars"], "0")
+
     def test_missing_routes_retry_by_venue_and_prefer_complete_amounts(self):
         stamp = datetime.now(timezone.utc)
         complete = observation("KTX", "api.ktx.news", stamp)

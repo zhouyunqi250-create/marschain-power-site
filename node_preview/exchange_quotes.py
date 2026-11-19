@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_FLOOR
 import fcntl
 from http.client import HTTPException
 import json
@@ -24,6 +24,12 @@ MARKETS = {
     "LBank": ("last_trade", ("api.lbank.info", "api.lbkex.com"),
               "/v2/ticker/24hr.do?symbol=marschain_usdt"),
 }
+DEPTH_MARKETS = {
+    "KTX": (("api.ktx.com", "api.ktx.news", "api.ktx.exchange"),
+            "/api/v1/order_book?market=spot&symbol=MARS_USDT&level=1000&price_scale=4"),
+    "LBank": (("api.lbank.info", "api.lbkex.com"),
+              "/v2/depth.do?symbol=marschain_usdt&size=200"),
+}
 RETRY_HOSTS = {"KTX": "api.ktx.exchange", "LBank": "api.lbkex.com"}
 REQUEST_TIMEOUT = 6
 COLLECTION_TIMEOUT = 10
@@ -36,8 +42,10 @@ DECIMAL_TEXT = re.compile(r"[0-9]{1,24}(?:\.[0-9]{1,24})?\Z")
 MILLISECONDS = re.compile(r"[0-9]{13}\Z")
 UTC_TIMESTAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}\+00:00\Z", re.ASCII)
 AMOUNT_FIELDS = ("price_usdt", "base_volume_24h", "quote_turnover_24h_usdt")
+DEPTH_FIELDS = ("depth_status", "buy_depth_mars", "sell_depth_mars", "buy_depth_levels",
+                "sell_depth_levels", "depth_group", "depth_source_at", "depth_received_at")
 PUBLIC_QUOTE_FIELDS = frozenset({"exchange", "symbol", "status", "source_at", "received_at",
-                                 "source_time_kind", *AMOUNT_FIELDS})
+                                 "source_time_kind", *AMOUNT_FIELDS, *DEPTH_FIELDS})
 
 
 class _NoRedirect(HTTPRedirectHandler):
@@ -123,49 +131,129 @@ def _fetch(exchange: str, host: str, path: str, *, timeout: float = REQUEST_TIME
         return None
 
 
+def _depth_rows(exchange: str, payload: object) -> tuple[list, list, str]:
+    if not isinstance(payload, dict):
+        raise ValueError("Expected a depth response object")
+    if exchange == "KTX":
+        if payload.get("state") != 0 or not isinstance(payload.get("result"), dict):
+            raise ValueError("Unexpected KTX depth response")
+        data = payload["result"]
+        asks, bids, stamp = data.get("a"), data.get("b"), data.get("t")
+    else:
+        if payload.get("error_code") != 0 or not isinstance(payload.get("data"), dict):
+            raise ValueError("Unexpected LBank depth response")
+        data = payload["data"]
+        asks, bids, stamp = data.get("asks"), data.get("bids"), data.get("timestamp")
+    if (not isinstance(asks, list) or not isinstance(bids, list)
+            or not MILLISECONDS.fullmatch(str(stamp))):
+        raise ValueError("Invalid depth rows or timestamp")
+    return asks, bids, str(stamp)
+
+
+def _depth_total(rows: list) -> tuple[str, int]:
+    grouped: dict[Decimal, Decimal] = {}
+    step = Decimal("0.01")
+    for row in rows:
+        if not isinstance(row, list) or len(row) != 2:
+            raise ValueError("Invalid depth level")
+        price = _amount(row[0], positive=True)
+        quantity = _amount(row[1], positive=True)
+        if price is None or quantity is None:
+            raise ValueError("Invalid depth amount")
+        bucket = (Decimal(price) / step).to_integral_value(rounding=ROUND_FLOOR) * step
+        grouped[bucket] = grouped.get(bucket, Decimal(0)) + Decimal(quantity)
+    total = sum(grouped.values(), Decimal(0))
+    return _amount(total), len(grouped)
+
+
+def _fetch_depth(exchange: str, host: str, path: str, *, timeout: float = REQUEST_TIMEOUT) -> dict | None:
+    url = f"https://{host}{path}"
+    request = Request(url, headers={"Accept": "application/json", "Cache-Control": "no-cache",
+                                    "User-Agent": "MarsChainRank/1 public depth check"})
+    try:
+        with build_opener(_NoRedirect()).open(request, timeout=timeout) as response:
+            if response.status != 200 or response.geturl() != url:
+                return None
+            body = response.read(MAX_BODY_BYTES + 1)
+        if len(body) > MAX_BODY_BYTES:
+            return None
+        now = datetime.now(timezone.utc)
+        received = now.replace(microsecond=now.microsecond // 1000 * 1000)
+        asks, bids, stamp = _depth_rows(exchange, json.loads(body, parse_float=Decimal))
+        source = datetime.fromtimestamp(int(stamp) / 1000, timezone.utc)
+        if not 2010 <= source.year <= 2100 or source > received + MAX_CLOCK_SKEW:
+            raise ValueError("Depth timestamp is outside the supported time range")
+        buy, buy_levels = _depth_total(bids)
+        sell, sell_levels = _depth_total(asks)
+        return {"depth_status": "stale" if received - source > STALE_AFTER else "ok",
+                "buy_depth_mars": buy, "sell_depth_mars": sell,
+                "buy_depth_levels": buy_levels, "sell_depth_levels": sell_levels,
+                "depth_group": "0.01", "depth_source_at": source.isoformat(timespec="milliseconds"),
+                "depth_received_at": received.isoformat(timespec="milliseconds"),
+                "source_host": host}
+    except (OSError, ValueError, OverflowError, RecursionError, HTTPException):
+        return None
+
+
 def _unavailable(exchange: str) -> dict:
     return {"exchange": exchange, "symbol": "MARS/USDT", "status": "unavailable",
             "price_usdt": None, "base_volume_24h": None, "quote_turnover_24h_usdt": None,
             "source_at": None, "source_time_kind": MARKETS[exchange][0],
-            "received_at": None, "source_host": None}
+            "received_at": None, "source_host": None,
+            "depth_status": "unavailable", "buy_depth_mars": None, "sell_depth_mars": None,
+            "buy_depth_levels": None, "sell_depth_levels": None, "depth_group": "0.01",
+            "depth_source_at": None, "depth_received_at": None}
 
 
 def collect_quotes() -> dict:
     """Check the documented endpoints concurrently and keep each market separate."""
     checked_at = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     deadline = monotonic() + COLLECTION_TIMEOUT
-    targets = [(exchange, host, path) for exchange, (_, hosts, path) in MARKETS.items() for host in hosts]
-    observations: dict[str, list[dict]] = {exchange: [] for exchange in MARKETS}
-    can_retry = set(MARKETS)
+    targets = [("ticker", exchange, host, path) for exchange, (_, hosts, path) in MARKETS.items() for host in hosts]
+    targets += [("depth", exchange, host, path) for exchange, (hosts, path) in DEPTH_MARKETS.items() for host in hosts]
+    observations = {"ticker": {exchange: [] for exchange in MARKETS},
+                    "depth": {exchange: [] for exchange in DEPTH_MARKETS}}
+    can_retry = {("ticker", exchange) for exchange in MARKETS} | {("depth", exchange) for exchange in DEPTH_MARKETS}
     pool = ThreadPoolExecutor(max_workers=len(targets))
     try:
-        pending = {pool.submit(_fetch, *target): target[0] for target in targets}
+        pending = {}
+        for kind, exchange, host, path in targets:
+            function = _fetch if kind == "ticker" else _fetch_depth
+            pending[pool.submit(function, exchange, host, path)] = (kind, exchange)
         while pending:
             complete, _ = wait(pending, timeout=max(0, deadline - monotonic()), return_when=FIRST_COMPLETED)
             if not complete:
                 break
             for future in complete:
-                exchange = pending.pop(future)
+                kind, exchange = pending.pop(future)
                 quote = future.result()
                 if quote is not None:
-                    observations[exchange].append(quote)
+                    observations[kind][exchange].append(quote)
             remaining = deadline - monotonic()
             if remaining >= 2:
-                for exchange in can_retry.difference(pending.values()):
-                    if not observations[exchange]:
-                        path = MARKETS[exchange][2]
-                        future = pool.submit(_fetch, exchange, RETRY_HOSTS[exchange], path,
+                for kind, exchange in can_retry.difference(pending.values()):
+                    if not observations[kind][exchange]:
+                        config = MARKETS if kind == "ticker" else DEPTH_MARKETS
+                        path = config[exchange][2 if kind == "ticker" else 1]
+                        function = _fetch if kind == "ticker" else _fetch_depth
+                        future = pool.submit(function, exchange, RETRY_HOSTS[exchange], path,
                                              timeout=min(REQUEST_TIMEOUT, remaining))
-                        pending[future] = exchange
-                        can_retry.remove(exchange)
+                        pending[future] = (kind, exchange)
+                        can_retry.remove((kind, exchange))
     finally:
         pool.shutdown(wait=False, cancel_futures=True)
     quotes = []
     for exchange in MARKETS:
-        best = max(observations[exchange], default=None, key=lambda item: (
+        best = max(observations["ticker"][exchange], default=None, key=lambda item: (
             item["status"] == "ok", sum(item[key] is not None for key in AMOUNT_FIELDS), item["source_at"],
             -MARKETS[exchange][1].index(item["source_host"])))
-        quotes.append(best or _unavailable(exchange))
+        quote = best or _unavailable(exchange)
+        depth = max(observations["depth"][exchange], default=None, key=lambda item: (
+            item["depth_status"] == "ok", item["buy_depth_mars"] is not None,
+            item["depth_source_at"], -DEPTH_MARKETS[exchange][0].index(item["source_host"])))
+        if depth:
+            quote.update({key: depth[key] for key in DEPTH_FIELDS})
+        quotes.append(quote)
     return {"checked_at": checked_at, "quotes": quotes}
 
 
@@ -216,6 +304,31 @@ def validate_public_snapshot(value: object, *, now: datetime | None = None) -> d
                 continue
             if not isinstance(amount, str) or amount != _amount(amount, positive=price):
                 raise ValueError("Invalid exchange quote amount")
+        depth_status = quote["depth_status"]
+        if depth_status == "unavailable":
+            if any(quote[key] is not None for key in ("buy_depth_mars", "sell_depth_mars",
+                                                      "buy_depth_levels", "sell_depth_levels",
+                                                      "depth_source_at", "depth_received_at")):
+                raise ValueError("Unavailable exchange depth carries values")
+        elif depth_status in ("ok", "stale", "retained"):
+            depth_source = _timestamp(quote["depth_source_at"])
+            depth_received = _timestamp(quote["depth_received_at"])
+            if depth_source > depth_received + MAX_CLOCK_SKEW:
+                raise ValueError("Exchange depth clocks are inconsistent")
+            if depth_status != "retained" and (depth_received < checked_at
+                    or (depth_status == "stale") != (depth_received - depth_source > STALE_AFTER)):
+                raise ValueError("Exchange depth age and status disagree")
+            if quote["depth_group"] != "0.01":
+                raise ValueError("Unsupported exchange depth grouping")
+            for key in ("buy_depth_mars", "sell_depth_mars"):
+                amount = quote[key]
+                if not isinstance(amount, str) or amount != _amount(amount):
+                    raise ValueError("Invalid exchange depth amount")
+            for key in ("buy_depth_levels", "sell_depth_levels"):
+                if type(quote[key]) is not int or not 0 <= quote[key] <= 1000:
+                    raise ValueError("Invalid exchange depth level count")
+        else:
+            raise ValueError("Invalid exchange depth status")
     return {"schema": 1, "checked_at": value["checked_at"], "quotes": [dict(quote) for quote in quotes]}
 
 
@@ -247,10 +360,24 @@ def update_quotes(root: Path) -> dict:
         prior_quotes = {quote["exchange"]: quote for quote in previous["quotes"]} if previous else {}
         quotes = []
         for item in result["quotes"]:
-            quote = {key: item[key] for key in PUBLIC_QUOTE_FIELDS}
+            quote = {key: item.get(key) for key in PUBLIC_QUOTE_FIELDS}
+            quote.update({"depth_status": quote.get("depth_status") or "unavailable",
+                          "buy_depth_mars": quote.get("buy_depth_mars"),
+                          "sell_depth_mars": quote.get("sell_depth_mars"),
+                          "buy_depth_levels": quote.get("buy_depth_levels"),
+                          "sell_depth_levels": quote.get("sell_depth_levels"),
+                          "depth_group": quote.get("depth_group") or "0.01",
+                          "depth_source_at": quote.get("depth_source_at"),
+                          "depth_received_at": quote.get("depth_received_at")})
             prior = prior_quotes.get(quote["exchange"])
             if prior and prior["source_at"] and (quote["source_at"] is None or quote["source_at"] < prior["source_at"]):
                 quote = {**prior, "status": "retained"}
+            elif prior and prior.get("depth_source_at") and (
+                    quote.get("depth_source_at") is None
+                    or quote["depth_source_at"] < prior["depth_source_at"]):
+                for key in DEPTH_FIELDS:
+                    quote[key] = prior[key]
+                quote["depth_status"] = "retained"
             quotes.append(quote)
         snapshot = validate_public_snapshot({"schema": 1, "checked_at": result["checked_at"], "quotes": quotes})
         atomic_json(state / SNAPSHOT_FILE, snapshot)
