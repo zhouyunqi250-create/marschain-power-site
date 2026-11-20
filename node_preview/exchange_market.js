@@ -4,10 +4,10 @@
   if (!panel) return;
 
   const copy = {
-    zh: {title: '交易所行情', caption: '现货报价 · 公开盘口按 0.01 档聚合', volume: '24 小时成交量', turnover: '24 小时成交额', buyDepth: '公开买盘总量', sellDepth: '公开卖盘总量', ticker: '行情时间', trade: '最后成交时间', ok: '已更新', late: '沿用上次报价', stale: '报价时间较早', unavailable: '暂不可用'},
-    en: {title: 'Exchange Markets', caption: 'Spot quotes · Public order book grouped by 0.01', volume: '24h Volume', turnover: '24h Turnover', buyDepth: 'Visible bids', sellDepth: 'Visible asks', ticker: 'Quote time', trade: 'Last trade', ok: 'Updated', late: 'Last available quote', stale: 'Earlier quote', unavailable: 'Unavailable'},
-    ja: {title: '取引所の相場', caption: '現物相場 · 公開注文板を0.01刻みで集計', volume: '24時間取引量', turnover: '24時間取引代金', buyDepth: '公開買い注文量', sellDepth: '公開売り注文量', ticker: '相場時刻', trade: '最終約定時刻', ok: '更新済み', late: '前回の相場を表示', stale: '以前の相場', unavailable: '取得不可'},
-    ko: {title: '거래소 시세', caption: '현물 시세 · 공개 호가를 0.01 단위로 집계', volume: '24시간 거래량', turnover: '24시간 거래대금', buyDepth: '공개 매수 총량', sellDepth: '공개 매도 총량', ticker: '시세 시각', trade: '최근 체결 시각', ok: '갱신됨', late: '마지막 시세 표시', stale: '이전 시세', unavailable: '일시적으로 사용할 수 없음'},
+    zh: {title: '交易所行情', volume: '24 小时成交量', turnover: '24 小时成交额', buyDepth: '公开买盘总量', sellDepth: '公开卖盘总量', ticker: '行情时间', trade: '最后成交时间', ok: '已更新', late: '沿用上次报价', stale: '报价时间较早', unavailable: '暂不可用'},
+    en: {title: 'Exchange Markets', volume: '24h Volume', turnover: '24h Turnover', buyDepth: 'Visible bids', sellDepth: 'Visible asks', ticker: 'Quote time', trade: 'Last trade', ok: 'Updated', late: 'Last available quote', stale: 'Earlier quote', unavailable: 'Unavailable'},
+    ja: {title: '取引所の相場', volume: '24時間取引量', turnover: '24時間取引代金', buyDepth: '公開買い注文量', sellDepth: '公開売り注文量', ticker: '相場時刻', trade: '最終約定時刻', ok: '更新済み', late: '前回の相場を表示', stale: '以前の相場', unavailable: '取得不可'},
+    ko: {title: '거래소 시세', volume: '24시간 거래량', turnover: '24시간 거래대금', buyDepth: '공개 매수 총량', sellDepth: '공개 매도 총량', ticker: '시세 시각', trade: '최근 체결 시각', ok: '갱신됨', late: '마지막 시세 표시', stale: '이전 시세', unavailable: '일시적으로 사용할 수 없음'},
   };
   let data = [];
 
